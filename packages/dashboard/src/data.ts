@@ -9,7 +9,8 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { channelStates, loadBrands, parseJournalKey, type Brand, type ChannelState, type Comment, type Conversation, type JournalEntry, type Platform } from "@hoi-sau/channel";
-import { listCharacters, loadProfile, type ConsistencyRun, type Profile } from "@hoi-sau/studio";
+import { listCharacters, loadProfile, nameVi, type ConsistencyRun, type Profile } from "@hoi-sau/studio";
+import { lang } from "./i18n.js";
 import { emptyMemory, measureEpisodes, memoryFile, SERIES_DIR, type EpisodeStats, type Lesson, type PostInsights, type StoryMemory } from "@hoi-sau/story";
 
 export interface Paths {
@@ -189,6 +190,9 @@ export function parseJournal(journal: Record<string, JournalEntry>, brands: Bran
     .sort((a, b) => b.at.localeCompare(a.at));
 }
 
+/** The profile as the page shows it: the Vietnamese name in Vietnamese, the global name in English. */
+const shownProfile = (p: Profile): Profile => (lang() === "vi" ? { ...p, name: nameVi(p) } : p);
+
 export function loadState(paths: Paths): State {
   const journal = readJson<Record<string, JournalEntry>>(join(paths.dataDir, "publish-journal.json"), {});
   let brandList: Brand[] = [];
@@ -206,7 +210,7 @@ export function loadState(paths: Paths): State {
   const characters = listCharacters(paths.charactersDir).map((slug) => {
     const runFile = join(paths.runsDir, slug, "run.json");
     return {
-      profile: loadProfile(slug, paths.charactersDir),
+      profile: shownProfile(loadProfile(slug, paths.charactersDir)),
       run: readJson<ConsistencyRun | undefined>(runFile, undefined),
       episodes: new Set(episodes.filter((e) => e.character === slug && e.state === "published").map((e) => e.episodeId)).size,
       comments: comments.filter((c) => byPost.get(c.postId)?.character === slug).length,

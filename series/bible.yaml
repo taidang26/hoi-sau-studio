@@ -12,7 +12,7 @@ world:
     - Thang máy chậm
   recurring_extras:
     - Sếp (một con cú mèo đeo kính, trưởng phòng, không bao giờ nêu tên)
-    - Con mèo trắng Bông của Giám đốc, con vật duy nhất ở công ty không phải đi làm
+    - Con mèo trắng Tuyết của Giám đốc, con vật duy nhất ở công ty không phải đi làm
     - Chị kế toán trưởng (một con rùa, luôn đúng)
     - Đồng nghiệp do khán giả đề xuất (vẽ theo mô tả bằng chữ)
 rules:
@@ -51,7 +51,7 @@ relationships:
   - { a: cay-muc, b: te-te, dynamic: "Giám đốc giao việc qua Pango; Pango cuộn tròn ngay khi nghe tiếng thang máy" }
   - { a: chon-bac-ma, b: te-te, dynamic: "Đối thủ 9 năm: Rico tranh công, Pango cuộn tròn chịu trận, nhưng cuối cùng Pango vẫn thắng mà không cần cố" }
   - { a: chon-bac-ma, b: cu-li, dynamic: "Rico rủ Lolo làm chung rồi đứng tên một mình; Lolo chưa nhận ra, khán giả thì nhận ra" }
-  - { a: cay-muc, b: cu-li, dynamic: "Giám đốc gọi nhầm tên Lolo mỗi lần một kiểu, nhưng con mèo Bông chỉ chịu nằm trong lòng Lolo" }
+  - { a: cay-muc, b: cu-li, dynamic: "Giám đốc gọi nhầm tên Lolo mỗi lần một kiểu, nhưng con mèo Tuyết chỉ chịu nằm trong lòng Lolo" }
 season:
   arc: 'Mùa 1 "Dự Án Tết": cả phòng phải xong một chiến dịch Tết trong 30 tập; khán giả quyết định chiến dịch thành hay hỏng.'
   milestones:

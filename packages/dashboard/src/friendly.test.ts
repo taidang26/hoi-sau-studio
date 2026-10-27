@@ -144,6 +144,36 @@ test("edit a character in place, keeping the file's comments", async () => {
   assert.equal(loadProfile("cu-li", charactersDir).name, "Lolo Mới");
 });
 
+test("a Vietnamese name shows in Vietnamese, the global name in English", async () => {
+  const p = loadProfile("ca-noc", charactersDir);
+  const form = {
+    name_vi: "Bống",
+    name: p.name,
+    species: p.species,
+    status: p.status,
+    role: p.role,
+    office_type: p.office_type,
+    core_gag: p.core_gag,
+    description: p.look.description,
+    signature: p.look.signature.join("\n"),
+    props: p.look.props.join("\n"),
+    swatch_hex: p.look.palette.map((s) => s.hex),
+    swatch_name: p.look.palette.map((s) => s.name),
+    personality: p.personality.join("\n"),
+    catchphrases: p.voice.catchphrases.join("\n"),
+    never_says: p.never_says.join("\n"),
+    want: p.want ?? "",
+    fear: p.fear ?? "",
+    contradiction: p.contradiction ?? "",
+    comic_engine: (p.comic_engine ?? []).join("\n"),
+    life: (p.life ?? []).join("\n"),
+  };
+  assert.match(note(await post("/characters/ca-noc/edit", form)), /^\/characters\/ca-noc\?ok=/);
+  assert.match(readFileSync(join(charactersDir, "ca-noc", "profile.yaml"), "utf8"), /^name: Poppy\nname_vi: Bống$/m);
+  assert.match(await (await fetch(base + "/characters/ca-noc")).text(), /<h1>Bống<\/h1>/);
+  assert.match(await (await fetch(base + "/characters/ca-noc", { headers: { cookie: "lang=en" } })).text(), /<h1>Poppy<\/h1>/);
+});
+
 test("create a character by hand, without the AI", async () => {
   const res = await post("/characters/new/manual", {
     name: "Gibbo",

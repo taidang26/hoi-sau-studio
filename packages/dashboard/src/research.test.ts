@@ -99,8 +99,9 @@ test("the page: upload, read, pin, and the images are served", async () => {
   assert.match(page, /Tư liệu/);
   assert.match(page, /không bao giờ làm ảnh mẫu khi vẽ/);
   assert.doesNotMatch(page, /npm run|\.env\b|library\.json/);
-  const src = page.match(/src="(\/research-media\/uni\/files\/[a-f0-9]+\.png)"/)![1];
+  const [, src, w] = page.match(/src="(\/research-media\/uni\/files\/[a-f0-9]+\.png)(\?w=\d+)"/)!;
   assert.equal((await fetch(base + src)).headers.get("content-type"), "image/png");
+  assert.equal((await fetch(base + src + w)).headers.get("content-type"), "image/webp", "the page asks for a small WebP");
   assert.equal((await fetch(`${base}/research-media/uni/library.json`)).status, 404);
 
   const form = new FormData();

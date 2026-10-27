@@ -26,6 +26,8 @@ export interface BibleLike {
 export interface ProfileLike {
   slug: string;
   name: string;
+  /** Name in Vietnamese text; falls back to `name`. */
+  name_vi?: string;
   species?: string;
   office_type?: string;
   core_gag?: string;

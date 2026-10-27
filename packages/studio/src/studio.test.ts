@@ -131,7 +131,7 @@ test("consistency run chains every panel from the sheet and writes a review page
   assert.equal(calls[0].previous_response_id, undefined);
   for (let i = 1; i < calls.length; i++) assert.equal(calls[i].previous_response_id, run.images[i - 1].responseId);
   assert.equal(run.images[0].file, "sheet.png");
-  assert.match(run.images[1].prompt, /six full-body poses/);
+  assert.match(run.images[1].prompt, /12 full-body poses in a 4x3 grid/);
   assert.match(run.images[1].prompt, /fat red pen/);
   const saved = JSON.parse(readFileSync(join(out, "run.json"), "utf8"));
   assert.equal(saved.images.length, 5);

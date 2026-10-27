@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
  *   npm run talk -- art <slug> [--mock] [--only explain,shock] [--force]   draw the talk pictures once (Muse Image + SAM 3.1)
- *   npm run talk -- make <slug> [--topic "..."] [--seconds 30] [--script file.json] [--voice dir] [--music file] [--mock]
+ *   npm run talk -- make <slug> [--topic "..."] [--like sample-transcript.json] [--seconds 30] [--script file.json] [--voice dir] [--music file] [--mock]
  *                    Muse Spark writes, safety gate, MMS-TTS speaks (or --voice recordings 01.wav...), render 1080x1920
- *   npm run talk -- sync <slug> <sound|video> [--lyrics file.txt] [--start s] [--duration s] [--mock]
+ *   npm run talk -- sync <slug> <sound|video> [--lyrics file.txt] [--vocals stem.wav] [--start s] [--duration s] [--mock]
  *                    lip-sync to an existing sound: Muse Voice Transcribe times the words, Muse Spark picks gestures
  *   npm run talk -- demo                                                   offline: mock pictures, hummed voice
  */
@@ -54,6 +54,8 @@ const stamp = () => new Date().toISOString().replace(/[-:]/g, "").replace("T", "
 interface MakeOptions {
   mock: boolean;
   topic?: string;
+  /** A sample's words to copy the shape of (hook, rhythm, punchline), never the words. */
+  like?: string;
   seconds: number;
   script?: string;
   voice?: string;
@@ -67,7 +69,7 @@ async function make(slug: string, o: MakeOptions) {
   const ctx = openStudio({ mock: o.mock, log: o.log });
   mkdirSync(o.out, { recursive: true });
   const art = await ensureArt(slug, o);
-  const script: TalkScript = o.script ? JSON.parse(readFileSync(o.script, "utf8")) : await writeScript(ctx, slug, { topic: o.topic, seconds: o.seconds, mock: o.mock });
+  const script: TalkScript = o.script ? JSON.parse(readFileSync(o.script, "utf8")) : await writeScript(ctx, slug, { topic: o.topic, like: o.like ? sampleText(o.like) : undefined, seconds: o.seconds, mock: o.mock });
   writeFileSync(join(o.out, "script.json"), JSON.stringify(script, null, 2) + "\n");
   const verdict = await checkScript(ctx, slug, script);
   writeFileSync(join(o.out, "safety.json"), JSON.stringify(verdict, null, 2) + "\n");
@@ -98,6 +100,17 @@ async function make(slug: string, o: MakeOptions) {
   console.log(problems.length ? `Reels check: ${problems.join("; ")}` : "Reels check: ok for Facebook/Instagram Reels and TikTok");
 }
 
+/** A sample's words from a transcript.json, a script.json or plain text. */
+function sampleText(file: string): string {
+  const raw = readFileSync(file, "utf8");
+  try {
+    const j = JSON.parse(raw);
+    return j.text ?? (j.lines ?? []).map((l: { text: string }) => l.text).join("\n");
+  } catch {
+    return raw;
+  }
+}
+
 async function ensureArt(slug: string, o: { mock: boolean; artDir: string; log: (s: string) => void }) {
   let art = loadArt(o.artDir);
   if (!art || GESTURES.some((g) => !art!.gestures[g.id])) {
@@ -109,6 +122,8 @@ async function ensureArt(slug: string, o: { mock: boolean; artDir: string; log: 
 
 interface SyncOptions {
   mock: boolean;
+  /** The voice alone (e.g. a Demucs vocals stem) for the mouth, when the sound has music under it. */
+  vocals?: string;
   lyrics?: string;
   start?: number;
   duration?: number;
@@ -122,7 +137,8 @@ async function sync(slug: string, media: string, o: SyncOptions) {
   mkdirSync(o.out, { recursive: true });
   const art = await ensureArt(slug, o);
   const sound = join(o.out, "sound.m4a");
-  const pcm = await readSound(media, sound, { start: o.start, duration: o.duration });
+  let pcm = await readSound(media, sound, { start: o.start, duration: o.duration });
+  if (o.vocals) pcm = await readSound(o.vocals, join(o.out, "vocals.m4a"), { start: o.start, duration: o.duration });
   let lines: TimedWord[][];
   if (o.lyrics) {
     lines = timeLyrics(readFileSync(o.lyrics, "utf8").split(/\r?\n/).map((l) => l.trim()).filter(Boolean), voicedRegions(pcm));
@@ -191,6 +207,7 @@ async function main() {
       await sync(slug, fromCwd(media), {
         mock,
         lyrics: opt.lyrics ? fromCwd(opt.lyrics as string) : undefined,
+        vocals: opt.vocals ? fromCwd(opt.vocals as string) : undefined,
         start: opt.start ? Number(opt.start) : undefined,
         duration: opt.duration ? Number(opt.duration) : undefined,
         out: opt.out ? fromCwd(opt.out as string) : join(ROOT, mock ? "data-demo" : "data", "talk", `${slug}-sync-${stamp()}`),
@@ -207,6 +224,7 @@ async function main() {
       await make(slug, {
         mock,
         topic: opt.topic as string | undefined,
+        like: opt.like ? fromCwd(opt.like as string) : undefined,
         seconds: Number(opt.seconds ?? 30),
         script: opt.script ? fromCwd(opt.script as string) : undefined,
         voice: opt.voice ? fromCwd(opt.voice as string) : undefined,

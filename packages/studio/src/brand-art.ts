@@ -2,11 +2,11 @@
  * Profile pictures and cover photos for every brand in channels.yaml.
  *
  * The series cover is an homage to a famous album-cover crosswalk shot, moved
- * indoors: the four coworkers walk in single file across a zebra crossing
+ * indoors: the whole cast walks in single file across a zebra crossing
  * painted on the office aisle. Each character's own cover is the same shot
  * with that character crossing alone while the office watches. Avatars are a
  * head-and-shoulders portrait that reads inside a small circle; the series
- * avatar is the four heads peeking over a desk.
+ * avatar is all their heads peeking over a desk.
  *
  *   npm run studio -- brand-art [brand…] [--mock]
  *
@@ -47,8 +47,18 @@ export function loadBrandList(file = CHANNELS_FILE): BrandInfo[] {
   return (doc?.brands ?? []).map(({ id, name, kind, character, tagline }) => ({ id, name: name ?? id, kind, character, tagline }));
 }
 
-/** The walking order across the crossing, front first. */
+/** The first four across the crossing, front first; characters added later follow in name order. */
 const WALK_ORDER = ["te-te", "ca-noc", "cu-li", "sao-la"];
+
+/** Everyone in the series, so a new character is on the next cover without touching this file. */
+export function seriesCast(ctx: StudioContext): string[] {
+  const rest = [...ctx.profiles.keys()].filter((s) => !WALK_ORDER.includes(s)).sort();
+  return [...WALK_ORDER.filter((s) => ctx.profiles.has(s)), ...rest];
+}
+
+const COUNT = ["no", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"];
+const ORDINAL = ["first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth"];
+const count = (n: number) => COUNT[n] ?? String(n);
 
 const NO_TEXT = "No text, no letters, no numbers, no logos, no speech bubbles.";
 
@@ -62,15 +72,16 @@ function describe(ctx: StudioContext, slug: string, pose: string): string {
 }
 
 export function coverPrompt(ctx: StudioContext, brand: BrandInfo): string {
-  const cast = WALK_ORDER.filter((s) => ctx.profiles.has(s));
+  const cast = seriesCast(ctx);
+  const n = count(cast.length);
   const office = ctx.office ? officePanelText(ctx.office, []) : "";
   const style = ctx.style ? styleText(ctx.style) : "";
   const scene =
     brand.kind === "series" || !brand.character
       ? [
-          "Wide cover illustration, a playful homage to a famous album-cover shot of four people crossing a zebra crossing, moved inside an office.",
+          "Wide cover illustration, a playful homage to a famous album-cover shot of people crossing a zebra crossing in single file, moved inside an office.",
           "Side view, eye level, one-point perspective down the long office aisle. A white zebra crossing is painted across the aisle carpet.",
-          `Exactly four main characters walk across it in single file from left to right, evenly spaced, mid-stride, arms swinging. Each of the four appears exactly once, never twice, and no other character is on the crossing. From front to back: ${cast.map((s, i) => describe(ctx, s, `${["first", "second", "third", "fourth"][i] ?? "next"} in line`)).join(" ")}`,
+          `Exactly ${n} main characters walk across it in single file from left to right, evenly spaced, mid-stride, arms swinging. Each of the ${n} appears exactly once, never twice, and no other character is on the crossing. From front to back: ${cast.map((s, i) => describe(ctx, s, `${ORDINAL[i] ?? "next"} in line`)).join(" ")}`,
           "Desks with background coworkers on both sides of the aisle, some glancing up at the parade.",
         ]
       : [
@@ -87,7 +98,7 @@ export function avatarPrompt(ctx: StudioContext, brand: BrandInfo): string {
   const circle = "It is a social media profile picture shown as a small circle: everything important sits in the central circle, big and simple, readable at thumbnail size.";
   const scene =
     brand.kind === "series" || !brand.character
-      ? `The four coworkers peek over the edge of one office desk side by side, heads and paws only, big curious eyes, in this order left to right: ${WALK_ORDER.filter((s) => ctx.profiles.has(s))
+      ? `The ${count(seriesCast(ctx).length)} coworkers peek over the edge of one office desk side by side, heads and paws only, big curious eyes, packed close together so every face stays big, in this order left to right: ${seriesCast(ctx)
           .map((s) => describe(ctx, s, "peeking"))
           .join(" ")} Plain soft butter-yellow background.`
       : `${describe(ctx, brand.character, "head and shoulders, facing the viewer, centred, a big friendly expression")} Plain soft background in a light tint of the character's own colours.`;
@@ -95,7 +106,7 @@ export function avatarPrompt(ctx: StudioContext, brand: BrandInfo): string {
 }
 
 function refsFor(ctx: StudioContext, brand: BrandInfo): string[] {
-  const slugs = brand.kind === "series" || !brand.character ? WALK_ORDER.filter((s) => ctx.profiles.has(s)) : [brand.character];
+  const slugs = brand.kind === "series" || !brand.character ? seriesCast(ctx) : [brand.character];
   // One model sheet per character keeps the request small; a solo brand also gets its pose sheet.
   const refs = slugs.flatMap((s) => (slugs.length > 1 ? characterRefs(ctx, s).slice(0, 1) : characterRefs(ctx, s)));
   const styleRef = styleReference(ctx.style, ctx.seriesDir ?? SERIES_DIR);

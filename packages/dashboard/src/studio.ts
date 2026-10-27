@@ -69,6 +69,7 @@ export interface StudioOptions {
 
 export const FORMAT_LABEL: Record<EpisodeFormat, string> = {
   strip3: "Truyện 3 khung, vuốt từng khung",
+  single: "Một khung, đủ cả câu chuyện",
   carousel: "Truyện dài 4–6 khung",
 };
 
@@ -368,7 +369,7 @@ export function studioPage(s: State, st: Studio, error?: string, inspiration = "
 <fieldset class="pick-cast"><legend>${esc(t("Nhân vật chính"))}</legend>${cast.map((c, i) => `<label class="cast-pick"><input type="radio" name="lead" value="${esc(c.profile.slug)}"${i === 0 ? " checked" : ""}><img src="${pic(c.profile.slug)}" alt="" style="background:${esc(c.profile.look.palette[0].hex)}44"><span>${esc(c.profile.name)}</span></label>`).join("")}</fieldset>
 <fieldset class="pick-cast small-pick"><legend>${esc(t("Cùng xuất hiện"))}</legend>${cast.map((c) => `<label class="cast-pick"><input type="checkbox" name="with" value="${esc(c.profile.slug)}"><img src="${pic(c.profile.slug)}" alt="" style="background:${esc(c.profile.look.palette[0].hex)}44"><span>${esc(c.profile.name)}</span></label>`).join("")}</fieldset>
 <label>${esc(t("Hướng truyện"))}<textarea name="direction" rows="3" required placeholder="${esc(t("Chuyện gì xảy ra trong tập này"))}">${esc(ideas.map((c) => c.text).join("\n"))}</textarea></label>
-<fieldset class="pick-format"><legend>${esc(t("Kiểu truyện"))}</legend>${EPISODE_FORMATS.map((f) => `<label class="format-pick"><input type="radio" name="format" value="${f}"${f === "strip3" ? " checked" : ""}><span class="fmt fmt-${f}">${f === "strip3" ? "<i></i><i></i><i></i>" : "<i></i><i></i><i></i><i></i><i></i>"}</span>${esc(t(FORMAT_LABEL[f]))}</label>`).join("")}</fieldset>
+<fieldset class="pick-format"><legend>${esc(t("Kiểu truyện"))}</legend>${EPISODE_FORMATS.map((f) => `<label class="format-pick"><input type="radio" name="format" value="${f}"${f === "strip3" ? " checked" : ""}><span class="fmt fmt-${f}">${"<i></i>".repeat(f === "single" ? 1 : f === "strip3" ? 3 : 5)}</span>${esc(t(FORMAT_LABEL[f]))}</label>`).join("")}</fieldset>
 ${ideas.length ? `<fieldset><legend>${esc(t("Ghi công người bình luận"))}</legend>${ideas.map((c) => `<label class="check"><input type="checkbox" name="credit" value="${esc(`${c.author.name}::${c.text}`)}" checked> <b>${esc(c.author.name)}</b>: <span class="muted">${esc(c.text)}</span></label>`).join("")}</fieldset>` : `<p class="muted small">${t('Mẹo: chọn bình luận hay ở trang <a href="/comments">Bình luận</a>, chúng sẽ hiện ở đây làm hướng truyện.')}</p>`}
 ${inspiration}
 <div class="row-actions"><button class="btn on">${esc(t("Tạo tập"))}</button>${aiNote(st)}</div></form>`;

@@ -11,7 +11,7 @@
  *   npm run studio -- sheet <slug|all> [--mock]  Muse Image consistency test
  *   npm run studio -- sheet approve <slug>       lock that sheet as the model sheet
  *   npm run studio -- character new "<idea>" [--mock]
- *   npm run studio -- episode new <id> --lead <slug> [--with a,b] [--format strip3] --direction "…" [--credit "name: comment"]
+ *   npm run studio -- episode new <id> --lead <slug> [--with a,b] [--format strip3|single] --direction "…" [--credit "name: comment"]
  *   npm run studio -- episode new <id> --lead <slug> [--with a,b] --from-listen data/listen/<id>.json
  *   npm run studio -- episode run <id> [--from step] [--to step] [--mock]
  *   npm run studio -- episode approve <id> [--post post.json] [--despite-warnings]

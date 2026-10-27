@@ -350,3 +350,14 @@ test("safety: a banned or injected direction is refused, the gate stops drawing,
   // A failed gate cannot be approved at all.
   assert.deepEqual(checkForApproval("ep-002", box.episodesDir).blockers.map((b) => b.code), ["safety-failed", "not-lettered"]);
 });
+
+test("a single episode is one panel that carries the whole joke", async () => {
+  const box = sandbox();
+  const ctx = openStudio({ mock: true, ...box });
+  createEpisode({ id: "ep-single", lead: "cu-li", characters: ["chon-bac-ma"], direction: "Cả phòng đi khám sức khoẻ", credits: [], format: "single" }, box.episodesDir);
+  await runEpisode(ctx, "ep-single");
+  const script = readStep<{ panels: unknown[] }>("ep-single", "script", box.episodesDir)!;
+  assert.equal(script.panels.length, 1);
+  const letter = readStep<{ pages: Array<{ file: string }> }>("ep-single", "letter", box.episodesDir)!;
+  assert.equal(letter.pages.length, 1);
+});

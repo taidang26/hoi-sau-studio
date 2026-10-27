@@ -24,7 +24,7 @@ export function characterSheetPrompt(p: Profile, style?: string): string {
   return [
     `An original character sheet for a comic series. ${p.look.description}`,
     `Show the same character four times in a row: front view, three-quarter view, side view, back view, full body, standing, evenly spaced.`,
-    `Below them, a row of head close-ups with these expressions: ${expressions}.`,
+    `Below them, a row of head close-ups with these expressions, each pushed to a cartoon extreme (big eyes, wide mouths, squashed and stretched faces): ${expressions}.`,
     `Must keep: ${p.look.signature.join("; ")}.`,
     iconLine(p),
     `Color palette: ${palette(p)}.`,
@@ -34,23 +34,35 @@ export function characterSheetPrompt(p: Profile, style?: string): string {
     .join("\n");
 }
 
+/** Drawn comic effects are pictures, so they are allowed where text is not. */
+export const COMIC_FX =
+  "Exaggerated cartoon acting: squash and stretch, extreme faces, strong lines of action; drawn comic effects (sweat drops, motion lines, shock lines, anger veins, steam puffs, sparkles, dust clouds) are welcome, never as letters";
+
 /**
- * Six reusable full-body poses, chained from the character sheet. Episodes
+ * Twelve reusable full-body poses, chained from the character sheet. Episodes
  * attach it with the sheet, so a slumped or shocked character is drawn from an
- * approved pose instead of reinvented each panel.
+ * approved pose instead of reinvented each panel. All but the first are pushed
+ * to cartoon extremes.
  */
 export const POSES = [
-  "standing neutral",
-  "sitting at an office desk typing",
-  "slumped face-down on a desk",
-  "pointing and explaining",
-  "jumping back in shock",
-  "looking up, daydreaming",
+  "standing relaxed with a cheeky grin",
+  "hunched over the keyboard typing furiously, motion lines on the paws, sweat drops flying",
+  "melting off the office chair in despair like a puddle, eyes turned to spirals",
+  "leaping a metre into the air in shock, fur standing on end, eyes popping out",
+  "triumphant fist pump, one leg kicked up, sparkles all around",
+  "sneaking on tiptoe with exaggerated stretched steps, eyes darting sideways",
+  "collapsed on the knees, arms raised to the sky, tears streaming like fountains",
+  "furious, face red, steam puffs from the ears, anger vein on the forehead",
+  "sprinting late with a coffee cup, legs a blur of motion lines, dust cloud behind",
+  "squashed flat under a toppling stack of paperwork, only the paws sticking out",
+  "jaw dropped to the floor, body stretched tall with disbelief",
+  "pointing dramatically straight at the viewer, strong foreshortening, smug face",
 ];
 
 export function poseSheetPrompt(p: Profile, style?: string): string {
   return [
-    `A pose sheet of the character from the sheet: six full-body poses in a 3x2 grid, evenly spaced: ${POSES.join("; ")}.`,
+    `A pose sheet of the character from the sheet: ${POSES.length} full-body poses in a 4x3 grid, evenly spaced, each in its own cell: ${POSES.join("; ")}.`,
+    `${COMIC_FX}. Push every pose further than feels safe, like a classic animated cartoon.`,
     `Keep exactly: ${p.look.signature.join("; ")}.`,
     iconLine(p),
     `Style: ${drawStyle(p, style)} Plain white background, ${NO_TEXT}.`,
@@ -99,7 +111,7 @@ export function panelPrompt(p: Profile, scene: string, style?: string): string {
     `${scene}.`,
     `Keep the character exactly as on the sheet: ${p.look.signature.join("; ")}.`,
     iconLine(p),
-    `Single comic panel. Style: ${drawStyle(p, style)} Bright, cheerful daylight. The scene fills the whole panel; the top third shows soft, simple background for dialogue added later, never a blank band. ${NO_TEXT}.`,
+    `Single comic panel. Style: ${drawStyle(p, style)} Bright, cheerful daylight. ${COMIC_FX}. The scene fills the whole panel; the top third shows soft, simple background for dialogue added later, never a blank band. ${NO_TEXT}.`,
   ]
     .filter(Boolean)
     .join(" ");

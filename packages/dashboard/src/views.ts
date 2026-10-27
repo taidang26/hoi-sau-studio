@@ -357,9 +357,9 @@ ${draw?.extra ?? ""}
 /** Want, fear, contradiction, life, comic engine and relationships, when the profile has them. */
 function depth(c: CharacterView): string {
   const p = c.profile;
-  if (!p.want && !p.contradiction && !p.comic_engine?.length) return "";
+  if (!p.want && !p.contradiction && !p.edge && !p.comic_engine?.length) return "";
   const list = (items: string[]) => `<ul>${items.map((i) => `<li>${esc(i)}</li>`).join("")}</ul>`;
-  const kv = [["Muốn", p.want], ["Sợ", p.fear], ["Mâu thuẫn", p.contradiction]].filter(([, v]) => v).map(([k, v]) => `<dt>${esc(t(k!))}</dt><dd>${esc(v)}</dd>`).join("");
+  const kv = [["Muốn", p.want], ["Sợ", p.fear], ["Mâu thuẫn", p.contradiction], ["Mặt khuất", p.edge]].filter(([, v]) => v).map(([k, v]) => `<dt>${esc(t(k!))}</dt><dd>${esc(v)}</dd>`).join("");
   return `<div class="grid2"><section class="card"><h2>${esc(t("Con người"))}</h2>${kv ? `<dl class="kv">${kv}</dl>` : ""}${p.life?.length ? `<h3>${esc(t("Đời sống"))}</h3>${list(p.life)}` : ""}</section>
 <section class="card"><h2>${esc(t("Tình huống gây cười"))}</h2>${list(p.comic_engine ?? [])}${p.relationships?.length ? `<h3>${esc(t("Quan hệ"))}</h3>${list(p.relationships.map((r) => r.dynamic))}` : ""}</section></div>`;
 }

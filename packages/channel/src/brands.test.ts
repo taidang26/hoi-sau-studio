@@ -23,9 +23,9 @@ import {
 const brands = loadBrands();
 
 test("channels.yaml: Hồi Sau plus one brand per character, only names of .env variables", async () => {
-  assert.deepEqual(brands.map((b) => b.id), ["hoi-sau", "lolo", "poppy", "pango", "uni"]);
+  assert.deepEqual(brands.map((b) => b.id), ["hoi-sau", "lolo", "poppy", "pango", "uni", "bino", "rico"]);
   assert.equal(brands[0].kind, "series");
-  assert.deepEqual(brands.filter((b) => b.kind === "character").map((b) => b.character), ["cu-li", "ca-noc", "te-te", "sao-la"]);
+  assert.deepEqual(brands.filter((b) => b.kind === "character").map((b) => b.character), ["cu-li", "ca-noc", "te-te", "sao-la", "cay-muc", "chon-bac-ma"]);
   // Contest setup: Hồi Sau and Lolo are live, the rest wait.
   const live = brands.filter((b) => b.channels.some((c) => c.status === "live")).map((b) => b.id);
   assert.deepEqual(live, ["hoi-sau", "lolo"]);
@@ -94,4 +94,20 @@ test("the same episode posts once per brand", async () => {
   const again = await publishEpisode("facebook", post, targets, journal, { pollIntervalMs: 1, brand: "lolo" });
   assert.equal(again.postId, lolo.postId);
   assert.deepEqual((await journal.published()).map((p) => p.brand ?? MAIN_BRAND).sort(), ["hoi-sau", "lolo"]);
+});
+
+test("a new character gets a brand of its own, once, with every channel still to set up", async () => {
+  const { addCharacterBrand: add, loadBrands: load, BRANDS_FILE } = await import("./brands.js");
+  const { copyFileSync } = await import("node:fs");
+  const file = join(await mkdtemp(join(tmpdir(), "hoisau-brands-")), "channels.yaml");
+  copyFileSync(BRANDS_FILE, file);
+  const before = await readFile(file, "utf8");
+  assert.equal(add({ slug: "vuon-muon", name: "Đậu Đỏ", tagline: "Đến muộn có lý do" }, file), "dau-do");
+  assert.equal(add({ slug: "vuon-muon", name: "Đậu Đỏ" }, file), null, "the second time changes nothing");
+  const after = await readFile(file, "utf8");
+  assert.ok(after.startsWith(before), "the old file, comments included, is kept as it was");
+  const b = load(file).find((x) => x.id === "dau-do")!;
+  assert.equal(b.character, "vuon-muon");
+  assert.ok(b.channels.every((c) => c.status === "planned"));
+  assert.equal(b.channels.find((c) => c.platform === "facebook")!.env.pageId, "FB_PAGE_ID_DAU_DO");
 });

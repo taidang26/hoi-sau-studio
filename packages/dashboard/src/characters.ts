@@ -44,6 +44,7 @@ function readForm(form: URLSearchParams) {
     want: text("want"),
     fear: text("fear"),
     contradiction: text("contradiction"),
+    edge: text("edge"),
     life: lines(form.get("life")),
     comic_engine: lines(form.get("comic_engine")),
     personality: lines(form.get("personality")),
@@ -72,7 +73,7 @@ function readForm(form: URLSearchParams) {
 /** Saves the form as a new character, or into an existing profile. Returns the slug. */
 export function saveCharacter(form: URLSearchParams, dir: string, slug?: string): string {
   const v = readForm(form);
-  const optional = (k: "want" | "fear" | "contradiction") => (v[k] ? v[k] : undefined);
+  const optional = (k: "want" | "fear" | "contradiction" | "edge") => (v[k] ? v[k] : undefined);
   if (!slug) {
     const id = slugify(v.species.replace(/\(.*\)/, "") || v.name) || slugify(v.name);
     if (!id) throw new Error(t("Cần tên nhân vật."));
@@ -90,6 +91,7 @@ export function saveCharacter(form: URLSearchParams, dir: string, slug?: string)
         want: optional("want"),
         fear: optional("fear"),
         contradiction: optional("contradiction"),
+        edge: optional("edge"),
         life: v.life.length ? v.life : undefined,
         comic_engine: v.comic_engine.length ? v.comic_engine : undefined,
         look: {
@@ -129,7 +131,7 @@ export function saveCharacter(form: URLSearchParams, dir: string, slug?: string)
       items.splice(at + 1, 0, doc.createPair("name_vi", v.name_vi));
     }
   } else set(["name_vi"], undefined);
-  for (const k of ["want", "fear", "contradiction"] as const) set([k], optional(k));
+  for (const k of ["want", "fear", "contradiction", "edge"] as const) set([k], optional(k));
   set(["life"], v.life);
   set(["comic_engine"], v.comic_engine);
   set(["personality"], v.personality);
@@ -179,7 +181,7 @@ ${area("personality", "Tính cách", p?.personality, "Mỗi dòng một nét, í
 ${area("catchphrases", "Câu cửa miệng", p?.voice.catchphrases, "Mỗi dòng một câu", 4, true)}
 ${area("never_says", "Không bao giờ nói", p?.never_says, "Mỗi dòng một điều, ít nhất 3", 4, true)}
 ${area("comic_engine", "Tình huống gây cười", p?.comic_engine, "Mỗi dòng một tình huống", 4)}</div></section>
-<section class="card"><h2>${t("Con người")}</h2><div class="row3">${field("want", "Muốn", p?.want)}${field("fear", "Sợ", p?.fear)}${field("contradiction", "Mâu thuẫn", p?.contradiction)}</div>
+<section class="card"><h2>${t("Con người")}</h2><div class="row3">${field("want", "Muốn", p?.want)}${field("fear", "Sợ", p?.fear)}${field("contradiction", "Mâu thuẫn", p?.contradiction)}</div>${field("edge", "Mặt khuất (bí mật nổi loạn, kỳ quặc)", p?.edge)}
 ${area("life", "Đời sống ngoài giờ làm", p?.life, "Mỗi dòng một chi tiết", 3)}</section>
 <div class="sticky-save"><button class="btn on">${t(p ? "Lưu thay đổi" : "Tạo nhân vật")}</button>${p ? `<a class="btn" href="/characters/${esc(p.slug)}">${t("Huỷ")}</a>` : ""}</div></form>`;
 }

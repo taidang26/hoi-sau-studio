@@ -194,4 +194,8 @@ test("create a character by hand, without the AI", async () => {
   assert.equal(p.name, "Gibbo");
   assert.equal(p.look.character_sheet, null);
   assert.match(await (await fetch(base + "/characters/vuon-ma-trang")).text(), /Gibbo/);
+  // It shows up on the Kênh page at once, with its accounts still to connect.
+  const channels = await (await fetch(base + "/channels")).text();
+  assert.match(channels, /href="\/channels\/gibbo"/);
+  assert.match(readFileSync(brandsFile, "utf8"), /character: vuon-ma-trang/);
 });

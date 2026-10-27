@@ -141,6 +141,8 @@ export const EN: Record<string, string> = {
   "Muốn": "Wants",
   "Sợ": "Fears",
   "Mâu thuẫn": "Contradiction",
+  "Mặt khuất": "Edge",
+  "Mặt khuất (bí mật nổi loạn, kỳ quặc)": "Edge (a rebellious or weird secret side)",
   "Con người": "The person",
   "Đời sống": "Life",
   "Tình huống gây cười": "Comic situations",
@@ -442,6 +444,7 @@ export const EN: Record<string, string> = {
   "Ảnh này đi kèm mọi bản vẽ chuẩn và khung đầu của mỗi tập. Đổi phong cách thì nên vẽ lại bản chuẩn của các nhân vật.": "This picture goes with every model sheet and each episode's first panel. After changing style, redraw the characters' model sheets.",
   "Một kiểu vẽ cho cả series. Cùng một cảnh được vẽ theo từng kiểu; chọn kiểu đọc rõ nhất trên điện thoại.": "One art style for the whole series. The same scene is drawn in each style; pick the one that reads best on a phone.",
   "Đã chọn {n} ảnh": "{n} images chosen",
+  "Đã thêm kênh {id} cho nhân vật {name}.": "Added channel {id} for {name}.",
   "Phần chung": "Shared rules",
   // Tư liệu
   "Cần kết nối Instagram của một kênh trước.": "Connect a channel's Instagram first.",

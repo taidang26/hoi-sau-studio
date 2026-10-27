@@ -258,7 +258,7 @@ test("coach lessons and episode scores show on the dashboard", async () => {
 
 test("brands: Hồi Sau plus a channel per character, with what each needs in .env", async () => {
   const s = loadState({ dataDir, runsDir, env: { FB_PAGE_ID: "1", FB_PAGE_TOKEN: "t", FB_PAGE_ID_LOLO: "2" } });
-  assert.deepEqual(s.brands.map((b) => b.brand.id), ["hoi-sau", "lolo", "poppy", "pango", "uni"]);
+  assert.deepEqual(s.brands.map((b) => b.brand.id), ["hoi-sau", "lolo", "poppy", "pango", "uni", "bino", "rico"]);
   const lolo = s.brands.find((b) => b.brand.id === "lolo")!;
   assert.equal(lolo.character?.profile.slug, "cu-li");
   assert.ok(lolo.posts > 0 && lolo.comments > 0, "demo data has Lolo posts with comments");

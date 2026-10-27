@@ -9,7 +9,7 @@ import { extname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import sharp from "sharp";
 import { BOLD_FONT_PATH, DEFAULT_FONT_PATH } from "@hoi-sau/svg-text";
-import type { Conversation, InboxMessage, Platform } from "@hoi-sau/channel";
+import { addCharacterBrand, type Conversation, type InboxMessage, type Platform } from "@hoi-sau/channel";
 import { NeedsSetup, type Accounts } from "./accounts.js";
 import { editCharacterPage, newCharacterPage, saveCharacter } from "./characters.js";
 import { appendMessage, brandArtDir, loadState, toggleDirection, type Paths } from "./data.js";
@@ -225,6 +225,14 @@ const errText = (e: unknown) => friendly(e instanceof Error ? e.message : String
 export function handler(opts: DashboardOptions) {
   const page = (res: ServerResponse, status: number, html: string) =>
     send(res, status, sizedImages(opts.banner ? html.replace("<main>", `<main><div class="notice demo-note">${t(opts.banner)}</div>`) : html));
+  /** A new character gets its own channel on the Kênh page right away (every account still to connect). */
+  const withBrand = (slug: string) => {
+    if (opts.brandsFile) {
+      const p = loadProfile(slug, charactersDir());
+      addCharacterBrand({ slug, name: p.name, tagline: p.office_type }, opts.brandsFile);
+    }
+    return slug;
+  };
   const loadProfileSafe = (slug: string) => {
     try {
       return loadProfile(slug, charactersDir());
@@ -416,7 +424,7 @@ export function handler(opts: DashboardOptions) {
     // Characters: the form works without Muse; drawing and the AI writer need Studio.
     if (path === "/characters/new/manual" && req.method === "POST") {
       try {
-        return redirect(res, withNote(`/characters/${saveCharacter(await readForm(req), charactersDir())}`, "ok", t("Đã tạo nhân vật. Bước tiếp: vẽ bản chuẩn.")));
+        return redirect(res, withNote(`/characters/${withBrand(saveCharacter(await readForm(req), charactersDir()))}`, "ok", t("Đã tạo nhân vật. Bước tiếp: vẽ bản chuẩn.")));
       } catch (e) {
         return fail("/characters/new?manual=1", e);
       }
@@ -440,7 +448,7 @@ export function handler(opts: DashboardOptions) {
       if (path === "/characters/new") {
         const idea = (await readForm(req)).get("idea") ?? "";
         try {
-          return redirect(res, withNote(`/characters/${await st.newCharacter(idea)}`, "ok", t("Đã tạo nhân vật. Bước tiếp: vẽ bản chuẩn.")));
+          return redirect(res, withNote(`/characters/${withBrand(await st.newCharacter(idea))}`, "ok", t("Đã tạo nhân vật. Bước tiếp: vẽ bản chuẩn.")));
         } catch (e) {
           return fail("/characters/new", e);
         }

@@ -272,9 +272,11 @@ export async function writeCutRig(dir: string, name: string, img: Img, cut: CutR
         if (!p.mask[s]) continue;
         img.data.copy(rgba, d, s * 4, s * 4 + 4);
         if (nearEdge(p.mask, width, height, x0 + x, y0 + y, 3)) {
-          // Paper-white pixels at a part's edge are background the mask caught: clear them, fade the near-white ones.
+          // Paper-white pixels at a part's edge are background the mask caught: clear them, fade the light grey ones.
           const lo = Math.min(rgba[d], rgba[d + 1], rgba[d + 2]);
-          if (lo > 225) rgba[d + 3] = Math.round(Math.max(0, Math.min(1, (250 - lo) / 25)) * rgba[d + 3]);
+          const hi = Math.max(rgba[d], rgba[d + 1], rgba[d + 2]);
+          // Light grey halo too: anti-aliasing between the ink line and the paper.
+          if (lo > 170 && hi - lo < 30) rgba[d + 3] = Math.round(Math.max(0, Math.min(1, (215 - lo) / 45)) * rgba[d + 3]);
         }
       }
     await sharp(rgba, { raw: { width: w, height: h, channels: 4 } }).png().toFile(join(dir, `${p.name}.png`));

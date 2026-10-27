@@ -61,10 +61,11 @@ export function lastSteadyFrame(tracks: PoseTrack[]): number {
 export function firstSteadyFrame(tracks: PoseTrack[]): number {
   const n = Math.min(...tracks.map((t) => t.frames.length));
   const seen = (f: number) => tracks.every((t) => coverage({ id: t.id, frames: [t.frames[f]] }) === 1);
+  // Twenty frames in a row, then a few more: right after a cut the detector is still unsure.
   for (let f = 0; f < n; f++) {
     let run = 0;
-    for (let g = f; g < Math.min(n, f + 10); g++) if (seen(g)) run++;
-    if (run >= Math.min(10, n - f)) return f;
+    for (let g = f; g < Math.min(n, f + 20); g++) if (seen(g)) run++;
+    if (run >= Math.min(20, n - f)) return Math.min(n - 1, f + Math.min(6, Math.floor((n - f) / 4)));
   }
   return 0;
 }
@@ -143,9 +144,10 @@ export function lineUp(actors: Actor[], size: Vec): void {
     const [px, py] = a.rig.bones.torso.pivot;
     void px;
     // Rest drawing about 70% of the frame tall for one character, less as more share the stage.
-    const height = Math.min(size[1] * 0.62, (slot * 1.25 * a.rig.size[1]) / a.rig.size[0]);
+    // Narrow enough that swinging arms stay inside the slot; the empty top is room for a caption.
+    const height = Math.min(size[1] * 0.55, (slot * 0.95 * a.rig.size[1]) / a.rig.size[0]);
     const k = height / a.rig.size[1];
-    a.at = [slot * (i + 0.5), size[1] * 0.95 - (a.rig.size[1] - py) * k];
+    a.at = [slot * (i + 0.5), size[1] * 0.93 - (a.rig.size[1] - py) * k];
     a.height = height;
     a.follow = 0.35;
   });

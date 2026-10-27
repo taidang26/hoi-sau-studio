@@ -151,7 +151,7 @@ test("render: the cast takes the places of the people in the clip", { skip: !has
   assert.ok((kept.actors[1].layer ?? 0) > (kept.actors[0].layer ?? 0), "kept: the one in front is painted last");
   const out = join(mkdtempSync(join(tmpdir(), "dance-")), "d.mp4");
   const r = await renderDance(file, scene, out);
-  assert.equal(r.frames, 15);
+  assert.equal(r.frames, Math.round((scene.duration ?? 0) * file.fps), "from the first to the last steady frame");
   assert.ok(existsSync(out));
 });
 
@@ -165,6 +165,6 @@ test("cast: dancer first, then the nearest person who is someone else; the dance
   const busy = { ...file, tracks: [cut, dancer, twin, passer] };
   assert.deepEqual(pickCast(busy, 2).map((t) => t.id).sort(), [1, 2].sort());
   assert.equal(pickCast(busy, 2)[0].id === 2 || pickCast(busy, 2)[0].id === 7, true, "a dancer comes first");
-  assert.equal(firstSteadyFrame([cut, dancer]), 12);
+  assert.equal(firstSteadyFrame([cut, dancer]), 12 + 6, "seen from frame 12, plus a few frames for the detector to settle");
   assert.deepEqual(pickCast(busy, 2, [9, 1]).map((t) => t.id), [9, 1]);
 });

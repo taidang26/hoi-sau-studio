@@ -1,8 +1,8 @@
 /**
  * Tokens for our own Page and Instagram account, with the Meta app in
- * Development mode: no login screen. A short-lived user token from Graph API
- * Explorer is swapped for a long-lived one, and the Page token derived from
- * that has no fixed expiry.
+ * Development mode. A short-lived user token, from the `login` command or from
+ * Graph API Explorer, is swapped for a long-lived one, and the Page token
+ * derived from that has no fixed expiry.
  */
 
 import type { GraphClient } from "./graph.js";
@@ -18,6 +18,10 @@ export const REQUIRED_SCOPES = [
   "instagram_basic",
   "instagram_content_publish",
   "instagram_manage_comments",
+  // Replying to and hiding comments as the Page, reading post reach and engagement
+  "pages_manage_engagement",
+  "read_insights",
+  "instagram_manage_insights",
   // Inbox (Messenger and Instagram direct)
   "pages_messaging",
   "instagram_manage_messages",
@@ -43,6 +47,47 @@ export interface TokenStatus {
   /** Missing when the token never expires. */
   expiresAt?: Date;
   scopes: string[];
+}
+
+export interface LoginDialogOptions {
+  appId: string;
+  redirectUri: string;
+  /** Random value checked on the way back, against CSRF. */
+  state: string;
+  version: string;
+  scopes?: readonly string[];
+  /** Facebook Login for Business configuration; replaces `scopes` when set. */
+  configId?: string;
+}
+
+/** The Facebook Login dialog the user approves in the browser. */
+export function loginDialogUrl(o: LoginDialogOptions): string {
+  const params = new URLSearchParams({
+    client_id: o.appId,
+    redirect_uri: o.redirectUri,
+    state: o.state,
+    response_type: "code",
+  });
+  if (o.configId) params.set("config_id", o.configId);
+  else params.set("scope", (o.scopes ?? REQUIRED_SCOPES).join(","));
+  return `https://www.facebook.com/${o.version}/dialog/oauth?${params}`;
+}
+
+/** Swaps the code from the login redirect for a short-lived user token. */
+export async function exchangeCodeForUserToken(
+  graph: GraphClient,
+  appId: string,
+  appSecret: string,
+  redirectUri: string,
+  code: string,
+): Promise<string> {
+  const { access_token } = await graph.get<{ access_token: string }>("oauth/access_token", {
+    client_id: appId,
+    client_secret: appSecret,
+    redirect_uri: redirectUri,
+    code,
+  });
+  return access_token;
 }
 
 /** fb_exchange_token only accepts query parameters, so this is a GET without a bearer token. */

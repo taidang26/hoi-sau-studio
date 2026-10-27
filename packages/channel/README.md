@@ -14,8 +14,10 @@ Facebook and Instagram:
 
 1. Create the Facebook Page and an Instagram professional account (Creator or Business) linked to it.
 2. Create a Business-type Meta app at developers.facebook.com and put `META_APP_ID` and `META_APP_SECRET` in `.env` (start from `.env.example`).
-3. In [Graph API Explorer](https://developers.facebook.com/tools/explorer/), choose the app, tick the permissions below and generate a user token:
-   `pages_show_list pages_read_engagement pages_read_user_content pages_manage_posts instagram_basic instagram_content_publish instagram_manage_comments pages_messaging instagram_manage_messages` (plus `business_management` if the Page lives in a Business Portfolio and does not appear).
+3. `npm run channel -- login` opens Facebook Login in the browser. Approve the Page (and its Instagram); a one-shot server on `localhost:8765` catches the redirect, and the same steps as `setup` run, so no token is copied by hand. Localhost redirects work without registering them while the app is in Development mode. If the app uses Facebook Login for Business, put its configuration id in `META_LOGIN_CONFIG_ID`.
+
+   Or by hand: in [Graph API Explorer](https://developers.facebook.com/tools/explorer/), choose the app, tick the permissions below and generate a user token:
+   `pages_show_list pages_read_engagement pages_read_user_content pages_manage_posts instagram_basic instagram_content_publish instagram_manage_comments pages_manage_engagement read_insights instagram_manage_insights pages_messaging instagram_manage_messages` (plus `business_management` if the Page lives in a Business Portfolio and does not appear).
 4. `npm run channel -- setup <token>` swaps it for a long-lived token, finds the Page and its Instagram account, and writes their ids and the Page token to `.env`.
 5. `npm run channel -- check` confirms the token works and nothing is missing.
 
@@ -34,6 +36,7 @@ For a character brand add `--brand <id>` (for example `--brand lolo`); its `.env
 | Command | Does |
 | --- | --- |
 | `brands` | Brands, their channels and status, and which `.env` names are still empty |
+| `login [port]` | Facebook Login in the browser, then the same as `setup` |
 | `setup <token>` | Page id, Page token and Instagram id into `.env` |
 | `threads-setup <token>` / `threads-refresh` | Threads profile and 60-day token; extend it |
 | `check` | Token validity, missing permissions, Threads days left |

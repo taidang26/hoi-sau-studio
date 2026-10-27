@@ -66,14 +66,14 @@ export interface EpisodeSpec {
   direction: string;
   /** Commenters to credit; they may appear as coworkers drawn from text only. */
   credits: Array<{ name: string; comment: string }>;
-  /** "carousel" (default): 4–6 panels posted one by one. "strip3": exactly three panels, the rule of three, posted one by one too. */
+  /** "carousel" (default): 4–6 panels posted one by one. "strip3": exactly three panels, the rule of three, posted one by one too. "single": one panel that carries the whole joke. */
   format?: EpisodeFormat;
   /** Where the direction came from; also the first line of provenance.jsonl. */
   source?: EpisodeSource;
   createdAt: string;
 }
 
-export const EPISODE_FORMATS = ["carousel", "strip3"] as const;
+export const EPISODE_FORMATS = ["carousel", "strip3", "single"] as const;
 export type EpisodeFormat = (typeof EPISODE_FORMATS)[number];
 
 export interface Premise {
@@ -163,6 +163,7 @@ const PANEL_SIZE = "1024x1280";
 
 /** How many panels a format takes. */
 export function panelRange(ep: Pick<EpisodeSpec, "format">, bible: SeriesBible): { min: number; max: number } {
+  if (ep.format === "single") return { min: 1, max: 1 };
   return ep.format === "strip3" ? { min: 3, max: 3 } : bible.format.panels;
 }
 
@@ -562,7 +563,9 @@ export async function runStep(ctx: StudioContext, id: string, step: EpisodeStep)
     case "beats": {
       const n = panelRange(ep, ctx.bible);
       const task =
-        ep.format === "strip3"
+        ep.format === "single"
+          ? 'Make it exactly 1 beat (purpose "punchline"): one picture that holds the whole joke. The everyday trigger is visible in the scene itself and the twist lands at a glance, from the drawing first and at most two short lines.'
+          : ep.format === "strip3"
           ? 'Break it into exactly 3 beats, the rule of three: beat 1 sets up the everyday trigger, beat 2 repeats the pattern one step worse, beat 3 is the twist (purpose "punchline") and must land from the drawing alone. Each panel is posted as its own swipeable image.'
           : `Break it into ${n.min}–${n.max} beats. Last beat is the hook for "hồi sau".`;
       const beats = await ctx.spark.json<Beats>("beats", beatsSchema(n), writerMessages(ctx, ep, task, { premise: need("premise") }));
@@ -572,7 +575,7 @@ export async function runStep(ctx: StudioContext, id: string, step: EpisodeStep)
       const raw = await ctx.spark.json<Script>(
         "script",
         scriptSchema(panelRange(ep, ctx.bible)),
-        writerMessages(ctx, ep, "Write the panel script: one panel per beat. Let the pictures carry the joke: at least one panel has no dialogue, and the punchline must read from the drawing alone. Keep dialogue short and in each character's voice, never breaking their never_says rules. Characters rarely call each other by name.", { premise: need("premise"), beats: need("beats") }),
+        writerMessages(ctx, ep, ep.format === "single" ? "Write the script for one single panel that tells the whole joke: the setting shows the trigger, the characters' poses and faces show the twist, and at most two short bubbles (12 words each) finish it. Keep dialogue in each character's voice, never breaking their never_says rules. Characters rarely call each other by name." : "Write the panel script: one panel per beat. Let the pictures carry the joke: at least one panel has no dialogue, and the punchline must read from the drawing alone. Keep dialogue short and in each character's voice, never breaking their never_says rules. Characters rarely call each other by name.", { premise: need("premise"), beats: need("beats") }),
       );
       return writeStep(id, "script", sanitizeScript(raw, ep, ctx.bible), dir);
     }

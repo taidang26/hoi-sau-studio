@@ -99,7 +99,7 @@ export function panelPrompt(p: Profile, scene: string, style?: string): string {
     `${scene}.`,
     `Keep the character exactly as on the sheet: ${p.look.signature.join("; ")}.`,
     iconLine(p),
-    `Single comic panel. Style: ${drawStyle(p, style)} Bright, cheerful daylight, never dark or gloomy. Leave the top third of the panel calm and empty for dialogue added later. ${NO_TEXT}.`,
+    `Single comic panel. Style: ${drawStyle(p, style)} Bright, cheerful daylight. Leave the top third of the panel calm and empty for dialogue added later. ${NO_TEXT}.`,
   ]
     .filter(Boolean)
     .join(" ");

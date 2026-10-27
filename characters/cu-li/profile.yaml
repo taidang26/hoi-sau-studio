@@ -58,7 +58,8 @@ look:
   gag_scene: late at night alone in a dark office, lit by the laptop screen, eyes huge, holding a giant coffee mug, wall clock at 2 a.m.
   # The one item readers know this character by at thumbnail size. Every panel draws it, a little oversized.
   icon: the oversized mustard-yellow hoodie, sleeves hanging past the paws
-  character_sheet: null   # set after the Muse Image test; path under output/characters/cu-li/
+  character_sheet: model-sheet.png   # locked with `studio sheet approve`; every panel is drawn against it
+  pose_sheet: pose-sheet.png   # locked with `studio sheet approve`; reusable poses, attached with the model sheet
 
 personality:
   - Hiền, lễ phép, sợ làm phiền người khác hơn sợ trễ deadline

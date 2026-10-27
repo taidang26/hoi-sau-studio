@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { COMIC_FONT_PATH, fitText, imageSize, loadFont } from "@hoi-sau/svg-text";
 import { loadMemorySync } from "@hoi-sau/story";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { parse } from "yaml";
+import { parse, parseDocument } from "yaml";
 import { approvalProblems } from "@hoi-sau/channel";
 import {
   approveEpisode,
@@ -44,6 +44,20 @@ function sandbox() {
   const seriesDir = join(root, "series");
   cpSync(CHARACTERS_DIR, charactersDir, { recursive: true });
   cpSync(SERIES_DIR, seriesDir, { recursive: true });
+  // Start from unapproved profiles, whatever sheets this machine has locked.
+  for (const slug of readdirSync(charactersDir)) {
+    const file = join(charactersDir, slug, "profile.yaml");
+    if (!existsSync(file)) continue;
+    for (const f of readdirSync(join(charactersDir, slug))) if (/^(model|pose)-sheet\./.test(f)) rmSync(join(charactersDir, slug, f));
+    const text = readFileSync(file, "utf8").replace(/^  character_sheet:.*$/m, "  character_sheet: null").replace(/^  pose_sheet:.*\r?\n/m, "");
+    writeFileSync(file, text);
+  }
+  // Nor from canon or story memory that local episode runs wrote.
+  const bibleFile = join(seriesDir, "bible.yaml");
+  const bible = parseDocument(readFileSync(bibleFile, "utf8"));
+  bible.set("canon", []);
+  writeFileSync(bibleFile, bible.toString());
+  rmSync(join(seriesDir, "story-memory.json"), { force: true });
   return { root, charactersDir, seriesDir, episodesDir: join(root, "episodes") };
 }
 

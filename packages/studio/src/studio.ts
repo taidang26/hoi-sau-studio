@@ -86,7 +86,7 @@ export function approveSheet(slug: string, runDir: string, dir = CHARACTERS_DIR)
   if (poses) {
     const poseName = `pose-sheet${extname(poses)}`;
     copyFileSync(join(runDir, poses), join(dir, slug, poseName));
-    setLook(slug, "pose_sheet", poseName, "six reusable poses, attached with the model sheet", dir);
+    setLook(slug, "pose_sheet", poseName, "reusable poses, attached with the model sheet", dir);
   }
   loadProfile(slug, dir);
   return name;

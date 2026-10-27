@@ -57,7 +57,8 @@ look:
   gag_scene: coworkers gather around a desk pointing excitedly; the character is only half visible peeking from behind a potted plant at the edge of the frame
   # The one item readers know this character by at thumbnail size. Every panel draws it, a little oversized.
   icon: big round cream over-ear headphones, almost as wide as the head
-  character_sheet: null   # set after the Muse Image test; path under output/characters/sao-la/
+  character_sheet: model-sheet.png   # locked with `studio sheet approve`; every panel is drawn against it
+  pose_sheet: pose-sheet.png   # locked with `studio sheet approve`; reusable poses, attached with the model sheet
 
 personality:
   - Giỏi thật, nhưng chưa bao giờ tự nhận

@@ -1,0 +1,21 @@
+{
+  "name": "@hoi-sau/dashboard",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/server.js",
+  "types": "dist/server.d.ts",
+  "bin": {
+    "hoisau-dashboard": "dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "test": "tsc -b && node --test dist/*.test.js"
+  },
+  "dependencies": {
+    "@hoi-sau/channel": "0.0.0",
+    "@hoi-sau/studio": "0.0.0",
+    "@hoi-sau/svg-text": "0.0.0",
+    "@hoi-sau/story": "0.0.0"
+  }
+}

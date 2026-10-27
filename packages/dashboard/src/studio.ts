@@ -378,7 +378,7 @@ ${inspiration}
 <div class="row-actions"><button class="btn on">${esc(t("Tạo tập"))}</button>${aiNote(st)}</div></form>`;
 
   const flow = `<ol class="flow">${EPISODE_STEPS.map((x, i) => `<li><b>${i + 1}</b>${esc(t(STEP_LABEL[x]))}</li>`).join("")}</ol>`;
-  const body = `<header class="page-head"><div><h1>Studio</h1><p class="muted">${esc(t("Mỗi tập đi qua 8 bước. Muse Spark viết, Muse Image vẽ theo model sheet đã khoá, rồi tự soát lại từng khung. Bước nào cũng xem lại và chạy lại riêng được."))}</p></div></header>
+  const body = `<header class="page-head"><div><h1>Studio</h1><p class="muted">${esc(t("Mỗi tập đi qua 8 bước. Muse Spark viết, Muse Image vẽ theo bản vẽ chuẩn đã chốt của nhân vật, rồi tự soát lại từng khung. Bước nào cũng xem lại và chạy lại riêng được."))}</p></div></header>
 ${flow}
 ${flash(undefined, error)}
 <div class="grid-studio">${form}<div>${rows || `<div class="card empty"><p>${esc(t("Chưa có tập nào. Tạo tập đầu tiên ở bên cạnh."))}</p></div>`}</div></div>`;
@@ -485,7 +485,7 @@ export function stylePage(st: Studio, error?: string): string {
     : `${job?.error ? `<div class="warn small">${esc(t("Lần vẽ trước dừng lại"))}: ${esc(job.error)}</div>` : ""}${flash(undefined, error)}
 <form class="run" method="post" action="/style/draw"><button class="btn${renders.length ? "" : " on"}">${esc(renders.length ? t("Vẽ thử lại cả {n} kiểu", { n: style.variants.length }) : t("Vẽ thử {n} kiểu", { n: style.variants.length }))}</button>${aiNote(st)}</form>`;
   const locked = style.reference
-    ? `<section class="card"><h2>${esc(t("Ảnh mẫu đang dùng"))}</h2><img class="sheet" src="/series-media/${encodeURIComponent(style.reference)}" alt=""><p class="muted small">${esc(t("Ảnh này đi kèm mọi model sheet và khung đầu của mỗi tập. Đổi phong cách thì nên vẽ lại model sheet của các nhân vật."))}</p></section>`
+    ? `<section class="card"><h2>${esc(t("Ảnh mẫu đang dùng"))}</h2><img class="sheet" src="/series-media/${encodeURIComponent(style.reference)}" alt=""><p class="muted small">${esc(t("Ảnh này đi kèm mọi bản vẽ chuẩn và khung đầu của mỗi tập. Đổi phong cách thì nên vẽ lại bản chuẩn của các nhân vật."))}</p></section>`
     : "";
   const body = `<header class="page-head"><div><h1>${esc(t("Phong cách"))}</h1><p class="muted">${esc(t("Một kiểu vẽ cho cả series. Cùng một cảnh được vẽ theo từng kiểu; chọn kiểu đọc rõ nhất trên điện thoại."))}</p></div></header>
 ${bar}

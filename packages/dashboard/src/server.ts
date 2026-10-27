@@ -327,7 +327,7 @@ export function handler(opts: DashboardOptions) {
     // Characters: the form works without Muse; drawing and the AI writer need Studio.
     if (path === "/characters/new/manual" && req.method === "POST") {
       try {
-        return redirect(res, withNote(`/characters/${saveCharacter(await readForm(req), charactersDir())}`, "ok", t("Đã tạo nhân vật. Bước tiếp: vẽ model sheet.")));
+        return redirect(res, withNote(`/characters/${saveCharacter(await readForm(req), charactersDir())}`, "ok", t("Đã tạo nhân vật. Bước tiếp: vẽ bản chuẩn.")));
       } catch (e) {
         return fail("/characters/new?manual=1", e);
       }
@@ -351,7 +351,7 @@ export function handler(opts: DashboardOptions) {
       if (path === "/characters/new") {
         const idea = (await readForm(req)).get("idea") ?? "";
         try {
-          return redirect(res, withNote(`/characters/${await st.newCharacter(idea)}`, "ok", t("Đã tạo nhân vật. Bước tiếp: vẽ model sheet.")));
+          return redirect(res, withNote(`/characters/${await st.newCharacter(idea)}`, "ok", t("Đã tạo nhân vật. Bước tiếp: vẽ bản chuẩn.")));
         } catch (e) {
           return fail("/characters/new", e);
         }
@@ -395,7 +395,7 @@ export function handler(opts: DashboardOptions) {
       if (ap) {
         try {
           st.approve(ap[1]);
-          return redirect(res, withNote(`/characters/${ap[1]}`, "ok", t("Đã khoá model sheet.")));
+          return redirect(res, withNote(`/characters/${ap[1]}`, "ok", t("Đã chốt bản vẽ chuẩn.")));
         } catch (e) {
           return fail(`/characters/${ap[1]}`, e);
         }

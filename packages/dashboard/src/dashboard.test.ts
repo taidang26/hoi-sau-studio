@@ -132,7 +132,7 @@ test("studio: create a character, lock its sheet, build an episode end to end", 
 
     assert.match((await post("/characters/cu-li/approve", {})).headers.get("location")!, /^\/characters\/cu-li\?ok=/);
     assert.ok(existsSync(join(dirs.charactersDir, "cu-li", "model-sheet.png")));
-    assert.match(await (await fetch(at + "/characters/cu-li")).text(), /Model sheet đã khoá/);
+    assert.match(await (await fetch(at + "/characters/cu-li")).text(), /Bản vẽ chuẩn đã chốt/);
     assert.equal((await fetch(at + "/sheet/cu-li/model-sheet.png")).status, 200);
     assert.equal((await fetch(at + "/sheet/cu-li/profile.yaml")).status, 404);
 
@@ -323,7 +323,7 @@ test("studio: pick a series style, draw and lock a sheet with poses, make a thre
     assert.match(decodeURIComponent((await post("/style/nope/approve")).headers.get("location")!), /Không thấy kiểu vẽ này/);
 
     // Sheet: drawn from the dashboard in the chosen style, then locked with its pose sheet.
-    assert.match(await (await fetch(at + "/characters/te-te")).text(), /Vẽ model sheet bằng AI/);
+    assert.match(await (await fetch(at + "/characters/te-te")).text(), /Vẽ bản chuẩn bằng AI/);
     await post("/characters/te-te/sheet");
     await studio.settle("sheet:te-te");
     assert.equal(studio.jobs.get("sheet:te-te")!.error, undefined);

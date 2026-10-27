@@ -83,7 +83,7 @@ export const charSrc = (c: CharacterView) => {
 const sheetImg = (c: CharacterView) =>
   c.run?.images.some((i) => i.id === "sheet")
     ? `<img src="${charSrc(c)}" alt="${esc(c.profile.name)}" loading="lazy">`
-    : `<div class="ph portrait" style="background:${esc(c.profile.look.palette[0].hex)}33"><img src="${charSrc(c)}" alt="${esc(c.profile.name)}" loading="lazy"><span class="badge" title="${esc(t("Chân dung tạm, thay bằng model sheet khi vẽ bằng AI"))}">${esc(t("tạm"))}</span></div>`;
+    : `<div class="ph portrait" style="background:${esc(c.profile.look.palette[0].hex)}33"><img src="${charSrc(c)}" alt="${esc(c.profile.name)}" loading="lazy"><span class="badge" title="${esc(t("Chân dung tạm, thay bằng bản vẽ chuẩn khi AI vẽ xong"))}">${esc(t("tạm"))}</span></div>`;
 
 /** Round face of a character, by slug. */
 function face(s: State, slug: string, size = "") {
@@ -268,7 +268,7 @@ export function charactersPage(s: State, ok?: string): string {
   const cards = s.characters
     .map(
       (c) => `<a class="card char" href="/characters/${esc(c.profile.slug)}">${sheetImg(c)}<div class="char-body"><h2>${esc(c.profile.name)} <span class="muted">${esc(c.profile.species)}</span></h2>
-<p class="type">${esc(c.profile.office_type)}</p><p>${esc(c.profile.core_gag)}</p>${swatches(c)}<p class="muted small">${esc(t("{e} tập · {c} bình luận", { e: c.episodes, c: c.comments }))}${c.profile.look.character_sheet ? ` · <span class="ok-text">✓ ${esc(t("đã khoá sheet"))}</span>` : ""}</p></div></a>`,
+<p class="type">${esc(c.profile.office_type)}</p><p>${esc(c.profile.core_gag)}</p>${swatches(c)}<p class="muted small">${esc(t("{e} tập · {c} bình luận", { e: c.episodes, c: c.comments }))}${c.profile.look.character_sheet ? ` · <span class="ok-text">✓ ${esc(t("đã chốt bản chuẩn"))}</span>` : ""}</p></div></a>`,
     )
     .join("");
   const add = `<a class="card char add-card" href="/characters/new"><span class="plus">+</span><b>${esc(t("Tạo nhân vật mới"))}</b><small class="muted">${esc(t("AI viết hồ sơ từ một câu, hoặc tự điền"))}</small></a>`;
@@ -290,17 +290,17 @@ export interface SheetControls {
   extra?: string;
 }
 
-const SHOT: Record<string, string> = { sheet: "Model sheet", poses: "Bộ tư thế", desk: "Thử: bàn làm việc", meeting: "Thử: phòng họp", gag: "Thử: miếng hài" };
+const SHOT: Record<string, string> = { sheet: "Bản vẽ chuẩn", poses: "Bộ tư thế", desk: "Thử: bàn làm việc", meeting: "Thử: phòng họp", gag: "Thử: miếng hài" };
 
 export function characterPage(c: CharacterView, draw?: SheetControls): string {
   const p = c.profile;
   const list = (items: string[]) => `<ul>${items.map((i) => `<li>${esc(i)}</li>`).join("")}</ul>`;
-  const drawBtn = (primary: boolean) => button(`/characters/${p.slug}/sheet`, esc(t(c.run ? "Vẽ lại bằng AI" : "Vẽ model sheet bằng AI")), primary ? "btn on" : "btn");
+  const drawBtn = (primary: boolean) => button(`/characters/${p.slug}/sheet`, esc(t(c.run ? "Vẽ lại bằng AI" : "Vẽ bản chuẩn bằng AI")), primary ? "btn on" : "btn");
   const images = c.run
     ? `<div class="shots">${c.run.images
         .map((i) => `<figure><img src="/media/${esc(p.slug)}/${esc(i.file)}" alt="${esc(t(SHOT[i.id] ?? i.id))}" loading="lazy"><figcaption>${esc(t(SHOT[i.id] ?? i.id))}</figcaption></figure>`)
         .join("")}</div><p class="muted small">${c.run.mock ? `${esc(t("Ảnh vẽ thử, không phải AI thật."))} ` : ""}${time(c.run.startedAt)} · <a href="/media/${esc(p.slug)}/review.html">${esc(t("trang soát nét nhận diện"))}</a></p>`
-    : empty("Chưa vẽ lần nào. AI sẽ vẽ model sheet, 6 tư thế và 3 khung thử theo phong cách series.", draw?.canDraw && !draw.drawing ? drawBtn(true) : "");
+    : empty("Chưa vẽ lần nào. AI sẽ vẽ bản chuẩn, 6 tư thế và 3 khung thử theo phong cách series.", draw?.canDraw && !draw.drawing ? drawBtn(true) : "");
   const drawBar = !draw?.canDraw
     ? ""
     : draw.drawing
@@ -333,10 +333,10 @@ function depth(c: CharacterView): string {
 function modelSheet(c: CharacterView): string {
   const p = c.profile;
   if (p.look.character_sheet)
-    return `<section class="card"><div class="card-head"><h2>✓ ${esc(t("Model sheet đã khoá"))}</h2>${c.run ? button(`/characters/${p.slug}/approve`, esc(t("Khoá lại bằng bản vẽ mới"))) : ""}</div>
-<div class="sheets"><img class="sheet" src="/sheet/${esc(p.slug)}/${esc(p.look.character_sheet)}" alt="Model sheet ${esc(p.name)}">${p.look.pose_sheet ? `<img class="sheet" src="/sheet/${esc(p.slug)}/${esc(p.look.pose_sheet)}" alt="${esc(t("Bộ tư thế"))} ${esc(p.name)}">` : ""}</div><p class="muted small">${esc(t("Mọi khung truyện đều vẽ theo bản này, và AI soát lại từng khung theo nó."))}</p></section>`;
+    return `<section class="card"><div class="card-head"><h2>✓ ${esc(t("Bản vẽ chuẩn đã chốt"))}</h2>${c.run ? button(`/characters/${p.slug}/approve`, esc(t("Chốt bản vẽ mới nhất"))) : ""}</div>
+<div class="sheets"><img class="sheet" src="/sheet/${esc(p.slug)}/${esc(p.look.character_sheet)}" alt="Model sheet ${esc(p.name)}">${p.look.pose_sheet ? `<img class="sheet" src="/sheet/${esc(p.slug)}/${esc(p.look.pose_sheet)}" alt="${esc(t("Bộ tư thế"))} ${esc(p.name)}">` : ""}</div><p class="muted small">${esc(t("Đây là khuôn của nhân vật: AI vẽ mọi khung truyện theo bản này để nhân vật luôn giống nhau, rồi soát lại từng khung xem có lệch không."))}</p></section>`;
   return c.run
-    ? `<section class="card next-step"><div class="card-head"><h2>${esc(t("Bước tiếp: khoá model sheet"))}</h2>${button(`/characters/${p.slug}/approve`, esc(t("Khoá model sheet")), "btn on")}</div><p class="muted">${esc(t("Ưng bản vẽ bên dưới thì khoá lại: từ đó mọi khung truyện đều vẽ theo bản này."))}</p></section>`
+    ? `<section class="card next-step"><div class="card-head"><h2>${esc(t("Bước tiếp: chốt bản vẽ chuẩn"))}</h2>${button(`/characters/${p.slug}/approve`, esc(t("Chốt bản vẽ chuẩn")), "btn on")}</div><p class="muted">${esc(t("Ưng bản vẽ bên dưới thì chốt lại: từ đó mọi khung truyện đều vẽ theo bản này."))}</p></section>`
     : "";
 }
 
@@ -629,7 +629,7 @@ export function settingsPage(settings: SettingView[], opts: { demo: boolean; moc
 ${flash(opts.ok, opts.error)}
 ${opts.demo ? `<div class="notice">${esc(t("Đang xem dữ liệu mẫu nên không lưu cài đặt."))}</div>` : ""}
 <div class="settings-grid"><form class="card form" method="post" action="/settings"><h2>${esc(t("Khoá kết nối"))}</h2>${rows}<button class="btn on"${opts.demo ? " disabled" : ""}>${esc(t("Lưu"))}</button></form>
-<section class="card"><h2>${esc(t("Thứ tự thiết lập"))}</h2><ol class="flow vertical"><li><b>1</b><span>${esc(t("Nhập Mã ứng dụng Meta và Khoá bí mật"))}</span></li><li><b>2</b><span>${t('Vào <a href="/channels">Kênh</a>, bấm Kết nối Facebook, chọn Trang')}</span></li><li><b>3</b><span>${esc(t("Nhập khoá AI Muse để AI viết và vẽ"))}</span></li><li><b>4</b><span>${t('Vào <a href="/style">Phong cách</a> chọn kiểu vẽ, rồi vẽ model sheet cho nhân vật')}</span></li></ol>
+<section class="card"><h2>${esc(t("Thứ tự thiết lập"))}</h2><ol class="flow vertical"><li><b>1</b><span>${esc(t("Nhập Mã ứng dụng Meta và Khoá bí mật"))}</span></li><li><b>2</b><span>${t('Vào <a href="/channels">Kênh</a>, bấm Kết nối Facebook, chọn Trang')}</span></li><li><b>3</b><span>${esc(t("Nhập khoá AI Muse để AI viết và vẽ"))}</span></li><li><b>4</b><span>${t('Vào <a href="/style">Phong cách</a> chọn kiểu vẽ, rồi vẽ bản chuẩn cho nhân vật')}</span></li></ol>
 ${opts.mock ? `<p class="muted small">${esc(t("AI đang ở chế độ vẽ thử: ảnh là mẫu, không tốn lượt."))}</p>` : ""}</section></div>`;
   return layout(t("Cài đặt"), "/settings", body);
 }

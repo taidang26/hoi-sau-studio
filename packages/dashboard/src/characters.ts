@@ -185,7 +185,7 @@ ${area("life", "Đời sống ngoài giờ làm", p?.life, "Mỗi dòng một ch
 }
 
 export function editCharacterPage(p: Profile, portrait: string, error?: string): string {
-  const body = `<p><a href="/characters/${esc(p.slug)}">← ${esc(shown(p))}</a></p><header class="page-head"><div class="b-top"><img class="b-ava" src="${esc(portrait)}" alt=""><div><h1>${t("Sửa {name}", { name: esc(shown(p)) })}</h1><p class="muted">${t("Đổi xong bấm Lưu. Ngoại hình đổi nhiều thì nên vẽ lại model sheet.")}</p></div></div></header>
+  const body = `<p><a href="/characters/${esc(p.slug)}">← ${esc(shown(p))}</a></p><header class="page-head"><div class="b-top"><img class="b-ava" src="${esc(portrait)}" alt=""><div><h1>${t("Sửa {name}", { name: esc(shown(p)) })}</h1><p class="muted">${t("Đổi xong bấm Lưu. Ngoại hình đổi nhiều thì nên vẽ lại bản chuẩn.")}</p></div></div></header>
 ${error ? `<div class="warn small">${esc(error)}</div>` : ""}${profileForm(p, `/characters/${p.slug}/edit`)}`;
   return layout(t("Sửa {name}", { name: shown(p) }), "/characters", body);
 }
@@ -196,7 +196,7 @@ export function newCharacterPage(mock: boolean, aiReady: boolean, error?: string
 <div class="ai-head"><span class="spark">✦</span><div><h2>${t("Nhờ AI viết hồ sơ")}</h2><p class="muted small">${t("Một câu ý tưởng là đủ. Muse Spark viết ngoại hình, bảng màu, tính cách, giọng nói, và giữ khác hẳn dàn nhân vật đang có.")}</p></div></div>
 <textarea name="idea" rows="3" required placeholder="${esc(t("Ví dụ: một con vượn đen má trắng làm thiết kế, luôn đến muộn đúng 5 phút nhưng lý do nào cũng thuyết phục"))}"></textarea>
 <div class="row-actions"><button class="btn on"${aiReady ? "" : " disabled"}>${t("Viết hồ sơ")}</button>${aiReady ? (mock ? `<span class="muted small">${t("Bản thử: hồ sơ là mẫu cố định.")}</span>` : "") : `<span class="muted small">${t("Cần khoá AI Muse.")} <a href="/settings">${t("Mở Cài đặt")}</a></span>`}</div></form>`;
-  const steps = `<ol class="flow"><li><b>1</b>${t("Hồ sơ")}</li><li><b>2</b>${t("Vẽ model sheet")}</li><li><b>3</b>${t("Khoá sheet")}</li><li><b>4</b>${t("Lên tập")}</li></ol>`;
+  const steps = `<ol class="flow"><li><b>1</b>${t("Hồ sơ")}</li><li><b>2</b>${t("Vẽ bản chuẩn")}</li><li><b>3</b>${t("Chốt bản chuẩn")}</li><li><b>4</b>${t("Lên tập")}</li></ol>`;
   const body = `<p><a href="/characters">← ${t("Nhân vật")}</a></p><header class="page-head"><div><h1>${t("Tạo nhân vật")}</h1></div>${steps}</header>
 ${error ? `<div class="warn small">${esc(error)}</div>` : ""}
 <div class="tabs"><a class="${manual ? "" : "on"}" href="/characters/new">✦ ${t("AI viết")}</a><a class="${manual ? "on" : ""}" href="/characters/new?manual=1">✎ ${t("Tự điền")}</a></div>

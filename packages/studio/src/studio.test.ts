@@ -271,7 +271,7 @@ test("the office floor plan seats every character once and reaches the prompts",
 });
 
 test("brand art: an avatar and a Facebook-size cover for every brand, offline", async () => {
-  const { loadBrandList, makeBrandArt, coverPrompt, COVER_SIZE, SOCIAL_SIZES } = await import("./brand-art.js");
+  const { loadBrandList, makeBrandArt, coverPrompt, avatarPrompt, COVER_SIZE, SOCIAL_SIZES } = await import("./brand-art.js");
   const { openStudio } = await import("./studio.js");
   const { imageSize } = await import("@hoi-sau/svg-text");
   const ctx = openStudio({ mock: true });
@@ -280,8 +280,12 @@ test("brand art: an avatar and a Facebook-size cover for every brand, offline", 
   const series = coverPrompt(ctx, brands.find((b) => b.id === "hoi-sau")!);
   assert.match(series, /zebra crossing/);
   assert.match(series, /Bino[\s\S]*Pango[\s\S]*Poppy[\s\S]*Lolo[\s\S]*Uni[\s\S]*Rico/, "walk order front to back, the director leads");
+  assert.match(series, /Bino \(.*?\) leading the line at the far right/);
   assert.match(series, /full length with their feet/);
   assert.match(series, /none sitting at a desk/);
+  const avatar = avatarPrompt(ctx, brands.find((b) => b.id === "hoi-sau")!);
+  assert.match(avatar, /^Lolo \(.*alone, a big close-up/);
+  assert.match(avatar, /Nobody else/);
   // Characters added later join the parade: the cover follows the cast, not a fixed four.
   assert.match(series, new RegExp(`Exactly ${["", "one", "two", "three", "four", "five", "six", "seven"][ctx.profiles.size]} main characters`));
   for (const p of ctx.profiles.values()) assert.ok(series.includes(`${p.name} (`), p.name);

@@ -189,6 +189,22 @@ const TENSE: Array<[RegExp, string]> = [
   [/\b(defending itself|attack(ed|ing)?|fight(ing)?|threat(ening)?)\b/gi, "startled"],
   [/\b(scream(ing)?|panic(king)?|terrified|horror)\b/gi, "surprised"],
   [/\b(deer in headlights)\b/gi, "a surprised statue"],
+  // Cartoon exaggeration that reads as injury or distress when taken literally.
+  [/\bmelting off ([^,.;]+?) in despair like a puddle\b/gi, "sliding off $1 like soft jelly"],
+  [/\b(melting|melts?)\b/gi, "drooping"],
+  [/\bsquashed flat under\b/gi, "half hidden behind"],
+  [/\b(squashed|crushed|flattened)\b/gi, "buried"],
+  [/\b(toppling|collapsing|collapsed)\b/gi, "wobbly"],
+  [/\btears streaming like fountains\b/gi, "big cartoon teardrops"],
+  [/\b(tears streaming|streaming tears|crying|sobbing)\b/gi, "teary-eyed"],
+  [/\b(despair|despairing|agony|anguish)\b/gi, "a comic sulk"],
+  [/\banger veins?( on the forehead)?\b/gi, "a small cartoon cross mark"],
+  [/\bsteam puffs from the ears\b/gi, "little puffs of steam"],
+  [/\beyes popping( out)?\b/gi, "eyes wide"],
+  [/\bspiral eyes|eyes turned to spirals\b/gi, "dizzy eyes"],
+  [/\bjaw dropped to the floor\b/gi, "mouth wide open"],
+  [/\bfur standing on end\b/gi, "fluffed-up fur"],
+  [/\blate at night alone in a dark office\b/gi, "after hours in a cosy office"],
 ];
 
 /** A gentler wording of a prompt Meta's filter refused. */

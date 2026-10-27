@@ -6,6 +6,7 @@ import { test } from "node:test";
 import {
   approveStyle,
   characterSheetPrompt,
+  compactReference,
   consistencyBeats,
   loadStyle,
   poseSheetPrompt,
@@ -78,6 +79,19 @@ test("request body follows the Responses API shape", () => {
   const withRef = client.requestBody({ prompt: "b", references: ["data:image/png;base64,AA"] }) as any;
   assert.equal(withRef.input[0].role, "user");
   assert.deepEqual(withRef.input[0].content[1], { type: "input_image", image_url: "data:image/png;base64,AA" });
+});
+
+test("large reference images are shrunk before they are sent", async () => {
+  const sharp = (await import("sharp")).default;
+  const noise = (await import("node:crypto")).randomBytes(1800 * 1200 * 3);
+  const big = await sharp(noise, { raw: { width: 1800, height: 1200, channels: 3 } }).png().toBuffer();
+  assert.ok(big.length > 700_000);
+  const small = await compactReference(`data:image/png;base64,${big.toString("base64")}`);
+  assert.match(small, /^data:image\/jpeg;base64,/);
+  const out = await sharp(Buffer.from(small.split(",")[1], "base64")).metadata();
+  assert.equal(out.width, 1536);
+  assert.equal(await compactReference("data:image/png;base64,AA"), "data:image/png;base64,AA");
+  assert.equal(await compactReference("https://x/y.png"), "https://x/y.png");
 });
 
 test("parseResponse pulls the image and refuses empty or filtered replies", () => {

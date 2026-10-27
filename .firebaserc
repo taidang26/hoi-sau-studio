@@ -1,0 +1,12 @@
+{
+  "projects": {
+    "default": "testmsbmusic-ai"
+  },
+  "targets": {
+    "testmsbmusic-ai": {
+      "hosting": {
+        "hoisau": ["hoisau"]
+      }
+    }
+  }
+}

@@ -5,6 +5,8 @@
  *                    Muse Spark writes, safety gate, MMS-TTS speaks (or --voice recordings 01.wav...), render 1080x1920
  *   npm run talk -- sync <slug> <sound|video> [--lyrics file.txt] [--vocals stem.wav] [--start s] [--duration s] [--mock]
  *                    lip-sync to an existing sound: Muse Voice Transcribe times the words, Muse Spark picks gestures
+ *   npm run talk -- cut <slug> [--phrase "cartoon character"] [--force]  SAM 3.1 cuts the character out, for --bg photos
+ *                    make/sync take --bg photo.jpg: the character stands on a real photo instead of the drawn room
  *   npm run talk -- demo                                                   offline: mock pictures, hummed voice
  */
 
@@ -14,7 +16,7 @@ import { fileURLToPath } from "node:url";
 import { probeVideo, reelsProblems } from "@hoi-sau/motion";
 import { openStudio } from "@hoi-sau/studio";
 import { Sam } from "@hoi-sau/dance";
-import { drawTalkArt, loadArt, talkDir } from "./art.js";
+import { cutTalkArt, drawTalkArt, loadArt, talkDir } from "./art.js";
 import { GESTURES } from "./gestures.js";
 import { renderTalk, silentCopy } from "./render.js";
 import { gateMouth, linesFromWords, readSound, soundVoice, stageLines, timeLyrics, toWords, voicedRegions } from "./sync.js";
@@ -53,6 +55,7 @@ const stamp = () => new Date().toISOString().replace(/[-:]/g, "").replace("T", "
 
 interface MakeOptions {
   mock: boolean;
+  background?: string;
   topic?: string;
   /** A sample's words to copy the shape of (hook, rhythm, punchline), never the words. */
   like?: string;
@@ -87,7 +90,7 @@ async function make(slug: string, o: MakeOptions) {
     frames,
   });
   const out = join(o.out, `${slug}.mp4`);
-  const r = await renderTalk({ art, artDir: o.artDir, frames: timeline, chunks, title: script.title, voice, out, music: o.music, log: o.log });
+  const r = await renderTalk({ art, artDir: o.artDir, frames: timeline, chunks, title: script.title, voice, background: o.background, out, music: o.music, log: o.log });
   writeFileSync(join(o.out, "post.txt"), `${script.caption}\n`);
   const info = await probeVideo(r.video);
   const problems = reelsProblems(info);
@@ -117,6 +120,7 @@ async function ensureArt(slug: string, o: { mock: boolean; artDir: string; log: 
 
 interface SyncOptions {
   mock: boolean;
+  background?: string;
   /** The voice alone (e.g. a Demucs vocals stem) for the mouth, when the sound has music under it. */
   vocals?: string;
   lyrics?: string;
@@ -165,7 +169,7 @@ async function sync(slug: string, media: string, o: SyncOptions) {
     words: lines.map(toWords),
   });
   const out = join(o.out, `${slug}.mp4`);
-  const r = await renderTalk({ art, artDir: o.artDir, frames: timeline, chunks, title: script.title, voice, audio: sound, out, log: o.log });
+  const r = await renderTalk({ art, artDir: o.artDir, frames: timeline, chunks, title: script.title, voice, audio: sound, background: o.background, out, log: o.log });
   const silent = await silentCopy(r.video);
   writeFileSync(join(o.out, "post.txt"), `${script.caption}\n`);
   const info = await probeVideo(r.video);
@@ -190,6 +194,16 @@ async function main() {
       console.log(dir);
       return;
     }
+    case "cut": {
+      const slug = pos[0];
+      if (!slug) throw new Error('Usage: talk cut <slug> [--phrase "cartoon character"] [--force]');
+      const dir = talkDir(CHARACTERS, slug);
+      const art = loadArt(dir);
+      if (!art) throw new Error(`No talk pictures for ${slug} yet. Draw them: npm run talk -- art ${slug}`);
+      await cutTalkArt(Sam.fromEnv(), dir, art, (opt.phrase as string) || "cartoon character", { force: !!opt.force, log });
+      console.log(dir);
+      return;
+    }
     case "sync": {
       const [slug, media] = pos;
       if (!slug || !media) throw new Error("Usage: talk sync <slug> <sound|video> [--lyrics file.txt] [--start s] [--duration s]");
@@ -197,6 +211,7 @@ async function main() {
       await sync(slug, fromCwd(media), {
         mock,
         lyrics: opt.lyrics ? fromCwd(opt.lyrics as string) : undefined,
+        background: opt.bg ? fromCwd(opt.bg as string) : undefined,
         vocals: opt.vocals ? fromCwd(opt.vocals as string) : undefined,
         start: opt.start ? Number(opt.start) : undefined,
         duration: opt.duration ? Number(opt.duration) : undefined,
@@ -214,6 +229,7 @@ async function main() {
       await make(slug, {
         mock,
         topic: opt.topic as string | undefined,
+        background: opt.bg ? fromCwd(opt.bg as string) : undefined,
         like: opt.like ? fromCwd(opt.like as string) : undefined,
         seconds: Number(opt.seconds ?? 30),
         script: opt.script ? fromCwd(opt.script as string) : undefined,
@@ -226,7 +242,7 @@ async function main() {
       return;
     }
     default:
-      console.log(readFileSync(fileURLToPath(import.meta.url), "utf8").split("\n").slice(2, 9).join("\n").replace(/^ \*/gm, ""));
+      console.log(readFileSync(fileURLToPath(import.meta.url), "utf8").split("\n").slice(2, 11).join("\n").replace(/^ \*/gm, ""));
   }
 }
 

@@ -8,6 +8,7 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import sharp from "sharp";
 import { characterRefs, generateSoftly, styleReference, styleText, type StudioContext } from "@hoi-sau/studio";
 import type { Sam } from "@hoi-sau/dance";
 import { GESTURES, type Gesture } from "./gestures.js";
@@ -23,6 +24,8 @@ export interface GestureArt {
   file: string;
   mouth?: { file: string; box: Box };
   blink?: { file: string; box: Box };
+  /** The character alone (white = character), from SAM 3.1, for placing it on a photo. */
+  mask?: string;
 }
 
 export interface TalkArt {
@@ -143,5 +146,33 @@ export async function drawTalkArt(ctx: StudioContext, slug: string, dir: string,
     }
   }
   save();
+  return art;
+}
+
+/**
+ * SAM 3.1 cuts the character out of every gesture picture, so it can stand
+ * on a real photo. Mouth and blink frames share their gesture's cut: only the
+ * face changes, inside the body.
+ */
+export async function cutTalkArt(sam: Sam, dir: string, art: TalkArt, phrase: string, opts: { force?: boolean; log?: (s: string) => void } = {}): Promise<TalkArt> {
+  for (const [id, ga] of Object.entries(art.gestures)) {
+    if (ga.mask && existsSync(join(dir, ga.mask)) && !opts.force) continue;
+    const png = readFileSync(join(dir, ga.file));
+    const img = await readRgb(png);
+    const segs = (await sam.segment(phrase, dataUrl(png), img.width, img.height)).filter((x) => (x.score ?? 1) >= 0.3);
+    if (!segs.length) {
+      opts.log?.(`SAM found no "${phrase}" in ${id}; it keeps its drawn background.`);
+      continue;
+    }
+    // The biggest find is the character; anything it holds is part of it.
+    const mask = Buffer.alloc(img.width * img.height);
+    const main = segs.reduce((a, b) => (b.area > a.area ? b : a));
+    for (let i = 0; i < mask.length; i++) if (main.mask[i]) mask[i] = 255;
+    const file = `${id}.mask.png`;
+    writeFileSync(join(dir, file), await sharp(mask, { raw: { width: img.width, height: img.height, channels: 1 } }).blur(1.2).png().toBuffer());
+    ga.mask = file;
+    opts.log?.(`${id}: cut out (${Math.round((100 * main.area) / mask.length)}% of the picture)`);
+  }
+  writeFileSync(join(dir, "talk.json"), JSON.stringify(art, null, 2) + "\n");
   return art;
 }

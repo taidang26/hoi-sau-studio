@@ -22,8 +22,58 @@ import { wavBytes, type Voice } from "./voice.js";
 async function toFrame(png: Buffer): Promise<Raster> {
   const fill = await sharp(png).removeAlpha().resize(OUT.w, OUT.h, { fit: "cover" }).blur(40).modulate({ brightness: 0.7 }).png().toBuffer();
   const pic = await sharp(png).removeAlpha().resize(PICTURE.w, PICTURE.h, { fit: "cover" }).png().toBuffer();
-  const { data, info } = await sharp(fill).composite([{ input: pic, left: PICTURE.x, top: PICTURE.y }]).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+  return flatten(fill, [{ input: pic, left: PICTURE.x, top: PICTURE.y }]);
+}
+
+async function flatten(base: Buffer, layers: sharp.OverlayOptions[]): Promise<Raster> {
+  const { data, info } = await sharp(base).composite(layers).removeAlpha().raw().toBuffer({ resolveWithObject: true });
   return { data, width: info.width, height: info.height };
+}
+
+/** Where the cut-out character stands on a photo: bottom-centred, this share of the frame height. */
+export const ON_PHOTO = { height: 0.62, bottom: 0.04 };
+
+/** A background photo filling the frame, a touch soft so the character reads first. */
+export const photoBackdrop = (photo: string) => sharp(photo).rotate().removeAlpha().resize(OUT.w, OUT.h, { fit: "cover" }).blur(1.5).png().toBuffer();
+
+/**
+ * The character cut out with its SAM mask and stood on the photo, with a soft
+ * contact shadow under it.
+ */
+export async function onPhoto(png: Buffer, mask: Buffer, backdrop: Buffer): Promise<Raster> {
+  const meta = await sharp(png).metadata();
+  const w0 = meta.width!;
+  const h0 = meta.height!;
+  // Trim to the character so its height, not the picture's, sets the size.
+  const m = await sharp(mask).resize(w0, h0).greyscale().raw().toBuffer();
+  let top = h0, bottom = 0, left = w0, right = 0;
+  for (let y = 0; y < h0; y++)
+    for (let x = 0; x < w0; x++)
+      if (m[y * w0 + x] > 128) {
+        if (y < top) top = y;
+        if (y > bottom) bottom = y;
+        if (x < left) left = x;
+        if (x > right) right = x;
+      }
+  if (bottom <= top) return toFrame(png);
+  const box = { left, top, width: right - left + 1, height: bottom - top + 1 };
+  // Two steps: sharp extracts before it joins channels within one pipeline.
+  const rgba = await sharp(png).removeAlpha().joinChannel(m, { raw: { width: w0, height: h0, channels: 1 } }).png().toBuffer();
+  const cut = await sharp(rgba).extract(box).png().toBuffer();
+  const height = Math.round(OUT.h * ON_PHOTO.height);
+  const width = Math.round((box.width * height) / box.height);
+  const sized = await sharp(cut).resize(width, height).png().toBuffer();
+  const x = Math.round((OUT.w - width) / 2);
+  const y = Math.round(OUT.h * (1 - ON_PHOTO.bottom) - height);
+  const shadow = await sharp({ create: { width: Math.round(width * 0.8), height: Math.round(height * 0.06), channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+    .composite([{ input: Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${Math.round(width * 0.8)}" height="${Math.round(height * 0.06)}"><ellipse cx="50%" cy="50%" rx="48%" ry="40%" fill="black" fill-opacity="0.35"/></svg>`) }])
+    .blur(8)
+    .png()
+    .toBuffer();
+  return flatten(backdrop, [
+    { input: shadow, left: x + Math.round(width * 0.1), top: y + height - Math.round(height * 0.04) },
+    { input: sized, left: x, top: y },
+  ]);
 }
 
 /** The four faces of each gesture (plain, mouth, blink, both) on the canvas. */
@@ -32,6 +82,8 @@ export class Pictures {
   constructor(
     private readonly art: TalkArt,
     private readonly dir: string,
+    /** A backdrop photo (from photoBackdrop): characters with a cut stand on it. */
+    private readonly backdrop?: Buffer,
   ) {}
   get(gesture: string, mouth: boolean, blink: boolean): Promise<Raster> {
     const key = `${gesture}:${mouth}:${blink}`;
@@ -43,13 +95,13 @@ export class Pictures {
     const g = this.art.gestures[gesture];
     if (!g) throw new Error(`No picture for gesture ${gesture}. Draw it: npm run talk -- art ${this.art.slug}`);
     const read = (f: string) => readFileSync(join(this.dir, f));
+    let png: Buffer;
     if (mouth && blink && g.mouth && g.blink) {
       // Mouth and blink pictures are both lined up with the gesture, so the mouth oval drops straight onto the blink frame.
       const both = pasteOval(await readRgb(read(g.blink.file)), await readRgb(read(g.mouth.file)), g.mouth.box);
-      return toFrame(await sharp(both.data, { raw: { width: both.width, height: both.height, channels: 3 } }).png().toBuffer());
-    }
-    const f = mouth && g.mouth ? g.mouth.file : blink && g.blink ? g.blink.file : g.file;
-    return toFrame(read(f));
+      png = await sharp(both.data, { raw: { width: both.width, height: both.height, channels: 3 } }).png().toBuffer();
+    } else png = read(mouth && g.mouth ? g.mouth.file : blink && g.blink ? g.blink.file : g.file);
+    return this.backdrop && g.mask ? onPhoto(png, read(g.mask), this.backdrop) : toFrame(png);
   }
 }
 
@@ -72,6 +124,8 @@ export interface RenderInput {
   out: string;
   /** The finished soundtrack (a lip-synced sound) instead of the voice track. */
   audio?: string;
+  /** A photo to stand the character on (needs `talk cut`); the drawn background otherwise. */
+  background?: string;
   /** Background music, looped under the voice. */
   music?: string;
   musicVolume?: number;
@@ -84,7 +138,7 @@ export async function renderTalk(r: RenderInput): Promise<{ video: string; secon
     wav = r.out.replace(/\.mp4$/, "") + ".voice.wav";
     writeFileSync(wav, wavBytes(r.voice.pcm, r.voice.rate));
   }
-  const pics = new Pictures(r.art, r.artDir);
+  const pics = new Pictures(r.art, r.artDir, r.background ? await photoBackdrop(r.background) : undefined);
   const captions = new CaptionCache(r.chunks);
   const title = r.title ? await titleOverlay(r.title) : undefined;
 

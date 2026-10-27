@@ -89,3 +89,25 @@ test("typed lyrics land on the voiced parts of the sound", async () => {
   assert.equal(gated[3], false, "shut before the first word");
   assert.equal(gated[30], true);
 });
+
+test("a cut-out character stands bottom-centre on the photo", async () => {
+  const sharp = (await import("sharp")).default;
+  const { onPhoto, photoBackdrop, ON_PHOTO } = await import("./render.js");
+  const { OUT } = await import("./timeline.js");
+  const { mkdtempSync, writeFileSync } = await import("node:fs");
+  const { join } = await import("node:path");
+  const { tmpdir } = await import("node:os");
+  const pic = await sharp({ create: { width: 400, height: 600, channels: 3, background: "#ffffff" } })
+    .composite([{ input: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="600"><rect x="100" y="200" width="200" height="300" fill="#ff0000"/></svg>') }])
+    .png()
+    .toBuffer();
+  const mask = await sharp(Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="600"><rect width="400" height="600"/><rect x="100" y="200" width="200" height="300" fill="#fff"/></svg>')).png().toBuffer();
+  const photo = join(mkdtempSync(join(tmpdir(), "talk-")), "bg.png");
+  writeFileSync(photo, await sharp({ create: { width: 800, height: 600, channels: 3, background: "#2050a0" } }).png().toBuffer());
+  const out = await onPhoto(pic, mask, await photoBackdrop(photo));
+  assert.equal(out.width, OUT.w);
+  const px = (x: number, y: number) => [...out.data.subarray((y * out.width + x) * 3, (y * out.width + x) * 3 + 3)];
+  const mid = Math.round(OUT.h * (1 - ON_PHOTO.bottom - ON_PHOTO.height / 2));
+  assert.ok(px(540, mid)[0] > 200 && px(540, mid)[2] < 60, "the character in the middle");
+  assert.ok(px(60, mid)[2] > 120, "the photo at the side, not the drawn white");
+});

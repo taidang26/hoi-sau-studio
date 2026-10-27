@@ -16,7 +16,8 @@
 import type { Comment, JournalEntry, OutgoingComment, Platform } from "@hoi-sau/channel";
 import { askJson, type Llm } from "./llm.js";
 import { actFor } from "./memory.js";
-import { screen } from "./listen.js";
+import { BLOCKING, screen } from "./listen.js";
+import { AUDIENCE_DATA_RULE, BANNED_RULE, type SafetyPolicy } from "./safety.js";
 import type { BibleLike, ProfileLike, SeasonPlan, StoryMemory } from "./schema.js";
 
 export const REPLY_TASK = "story.reply";
@@ -45,7 +46,7 @@ function voiceLines(p: ProfileLike): string[] {
   ].filter(Boolean);
 }
 
-export function replyPrompt(p: ProfileLike, bible: BibleLike, batch: Comment[], memory: StoryMemory): { system: string; user: string } {
+export function replyPrompt(p: ProfileLike, bible: BibleLike, batch: Comment[], memory: StoryMemory, safety?: SafetyPolicy): { system: string; user: string } {
   const last = memory.episodes.filter((e) => e.lead === p.slug).at(-1);
   return {
     system: [
@@ -59,6 +60,8 @@ export function replyPrompt(p: ProfileLike, bible: BibleLike, batch: Comment[], 
       "- Không nhắc tên thật đầy đủ của người bình luận, không link, không số điện thoại.",
       '- Không có gì đáng trả lời (chỉ tag bạn, chỉ "haha") thì skip = true.',
       'Trả về đúng JSON: {"items":[{"commentId","reply","skip","reason"}]}',
+      safety ? BANNED_RULE(safety) : "",
+      AUDIENCE_DATA_RULE,
     ]
       .filter(Boolean)
       .join("\n"),
@@ -66,23 +69,23 @@ export function replyPrompt(p: ProfileLike, bible: BibleLike, batch: Comment[], 
   };
 }
 
-/** A reply is unusable if rules would flag it, or it runs long. */
-export function replyProblem(text: string): string | undefined {
+/** A reply is unusable if rules would flag it (spam, toxic, injection, a banned topic), or it runs long. */
+export function replyProblem(text: string, safety?: SafetyPolicy): string | undefined {
   const t = text.trim();
   if (!t) return "empty";
   if (t.length > MAX_REPLY_CHARS) return "too long";
-  const reason = screen([{ id: "r", platform: "facebook", postId: "p", text: t, author: { name: "r" }, createdAt: "" }]).rejected[0]?.reason;
-  return reason === "spam" || reason === "toxic" ? reason : undefined;
+  const reason = screen([{ id: "r", platform: "facebook", postId: "p", text: t, author: { name: "r" }, createdAt: "" }], { safety }).rejected[0]?.reason;
+  return reason && BLOCKING.includes(reason) ? reason : undefined;
 }
 
-export function checkReplies(value: unknown, ids: string[]): Array<{ commentId: string; reply: string; skip: boolean; reason: string }> {
+export function checkReplies(value: unknown, ids: string[], safety?: SafetyPolicy): Array<{ commentId: string; reply: string; skip: boolean; reason: string }> {
   const items = (value as { items?: unknown })?.items;
   if (!Array.isArray(items)) throw new Error('expected {"items": [...]}');
   return (items as any[])
     .filter((i) => ids.includes(i?.commentId))
     .map((i) => {
       const reply = String(i.reply ?? "").trim();
-      const problem = i.skip ? undefined : replyProblem(reply);
+      const problem = i.skip ? undefined : replyProblem(reply, safety);
       return { commentId: i.commentId, reply, skip: !!i.skip || !!problem, reason: problem ? `dropped: ${problem}` : String(i.reason ?? "") };
     });
 }
@@ -96,6 +99,8 @@ export interface DraftRepliesInput {
   /** data/replies.json as it stands; comments already answered or drafted are skipped. */
   existing: OutgoingComment[];
   ownAuthorIds?: string[];
+  /** series/safety.yaml: screened comments and drafted replies both avoid it. */
+  safety?: SafetyPolicy;
   /** At most this many new drafts per run, newest comments first. */
   max?: number;
   approve?: boolean;
@@ -105,7 +110,7 @@ export interface DraftRepliesInput {
 export async function draftReplies(llm: Llm, input: DraftRepliesInput): Promise<OutgoingComment[]> {
   const done = new Set(input.existing.filter((c) => c.kind === "reply").map((c) => c.commentId));
   const speakers = speakersByPost(input.journal, input.memory);
-  const fresh = screen(input.comments, { ownAuthorIds: input.ownAuthorIds })
+  const fresh = screen(input.comments, { ownAuthorIds: input.ownAuthorIds, safety: input.safety })
     .kept.filter((c) => !done.has(c.id) && speakers.has(c.postId) && input.profiles.has(speakers.get(c.postId)!.lead))
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
     .slice(0, input.max ?? 15);
@@ -120,9 +125,9 @@ export async function draftReplies(llm: Llm, input: DraftRepliesInput): Promise<
   const out: OutgoingComment[] = [];
   for (const [lead, batch] of bySpeaker) {
     const p = input.profiles.get(lead)!;
-    const { system, user } = replyPrompt(p, input.bible, batch, input.memory);
+    const { system, user } = replyPrompt(p, input.bible, batch, input.memory, input.safety);
     const ids = batch.map((c) => c.id);
-    const items = await askJson(llm, { task: REPLY_TASK, system, user, temperature: 0.7 }, (v) => checkReplies(v, ids));
+    const items = await askJson(llm, { task: REPLY_TASK, system, user, temperature: 0.7 }, (v) => checkReplies(v, ids, input.safety));
     for (const i of items) {
       const c = batch.find((x) => x.id === i.commentId)!;
       // A skipped comment is kept as rejected so it is not asked about again.
@@ -168,6 +173,7 @@ export interface FirstCommentInput {
   hook?: string;
   existing: OutgoingComment[];
   approve?: boolean;
+  safety?: SafetyPolicy;
   now?: Date;
 }
 
@@ -179,7 +185,7 @@ export async function firstComments(llm: Llm, input: FirstCommentInput): Promise
   const { system, user } = firstCommentPrompt(input.lead, question, input.hook);
   const { text } = await askJson(llm, { task: FIRST_COMMENT_TASK, system, user, temperature: 0.7 }, (v) => {
     const t = String((v as { text?: unknown })?.text ?? "").trim();
-    const problem = replyProblem(t);
+    const problem = replyProblem(t, input.safety);
     if (problem) throw new Error(`first comment ${problem}`);
     return { text: t };
   });

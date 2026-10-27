@@ -6,6 +6,7 @@
 
 import { COACH_TASK } from "./coach.js";
 import { FIRST_COMMENT_TASK, REPLY_TASK } from "./engage.js";
+import { SAFETY_TASK } from "./safety.js";
 import { RECAP_TASK } from "./recap.js";
 import { SCORE_TASK } from "./listen.js";
 import type { Llm, LlmRequest, LlmResult } from "./llm.js";
@@ -124,6 +125,14 @@ export function mockLlm(): Llm & { calls: LlmRequest[] } {
       if (req.task === FIRST_COMMENT_TASK) {
         const question = /QUESTION: (.*)$/m.exec(req.user)?.[1].trim() || "Tập sau nên thế nào?";
         return { text: JSON.stringify({ text: `${question} Trả lời một chữ thôi, hồi sau em vẽ.` }) };
+      }
+      if (req.task === SAFETY_TASK) {
+        // Flags what the keyword rules for scoring would call unsafe.
+        const texts = JSON.parse(/TEXTS_JSON: (.*)$/m.exec(req.user)![1]) as Array<{ where: string; text: string }>;
+        const issues = texts
+          .filter((t) => UNSAFE_CUES.some((c) => hasPhrase(fold(t.text), c)))
+          .map((t) => ({ where: t.where, topic: "unsafe", detail: `mock: "${UNSAFE_CUES.find((c) => hasPhrase(fold(t.text), c))}"` }));
+        return { text: JSON.stringify({ pass: !issues.length, issues }) };
       }
       throw new Error(`mock has no answer for task ${req.task}`);
     },

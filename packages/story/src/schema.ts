@@ -170,7 +170,8 @@ export interface EpisodeStats {
 
 // ── listening ──────────────────────────────────────────────────────────────
 
-export type RejectReason = "spam" | "toxic" | "duplicate" | "too-short" | "self";
+/** injection: talks to the model instead of about the story. banned: a topic in series/safety.yaml. */
+export type RejectReason = "spam" | "toxic" | "injection" | "banned" | "duplicate" | "too-short" | "self";
 
 export type Verdict = "idea" | "reaction" | "question" | "off-character" | "unsafe";
 

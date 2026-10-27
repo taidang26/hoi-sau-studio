@@ -41,6 +41,7 @@ import { listen } from "./listen.js";
 import { type Llm, llmFromEnv, type Role } from "./llm.js";
 import { episodeNumber, loadMemory, loadSeason, nextNumber, remember, saveMemory, SERIES_DIR } from "./memory.js";
 import { mockLlm } from "./mock.js";
+import { loadSafety } from "./safety.js";
 import { readEpisodeFiles, recap } from "./recap.js";
 import type { BibleLike, ProfileLike } from "./schema.js";
 
@@ -85,6 +86,7 @@ async function main(argv: string[]): Promise<void> {
   const dataDir = isAbsolute(rawData) ? rawData : join(ROOT, rawData);
   const bible = loadBible();
   const plan = loadSeason();
+  const safety = loadSafety();
 
   if (cmd === "listen" || cmd === "demo") {
     const demo = cmd === "demo";
@@ -98,7 +100,7 @@ async function main(argv: string[]): Promise<void> {
     const picks = demo ? [] : readJson<Array<{ commentId: string }>>(join(dataDir, "directions.json"), []).map((d) => d.commentId);
     const llm = pickLlm("listener", mock);
 
-    const report = await listen(comments, { bible, lead: loadProfile(lead), plan, memory, episodeNumber: episodeNumber(episodeId, memory) }, {
+    const report = await listen(comments, { bible, lead: loadProfile(lead), plan, memory, episodeNumber: episodeNumber(episodeId, memory), safety }, {
       llm,
       episodeId,
       editorPicks: picks,
@@ -111,7 +113,7 @@ async function main(argv: string[]): Promise<void> {
     }
 
     const t = report.totals;
-    console.log(`${comments.length} comments → spam ${t.spam}, toxic ${t.toxic}, duplicate ${t.duplicate}, short ${t["too-short"]}; ideas ${t.idea}, off-character ${t["off-character"]}, unsafe ${t.unsafe}  (${report.model})`);
+    console.log(`${comments.length} comments → spam ${t.spam}, toxic ${t.toxic}, injection ${t.injection}, banned ${t.banned}, duplicate ${t.duplicate}, short ${t["too-short"]}; ideas ${t.idea}, off-character ${t["off-character"]}, unsafe ${t.unsafe}  (${report.model})`);
     for (const c of report.clusters.slice(0, 5)) console.log(`  ${String(c.score).padStart(6)}  ${c.key}  ${c.authors} người  "${c.idea}"`);
     console.log(`\nPick (${report.pick.source}): ${report.pick.spec.direction}\nWhy: ${report.pick.why}`);
     if (report.pick.cameo) console.log(`Credit: ${report.pick.cameo.name} (${report.pick.cameo.credit.platform}) as ${report.pick.cameo.look}`);
@@ -189,6 +191,7 @@ async function main(argv: string[]): Promise<void> {
       ownAuthorIds: [process.env.FB_PAGE_ID, process.env.IG_USER_ID, process.env.THREADS_USER_ID].filter((x): x is string => !!x),
       max: opts["--max"] ? Number(opts["--max"]) : undefined,
       approve: "--approve" in opts,
+      safety,
     });
     await saveReplies(dataDir, [...existing, ...drafts]);
     for (const d of drafts) console.log(`  ${d.id} [${d.status}] ${d.speaker}: ${d.text}`);
@@ -216,6 +219,7 @@ async function main(argv: string[]): Promise<void> {
       hook: premise.hook,
       existing,
       approve: "--approve" in opts,
+      safety,
     });
     await saveReplies(dataDir, [...existing, ...drafts]);
     for (const d of drafts) console.log(`  ${d.id} [${d.status}] ${d.text}`);

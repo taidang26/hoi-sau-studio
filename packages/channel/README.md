@@ -41,7 +41,7 @@ For a character brand add `--brand <id>` (for example `--brand lolo`); its `.env
 | `setup <token>` | Page id, Page token and Instagram id into `.env` |
 | `threads-setup [token]` / `threads-refresh` | Threads profile and 60-day token; extend it |
 | `check` | Token validity, missing permissions, Threads days left |
-| `publish <episode.json> [platform...]` | Post to the episode's brands, or `--brand <id>` |
+| `publish <episode.json> [platform...]` | Post to the episode's brands, or `--brand <id>`. Refuses an episode the owner has not approved, or one changed since (`episodes/<id>/approval.json`, [docs/safety.md](../../docs/safety.md)); `EPISODES_DIR` overrides the folder |
 | `comments` | Pull comments of every published episode |
 | `insights` | Reactions, shares, saves and reach of every published post into `data/insights.json`; metrics a post does not support are skipped. `story coach` uses them |
 | `send-replies` | Post the approved first comments and character replies in `data/replies.json` (drafted by `story replies` / `story first-comment`), each once, from the account that published the post |

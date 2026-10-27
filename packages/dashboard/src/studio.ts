@@ -64,6 +64,7 @@ export const STEP_LABEL: Record<EpisodeStep, string> = {
   premise: "Ý tưởng",
   beats: "Nhịp truyện",
   script: "Kịch bản",
+  safety: "Soát an toàn",
   storyboard: "Storyboard",
   panels: "Vẽ khung",
   review: "Tự soát",

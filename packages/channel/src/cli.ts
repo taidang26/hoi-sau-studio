@@ -11,6 +11,7 @@
 import { execFileSync, spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import {
   BRANDS_FILE,
   DEFAULT_GRAPH_VERSION,
@@ -43,6 +44,7 @@ import {
   publishEpisode,
   refreshThreadsToken,
   routeEpisode,
+  approvalProblems,
   fetchInsights,
   loadReplies,
   saveInsights,
@@ -332,6 +334,11 @@ async function check() {
 
 async function publish(file: string, only: Platform[]) {
   const post = JSON.parse(await readFile(file, "utf8")) as EpisodePost;
+  // Only what the owner approved goes out, exactly as approved. The fake Meta skips this for demos and tests.
+  if (!mock) {
+    const problems = approvalProblems(join(process.env.EPISODES_DIR || "episodes", post.episodeId), post);
+    if (problems.length) throw new Error(`Not publishing ${post.episodeId}:\n  ${problems.join("\n  ")}`);
+  }
   // --brand posts to that brand only. Otherwise channels.yaml routes by the lead character.
   const routes = chosenBrand
     ? [{ brand: currentBrand() }]

@@ -286,7 +286,28 @@ test("pictures first: placeholder portraits are served and pages use them", asyn
   assert.equal((await fetch(base + "/portrait/..%2Fsecret.svg")).status, 404);
   const home = await (await fetch(base + "/")).text();
   assert.match(home, /class="cast-card"/);
-  assert.match(await (await fetch(base + "/channels")).text(), /src="\/portrait\/sao-la\.svg"/);
+  // Every character has a locked sheet now, so pages show the front view cut from it.
+  assert.match(await (await fetch(base + "/channels")).text(), /src="\/face\/sao-la\.webp"/);
+  const face = await fetch(base + "/face/sao-la.webp");
+  assert.equal(face.headers.get("content-type"), "image/webp");
+  assert.ok((await face.arrayBuffer()).byteLength < 60_000, "a face is a small picture, not the 2 MB sheet");
+});
+
+test("smooth page changes: assets are cached, pictures revalidate, sheets come resized", async () => {
+  const home = await (await fetch(base + "/")).text();
+  const css = home.match(/href="(\/static\/app\.css\?v=[a-f0-9]+)"/)![1];
+  assert.match((await fetch(base + css)).headers.get("cache-control") ?? "", /immutable/);
+  assert.match(home, /<script type="speculationrules">/);
+  assert.doesNotMatch(home, /"\/lang\/\*"[^<]*eagerness":"eager"/);
+  const first = await fetch(base + "/portrait/cu-li.svg");
+  const etag = first.headers.get("etag")!;
+  assert.ok(etag);
+  assert.equal((await fetch(base + "/portrait/cu-li.svg", { headers: { "if-none-match": etag } })).status, 304);
+  const page = await (await fetch(base + "/characters/cu-li")).text();
+  const sheet = page.match(/src="(\/sheet\/cu-li\/model-sheet\.png\?w=1400)"/)![1];
+  const small = await fetch(base + sheet);
+  assert.equal(small.headers.get("content-type"), "image/webp");
+  assert.ok((await small.arrayBuffer()).byteLength < 600_000);
 });
 
 test("studio: pick a series style, draw and lock a sheet with poses, make a three-panel page", async () => {

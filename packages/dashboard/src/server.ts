@@ -7,6 +7,7 @@ import { createReadStream, existsSync, statSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { extname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import sharp from "sharp";
 import { BOLD_FONT_PATH, DEFAULT_FONT_PATH } from "@hoi-sau/svg-text";
 import type { Conversation, InboxMessage, Platform } from "@hoi-sau/channel";
 import { NeedsSetup, type Accounts } from "./accounts.js";
@@ -104,16 +105,97 @@ const redirect = (res: ServerResponse, to: string) => {
 const withNote = (to: string, key: "ok" | "err", text: string) => `${to}${to.includes("?") ? "&" : "?"}${key}=${encodeURIComponent(text)}`;
 
 function send(res: ServerResponse, status: number, body: string, type = "text/html; charset=utf-8"): void {
-  res.writeHead(status, { "Content-Type": type, "Cache-Control": "no-store" });
+  // no-cache, not no-store: the page is still fetched fresh, but Back can restore it instantly.
+  res.writeHead(status, { "Content-Type": type, "Cache-Control": "no-cache" });
   res.end(body);
 }
 
-/** Serves a file; honours a single byte Range, which Safari needs to play video. */
-function sendFile(res: ServerResponse, file: string, range?: string): void {
+/** Every picture on a page asks for a WebP sized to how it is shown; the full file stays one click away. */
+const sizedImages = (html: string) =>
+  html.replace(
+    /<img([^>]*?) src="(\/(?:studio-media|sheet|media|brand-art|style-media|series-media|research-media)\/[^"?]+\.(?:png|jpe?g|webp))"/g,
+    (_, pre: string, src: string) => `<img${pre} decoding="async" src="${src}?w=${/^\/(sheet|brand-art)\//.test(src) ? 1400 : 960}"`,
+  );
+
+/** Widths an image may be asked for with ?w=, so a page never pulls a 3 MB sheet for a thumbnail. */
+const WIDTHS = [320, 640, 960, 1400];
+const resized = new Map<string, Promise<Buffer>>();
+
+/**
+ * The head and shoulders of the first figure on a model sheet (the front view, top left).
+ * Sheets differ in how many views they have, so the figure is found by its columns of ink.
+ */
+async function faceCrop(file: string): Promise<Buffer> {
+  const { data, info } = await sharp(file).removeAlpha().greyscale().raw().toBuffer({ resolveWithObject: true });
+  const { width: W, height: H } = info;
+  const half = Math.round(H / 2);
+  const ink = (x: number, y: number) => data[y * W + x] < 200;
+  const colInk = (x: number) => {
+    for (let y = 0; y < half; y += 2) if (ink(x, y)) return true;
+    return false;
+  };
+  let x0 = 0;
+  while (x0 < W && !colInk(x0)) x0++;
+  // The figure ends at the first gap of blank columns wide enough to separate two views.
+  let x1 = x0, gap = 0;
+  for (let x = x0; x < W && gap < Math.round(W / 80); x++) colInk(x) ? ((x1 = x), (gap = 0)) : gap++;
+  // Views that touch (a tail over the next view) leave no gap: fall back to the first quarter.
+  if (x1 - x0 > W / 3) x1 = x0 + Math.round(W / 4.5);
+  let y0 = 0;
+  const rowInk = (y: number) => {
+    for (let x = x0; x <= x1; x += 2) if (ink(x, y)) return true;
+    return false;
+  };
+  while (y0 < half && !rowInk(y0)) y0++;
+  const w = Math.max(1, x1 - x0 + 1);
+  const pad = Math.round(w * 0.06);
+  const left = Math.max(0, x0 - pad), top = Math.max(0, y0 - pad);
+  const size = Math.min(w + 2 * pad, W - left, H - top);
+  return sharp(file).extract({ left, top, width: size, height: size }).png().toBuffer();
+}
+
+/** A smaller WebP copy of an image, kept in memory and keyed by the file's mtime so a redraw shows up. */
+function resizedImage(file: string, mtime: number, width: number, crop?: "face"): Promise<Buffer> {
+  const key = `${file}|${mtime}|${width}|${crop ?? ""}`;
+  let hit = resized.get(key);
+  if (!hit) {
+    hit = (async () => {
+      const img = crop === "face" ? sharp(await faceCrop(file)).resize(width, width) : sharp(file).resize({ width, withoutEnlargement: true });
+      return img.webp({ quality: 82 }).toBuffer();
+    })();
+    if (resized.size > 300) resized.delete(resized.keys().next().value!);
+    resized.set(key, hit);
+    hit.catch(() => resized.delete(key));
+  }
+  return hit;
+}
+
+/**
+ * Serves a file with an ETag, so a page change only revalidates what it already has.
+ * ?w= on an image returns a WebP no wider than that; ?v= marks a versioned asset that never changes.
+ * Honours a single byte Range, which Safari needs to play video.
+ */
+async function sendFile(req: IncomingMessage, res: ServerResponse, file: string, crop?: "face"): Promise<void> {
   if (!existsSync(file) || !statSync(file).isFile()) return send(res, 404, notFoundPage());
-  const type = TYPES[extname(file).toLowerCase()] ?? "application/octet-stream";
-  const size = statSync(file).size;
-  const m = range?.match(/^bytes=(\d*)-(\d*)$/);
+  const q = new URL(req.url ?? "/", "http://localhost").searchParams;
+  const st = statSync(file);
+  const ext = extname(file).toLowerCase();
+  const asked = Number(q.get("w")) || (crop ? 320 : 0);
+  const width = asked && /^\.(png|jpe?g|webp)$/.test(ext) ? (WIDTHS.find((w) => w >= asked) ?? WIDTHS[WIDTHS.length - 1]) : 0;
+  const etag = `W/"${st.size.toString(36)}-${Math.round(st.mtimeMs).toString(36)}${width ? `-${width}${crop ?? ""}` : ""}"`;
+  const cache = q.has("v") ? "public, max-age=31536000, immutable" : "no-cache";
+  if (req.headers["if-none-match"] === etag) {
+    res.writeHead(304, { ETag: etag, "Cache-Control": cache });
+    return void res.end();
+  }
+  if (width) {
+    const body = await resizedImage(file, st.mtimeMs, width, crop);
+    res.writeHead(200, { "Content-Type": "image/webp", "Content-Length": body.length, ETag: etag, "Cache-Control": cache });
+    return void res.end(body);
+  }
+  const type = TYPES[ext] ?? "application/octet-stream";
+  const size = st.size;
+  const m = req.headers.range?.match(/^bytes=(\d*)-(\d*)$/);
   if (m && (m[1] || m[2])) {
     const start = m[1] ? Number(m[1]) : Math.max(0, size - Number(m[2]));
     const end = m[1] && m[2] ? Math.min(Number(m[2]), size - 1) : size - 1;
@@ -124,7 +206,7 @@ function sendFile(res: ServerResponse, file: string, range?: string): void {
     res.writeHead(206, { "Content-Type": type, "Accept-Ranges": "bytes", "Content-Range": `bytes ${start}-${end}/${size}`, "Content-Length": end - start + 1 });
     return void createReadStream(file, { start, end }).pipe(res);
   }
-  res.writeHead(200, { "Content-Type": type, "Accept-Ranges": "bytes", "Content-Length": size });
+  res.writeHead(200, { "Content-Type": type, "Accept-Ranges": "bytes", "Content-Length": size, ETag: etag, "Cache-Control": cache });
   createReadStream(file).pipe(res);
 }
 
@@ -142,7 +224,14 @@ const errText = (e: unknown) => friendly(e instanceof Error ? e.message : String
 
 export function handler(opts: DashboardOptions) {
   const page = (res: ServerResponse, status: number, html: string) =>
-    send(res, status, opts.banner ? html.replace("<main>", `<main><div class="notice demo-note">${t(opts.banner)}</div>`) : html);
+    send(res, status, sizedImages(opts.banner ? html.replace("<main>", `<main><div class="notice demo-note">${t(opts.banner)}</div>`) : html));
+  const loadProfileSafe = (slug: string) => {
+    try {
+      return loadProfile(slug, charactersDir());
+    } catch {
+      return undefined;
+    }
+  };
   const charactersDir = () => opts.studio?.opts.charactersDir ?? opts.charactersDir ?? CHARACTERS_DIR;
   const acc = opts.accounts;
   // Sample data shows every button; pressing one explains that nothing real changes.
@@ -321,7 +410,7 @@ export function handler(opts: DashboardOptions) {
     }
     if (rs && path.startsWith("/research-media/")) {
       const file = inside(rs.opts.dir, path.slice("/research-media/".length));
-      return file && /[\\/]files[\\/][a-f0-9]+\.(png|jpe?g|webp)$/.test(file) ? sendFile(res, file) : send(res, 404, notFoundPage());
+      return file && /[\\/]files[\\/][a-f0-9]+\.(png|jpe?g|webp)$/.test(file) ? sendFile(req, res, file) : send(res, 404, notFoundPage());
     }
 
     // Characters: the form works without Muse; drawing and the AI writer need Studio.
@@ -461,36 +550,41 @@ export function handler(opts: DashboardOptions) {
 
     if (path.startsWith("/static/")) {
       const name = path.slice("/static/".length);
-      if (FONTS[name]) return sendFile(res, FONTS[name]);
+      if (FONTS[name]) return sendFile(req, res, FONTS[name]);
       const file = inside(STATIC_DIR, name);
-      return file ? sendFile(res, file) : send(res, 404, notFoundPage());
+      return file ? sendFile(req, res, file) : send(res, 404, notFoundPage());
     }
     if (path.startsWith("/media/")) {
       const file = inside(opts.runsDir, path.slice("/media/".length));
-      return file ? sendFile(res, file) : send(res, 404, notFoundPage());
+      return file ? sendFile(req, res, file) : send(res, 404, notFoundPage());
     }
     if (path.startsWith("/brand-art/")) {
       const file = inside(st?.brandArtDir ?? brandArtDir(opts), path.slice("/brand-art/".length));
-      return file && /[\\/](avatar|cover|cover-title)\.png$/.test(file) ? sendFile(res, file) : send(res, 404, notFoundPage());
+      return file && /[\\/](avatar|cover|cover-title)\.png$/.test(file) ? sendFile(req, res, file) : send(res, 404, notFoundPage());
     }
 
     if (st && path.startsWith("/studio-media/")) {
       const file = inside(st.opts.episodesDir, path.slice("/studio-media/".length));
-      return file && !file.includes(`${sep}layers${sep}`) ? sendFile(res, file, req.headers.range) : send(res, 404, notFoundPage());
+      return file && !file.includes(`${sep}layers${sep}`) ? sendFile(req, res, file) : send(res, 404, notFoundPage());
+    }
+    const fm = path.match(/^\/face\/([a-z0-9-]+)\.webp$/);
+    if (fm) {
+      const sheet = loadProfileSafe(fm[1])?.look.character_sheet;
+      return sheet ? sendFile(req, res, join(charactersDir(), fm[1], sheet), "face") : send(res, 404, notFoundPage());
     }
     const pm = path.match(/^\/portrait\/([a-z0-9-]+)\.svg$/);
-    if (pm) return sendFile(res, join(charactersDir(), pm[1], "portrait.svg"));
-    if (st && path.startsWith("/sheet/")) {
-      const file = inside(st.opts.charactersDir, path.slice("/sheet/".length));
-      return file && /[\\/](model|pose)-sheet\.(png|jpe?g|webp)$/.test(file) ? sendFile(res, file) : send(res, 404, notFoundPage());
+    if (pm) return sendFile(req, res, join(charactersDir(), pm[1], "portrait.svg"));
+    if (path.startsWith("/sheet/")) {
+      const file = inside(charactersDir(), path.slice("/sheet/".length));
+      return file && /[\\/](model|pose)-sheet\.(png|jpe?g|webp)$/.test(file) ? sendFile(req, res, file) : send(res, 404, notFoundPage());
     }
     if (st && path.startsWith("/style-media/")) {
       const file = inside(st.styleDir, path.slice("/style-media/".length));
-      return file && /\.(png|jpe?g|webp)$/.test(file) ? sendFile(res, file) : send(res, 404, notFoundPage());
+      return file && /\.(png|jpe?g|webp)$/.test(file) ? sendFile(req, res, file) : send(res, 404, notFoundPage());
     }
     if (st && path.startsWith("/series-media/")) {
       const file = inside(st.opts.seriesDir ?? SERIES_DIR, path.slice("/series-media/".length));
-      return file && /[\\/]style-ref\.(png|jpe?g|webp)$/.test(file) ? sendFile(res, file) : send(res, 404, notFoundPage());
+      return file && /[\\/]style-ref\.(png|jpe?g|webp)$/.test(file) ? sendFile(req, res, file) : send(res, 404, notFoundPage());
     }
 
     const state = loadState(opts);

@@ -7,6 +7,10 @@
  * Interface text goes through t() (Vietnamese and English).
  */
 
+import { createHash } from "node:crypto";
+import { readFileSync, statSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { canReply, windowClosesAt, type Comment, type Conversation } from "@hoi-sau/channel";
 import type { BrandView, CharacterView, Episode, Run, State } from "./data.js";
 import { lang, locale, t } from "./i18n.js";
@@ -56,6 +60,30 @@ const NAV = [
   ["/settings", "Cài đặt", icon('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>')],
 ] as const;
 
+const STATIC_DIR = fileURLToPath(new URL("../static", import.meta.url));
+let assets = { mtime: -1, html: "" };
+/**
+ * Stylesheet and fonts with a version, so the browser keeps them between pages instead of
+ * fetching them again (which made text jump on every click). Links in the menu and on cards
+ * are rendered ahead on hover, and pages cross-fade, so moving around feels like one app.
+ */
+function HEAD_ASSETS(): string {
+  const mtime = statSync(join(STATIC_DIR, "app.css")).mtimeMs;
+  if (mtime !== assets.mtime) {
+    const v = createHash("sha1").update(readFileSync(join(STATIC_DIR, "app.css"))).digest("hex").slice(0, 10);
+    const rules = { prerender: [{ where: { and: [{ href_matches: "/*" }, { not: { href_matches: ["/lang/*", "/logout", "/login", "/connect/*"] } }] }, eagerness: "moderate" }] };
+    assets = {
+      mtime,
+      html:
+        `<link rel="preload" href="/static/BeVietnamPro-SemiBold.ttf?v=1" as="font" type="font/ttf" crossorigin>` +
+        `<link rel="preload" href="/static/BeVietnamPro-Bold.ttf?v=1" as="font" type="font/ttf" crossorigin>` +
+        `<link rel="stylesheet" href="/static/app.css?v=${v}">` +
+        `<script type="speculationrules">${JSON.stringify(rules)}</script>`,
+    };
+  }
+  return assets.html;
+}
+
 export function layout(title: string, path: string, body: string): string {
   const nav = NAV.map(([href, label, svg]) => {
     const active = href === "/" ? path === "/" : path.startsWith(href);
@@ -64,7 +92,7 @@ export function layout(title: string, path: string, body: string): string {
   const back = encodeURIComponent(path || "/");
   const langs = `<div class="lang" role="group" aria-label="${esc(t("Ngôn ngữ"))}"><a href="/lang/vi?back=${back}"${lang() === "vi" ? ' class="on" aria-current="true"' : ""}>VI</a><a href="/lang/en?back=${back}"${lang() === "en" ? ' class="on" aria-current="true"' : ""}>EN</a></div>`;
   return `<!doctype html><html lang="${lang()}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#fff7ee">
-<title>${esc(title)} · Hồi Sau</title><link rel="stylesheet" href="/static/app.css"></head>
+<title>${esc(title)} · Hồi Sau</title>${HEAD_ASSETS()}</head>
 <body><div class="shell"><input type="checkbox" id="menu" class="menu-toggle" aria-hidden="true"><aside class="side"><div class="side-top"><a class="brand" href="/"><span class="mark">HS</span><span class="brand-name">Hồi Sau<small>${esc(t("Studio truyện tranh"))}</small></span></a>
 <label for="menu" class="menu-btn" aria-label="${esc(t("Mở menu"))}">${icon('<path d="M4 7h16M4 12h16M4 17h16"/>')}</label></div><nav>${nav}</nav>
 <div class="side-foot">${langs}<p>${esc(t("Khán giả viết tiếp. Xem hồi sau sẽ rõ."))}</p></div></aside>
@@ -74,15 +102,16 @@ export function layout(title: string, path: string, body: string): string {
 const swatches = (c: CharacterView) =>
   `<span class="swatches">${c.profile.look.palette.map((s) => `<i style="background:${esc(s.hex)}" title="${esc(s.name)} ${esc(s.hex)}"></i>`).join("")}</span>`;
 
-/** The character's picture: the latest Muse Image sheet, else the placeholder portrait. */
+/** The character's picture: the front view from the locked sheet, else the latest Muse Image sheet, else the placeholder portrait. */
 export const charSrc = (c: CharacterView) => {
+  if (c.profile.look.character_sheet) return `/face/${esc(c.profile.slug)}.webp`;
   const sheet = c.run?.images.find((i) => i.id === "sheet");
   return sheet ? `/media/${esc(c.profile.slug)}/${esc(sheet.file)}` : `/portrait/${esc(c.profile.slug)}.svg`;
 };
 
 const sheetImg = (c: CharacterView) =>
-  c.run?.images.some((i) => i.id === "sheet")
-    ? `<img src="${charSrc(c)}" alt="${esc(c.profile.name)}" loading="lazy">`
+  c.profile.look.character_sheet || c.run?.images.some((i) => i.id === "sheet")
+    ? `<img class="from-sheet" src="${charSrc(c)}" alt="${esc(c.profile.name)}" loading="lazy">`
     : `<div class="ph portrait" style="background:${esc(c.profile.look.palette[0].hex)}33"><img src="${charSrc(c)}" alt="${esc(c.profile.name)}" loading="lazy"><span class="badge" title="${esc(t("Chân dung tạm, thay bằng bản vẽ chuẩn khi AI vẽ xong"))}">${esc(t("tạm"))}</span></div>`;
 
 /** Round face of a character, by slug. */

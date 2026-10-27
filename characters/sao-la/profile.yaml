@@ -54,7 +54,7 @@ look:
     spotted: frozen like a deer in headlights, ears up
     hiding: only the horns and eyes visible above a monitor or a plant
     happy: rare full smile while alone, coworkers in the background gasping
-    edge: drawing furiously in a sketchbook, the two horns glowing brightly, hair flowing in a sudden wind, office lights flickering
+    edge: sketching with total focus in a big sketchbook at the desk, the two small horns glowing warmly like a magical unicorn, sparkles swirling around, a gentle breeze lifting the fur, the desk lamp flickering, coworkers in the background staring in awe
   # The core gag as a picture, for the image model.
   gag_scene: coworkers gather around a desk pointing excitedly; the character is only half visible peeking from behind a potted plant at the edge of the frame
   # The one item readers know this character by at thumbnail size. Every panel draws it, a little oversized.

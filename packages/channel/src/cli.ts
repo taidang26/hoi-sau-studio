@@ -280,7 +280,15 @@ async function threadsSetup(tokenArg?: string) {
     throw new Error("That does not look like a Threads token. Click Copy next to the token in the User Token Generator, then run this again.");
   }
   const names = envNames("threads");
-  const long = await exchangeThreadsLongLived(threadsClient(), required("THREADS_APP_SECRET"), shortToken);
+  let long: { accessToken: string; expiresIn?: number };
+  try {
+    long = await exchangeThreadsLongLived(threadsClient(), required("THREADS_APP_SECRET"), shortToken);
+  } catch (e) {
+    // The dashboard's User Token Generator already hands out a 60-day token,
+    // which Meta refuses to exchange again. Use it as it is if it works.
+    if (!(e instanceof GraphError) || (e.kind !== "token" && e.kind !== "invalid")) throw e;
+    long = { accessToken: shortToken };
+  }
   const profile = await threadsProfile(threadsClient(long.accessToken));
   const until = await storeThreadsToken(long.accessToken, long.expiresIn, {
     [names.userId!]: profile.id,

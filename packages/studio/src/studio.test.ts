@@ -246,3 +246,24 @@ test("the office floor plan seats every character once and reaches the prompts",
   const svg = officePlanSvg(office, { "cu-li": "Lolo" });
   assert.match(svg, />Lolo</);
 });
+
+test("brand art: an avatar and a Facebook-size cover for every brand, offline", async () => {
+  const { loadBrandList, makeBrandArt, coverPrompt, COVER_SIZE } = await import("./brand-art.js");
+  const { openStudio } = await import("./studio.js");
+  const { imageSize } = await import("@hoi-sau/svg-text");
+  const ctx = openStudio({ mock: true });
+  const brands = loadBrandList();
+  assert.ok(brands.some((b) => b.id === "hoi-sau") && brands.some((b) => b.character === "cu-li"));
+  const series = coverPrompt(ctx, brands.find((b) => b.id === "hoi-sau")!);
+  assert.match(series, /zebra crossing/);
+  assert.match(series, /Pango[\s\S]*Poppy[\s\S]*Lolo[\s\S]*Uni/, "walk order front to back");
+  assert.match(coverPrompt(ctx, brands.find((b) => b.id === "lolo")!), /Lolo \(.*\) walks across it alone/);
+  const out = mkdtempSync(join(tmpdir(), "brand-art-"));
+  const { art } = await makeBrandArt(ctx, brands.filter((b) => ["hoi-sau", "lolo"].includes(b.id)), out);
+  assert.equal(art.length, 2);
+  for (const a of art) {
+    assert.deepEqual(imageSize(readFileSync(a.cover)), { ...COVER_SIZE, mime: "image/png" });
+    assert.deepEqual(imageSize(readFileSync(a.avatar)), { width: 1024, height: 1024, mime: "image/png" });
+    assert.ok(existsSync(a.coverTitle));
+  }
+});

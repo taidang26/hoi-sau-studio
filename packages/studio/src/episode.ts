@@ -390,13 +390,13 @@ function modelSheet(ctx: StudioContext, slug: string): string | undefined {
 }
 
 /** Model sheet, then pose sheet when one is locked. */
-function characterRefs(ctx: StudioContext, slug: string): string[] {
+export function characterRefs(ctx: StudioContext, slug: string): string[] {
   const p = ctx.profiles.get(slug);
   return [modelSheet(ctx, slug), sheetImage(ctx, slug, p?.look.pose_sheet)].filter((x): x is string => Boolean(x));
 }
 
 /** The style sentence every panel gets: the series style when set, else the lead's own. */
-function panelStyle(ctx: StudioContext, ep: EpisodeSpec): string {
+export function panelStyle(ctx: StudioContext, ep: EpisodeSpec): string {
   return ctx.style ? styleText(ctx.style) : ctx.profiles.get(ep.lead)!.look.style;
 }
 

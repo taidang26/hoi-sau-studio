@@ -1,0 +1,100 @@
+# Where each episode is posted.
+#
+# Hồi Sau is the main channel and gets every episode. Each character is a
+# brand of its own with its own Page and accounts, and gets the episodes it
+# leads. The dashboard's "Kênh" page lists brands, then their channels.
+#
+# This file is public: it holds only the NAMES of the .env variables that hold
+# each account's ids and tokens, never the values.
+#
+# status:
+#   live     the pipeline posts here
+#   paused   set up, but the pipeline skips it
+#   planned  the account does not exist yet
+#
+# For the contest only Hồi Sau and Lolo's channels are live.
+
+brands:
+  - id: hoi-sau
+    name: Hồi Sau
+    kind: series
+    tagline: Mỗi ngày một tập hài văn phòng, tập sau do bình luận viết tiếp
+    posts: all
+    channels:
+      - platform: facebook
+        status: live
+        env: { pageId: FB_PAGE_ID, token: FB_PAGE_TOKEN }
+      - platform: instagram
+        status: live
+        env: { userId: IG_USER_ID }   # posts with the Facebook Page token above
+      - platform: threads
+        status: live
+        env: { userId: THREADS_USER_ID, token: THREADS_TOKEN, username: THREADS_USERNAME }
+
+  - id: lolo
+    name: Lolo
+    kind: character
+    character: cu-li
+    tagline: Người chậm, não nhanh
+    posts: lead
+    channels:
+      - platform: facebook
+        status: live
+        env: { pageId: FB_PAGE_ID_LOLO, token: FB_PAGE_TOKEN_LOLO }
+      - platform: instagram
+        status: live
+        env: { userId: IG_USER_ID_LOLO }
+      - platform: threads
+        status: paused
+        env: { userId: THREADS_USER_ID_LOLO, token: THREADS_TOKEN_LOLO, username: THREADS_USERNAME_LOLO }
+
+  - id: poppy
+    name: Poppy
+    kind: character
+    character: ca-noc
+    tagline: Hiền nhất phòng, đáng sợ nhất phòng
+    posts: lead
+    channels:
+      - platform: facebook
+        status: paused
+        env: { pageId: FB_PAGE_ID_POPPY, token: FB_PAGE_TOKEN_POPPY }
+      - platform: instagram
+        status: paused
+        env: { userId: IG_USER_ID_POPPY }
+      - platform: threads
+        status: planned
+        env: { userId: THREADS_USER_ID_POPPY, token: THREADS_TOKEN_POPPY, username: THREADS_USERNAME_POPPY }
+
+  - id: pango
+    name: Pango
+    kind: character
+    character: te-te
+    tagline: Giáp dày, tim mềm
+    posts: lead
+    channels:
+      - platform: facebook
+        status: paused
+        env: { pageId: FB_PAGE_ID_PANGO, token: FB_PAGE_TOKEN_PANGO }
+      - platform: instagram
+        status: paused
+        env: { userId: IG_USER_ID_PANGO }
+      - platform: threads
+        status: planned
+        env: { userId: THREADS_USER_ID_PANGO, token: THREADS_TOKEN_PANGO, username: THREADS_USERNAME_PANGO }
+
+  - id: uni
+    name: Uni
+    kind: character
+    character: sao-la
+    tagline: Nhân sự "kỳ lân" nhút nhát
+    posts: lead
+    channels:
+      - platform: facebook
+        status: paused
+        env: { pageId: FB_PAGE_ID_UNI, token: FB_PAGE_TOKEN_UNI }
+      - platform: instagram
+        status: paused
+        env: { userId: IG_USER_ID_UNI }
+      - platform: threads
+        status: planned
+        env: { userId: THREADS_USER_ID_UNI, token: THREADS_TOKEN_UNI, username: THREADS_USERNAME_UNI }

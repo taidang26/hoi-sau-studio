@@ -1,0 +1,20 @@
+{
+  "name": "@hoi-sau/channel",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Publishing, comments and inbox for Hồi Sau on Facebook, Instagram and Threads",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "hoisau-channel": "dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "test": "tsc -b && node --test dist/*.test.js",
+    "cli": "node dist/cli.js"
+  },
+  "dependencies": {
+    "yaml": "^2.9.1"
+  }
+}

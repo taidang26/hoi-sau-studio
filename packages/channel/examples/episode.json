@@ -1,0 +1,11 @@
+{
+  "episodeId": "lolo-ep-001",
+  "format": "image-4x5",
+  "lead": "cu-li",
+  "characters": ["cu-li", "ca-noc"],
+  "caption": "5 giờ chiều, Lolo nhận thêm một việc gấp. Tập sau ra sao? Bạn viết tiếp trong bình luận! #hoisau",
+  "captions": {
+    "threads": "Lolo và việc gấp lúc 5 giờ chiều. Bạn viết tiếp nhé! #hoisau"
+  },
+  "mediaUrls": ["https://example.com/hoisau/lolo-ep-001/strip.png"]
+}

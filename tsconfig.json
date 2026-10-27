@@ -1,0 +1,11 @@
+{
+  // `tsc -b` at the root builds every package in dependency order.
+  "files": [],
+  "references": [
+    { "path": "packages/svg-text" },
+    { "path": "packages/story" },
+    { "path": "packages/studio" },
+    { "path": "packages/channel" },
+    { "path": "packages/dashboard" }
+  ]
+}

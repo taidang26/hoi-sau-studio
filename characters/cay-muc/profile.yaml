@@ -86,7 +86,7 @@ voice:
     - "Việc nhỏ thôi em."
     - "Hồi anh mở quán net…"
   sample_lines:
-    - "Tuyết duyệt rồi, anh duyệt theo."
+    - "Tuyết dẫm lên rồi, anh ký luôn."
     - "Không gấp, mai có là được."
   do: [nói to, hứa thưởng, hỏi chuyện con mèo trước chuyện công việc]
   dont: [quát mắng, nhớ đúng tên ai, nói chuyện tiền thật]

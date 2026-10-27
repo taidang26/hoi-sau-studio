@@ -21,6 +21,9 @@ export const REQUIRED_SCOPES = [
   // Inbox (Messenger and Instagram direct)
   "pages_messaging",
   "instagram_manage_messages",
+  // Reach, shares and saves per post for the coach
+  "read_insights",
+  "instagram_manage_insights",
 ] as const;
 
 export interface LongLivedToken {

@@ -30,7 +30,7 @@ The Meta app runs in Development mode, so all of this works on our own Pages and
 | Instagram Graph API (content publishing) | Publish carousels and Reels; read comments | `instagram_basic`, `instagram_content_publish`, `instagram_manage_comments` | `packages/channel/src/publish.ts`, `comments.ts` |
 | Threads API (`graph.threads.net`) | Publish episodes; read replies | `threads_basic`, `threads_content_publish`, `threads_read_replies` | `packages/channel/src/threads.ts` |
 | Messenger Platform, Instagram messaging | Inbox: read and answer DMs inside the 24-hour window | `pages_messaging`, `instagram_manage_messages` | `packages/channel/src/inbox.ts` |
-| Page, media and thread insights | Reach, shares, saves per post for the coach and [metrics](metrics.md) | `read_insights`, `instagram_manage_insights`, `threads_manage_insights` | `data/insights.json`, read by `packages/story/src/coach.ts` (collector to be added) |
+| Page, media and thread insights | Reach, shares, saves per post for the coach and [metrics](metrics.md) | `read_insights`, `instagram_manage_insights`, `threads_manage_insights` | `packages/channel/src/insights.ts` (`channel insights`) writes `data/insights.json`; `packages/story/src/coach.ts` reads it |
 
 ## Fallbacks
 

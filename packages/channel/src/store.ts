@@ -9,6 +9,7 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { Comment } from "./comments.js";
 import type { Conversation } from "./inbox.js";
+import type { PostMetrics } from "./insights.js";
 import type { JournalEntry, PublishJournal } from "./publish.js";
 
 class JsonFile<T> {
@@ -69,14 +70,20 @@ export class FileJournal implements PublishJournal {
   }
 
   async published(): Promise<Published[]> {
+    return (await this.publishedByKey()).map(([, entry]) => entry);
+  }
+
+  /** Published entries with their journal keys, which carry the post format. */
+  async publishedByKey(): Promise<[string, Published][]> {
     const all = await this.file.read();
-    return Object.values(all).filter((entry): entry is Published => entry.state === "published");
+    return Object.entries(all).filter((pair): pair is [string, Published] => pair[1].state === "published");
   }
 }
 
 export const commentsPath = (dataDir: string) => join(dataDir, "comments.json");
 export const journalPath = (dataDir: string) => join(dataDir, "publish-journal.json");
 export const inboxPath = (dataDir: string) => join(dataDir, "inbox.json");
+export const insightsPath = (dataDir: string) => join(dataDir, "insights.json");
 
 const list = <T>(path: string) => new JsonFile<T[]>(path, () => []);
 
@@ -86,3 +93,6 @@ export const saveComments = (dataDir: string, comments: Comment[]) => list<Comme
 export const loadInbox = (dataDir: string) => list<Conversation>(inboxPath(dataDir)).read();
 export const saveInbox = (dataDir: string, conversations: Conversation[]) =>
   list<Conversation>(inboxPath(dataDir)).write(conversations);
+
+export const loadInsights = (dataDir: string) => list<PostMetrics>(insightsPath(dataDir)).read();
+export const saveInsights = (dataDir: string, rows: PostMetrics[]) => list<PostMetrics>(insightsPath(dataDir)).write(rows);

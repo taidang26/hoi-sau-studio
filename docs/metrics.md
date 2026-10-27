@@ -19,7 +19,7 @@ The coach (`npm run story -- coach`, [packages/story](../packages/story/README.m
 score = 2·comments + 4·distinct commenters + 1·replies + 1·reactions + 6·shares + 5·saves
 ```
 
-Comments count only after the spam and toxicity screen, and comments from our own accounts never count. Distinct commenters weigh most because they are the people writing the next episode. Shares, saves and reach come from `data/insights.json` (`[{ postId, reactions, shares, saves, reach }]`). The same score feeds the coach's do/avoid/test lessons, which go back into the writer brief.
+Comments count only after the spam and toxicity screen, and comments from our own accounts never count. Distinct commenters weigh most because they are the people writing the next episode. Shares, saves and reach come from `data/insights.json`, written by `npm run channel -- insights` (below). The same score feeds the coach's do/avoid/test lessons, which go back into the writer brief.
 
 ## Rates for the write-up
 
@@ -65,13 +65,15 @@ During the contest only Hồi Sau and Lolo's own channels are live, so the test 
 
 ## Collecting insights
 
-To add: a `channel insights` command that writes `data/insights.json` once a day.
+`npm run channel -- insights` writes `data/insights.json` for every published post of every brand; run it once a day, after `comments`. The coach and the dashboard read the same file.
 
-- Facebook: post fields `shares`, `comments.summary(true)`, `reactions.summary(true)`, plus post insights for reach (check the metric names against the Graph API version in use: Meta has been renaming Page reach metrics).
-- Instagram: media insights `reach`, `saved`, `shares`, `comments`, `likes`, `total_interactions`, and `views` for Reels.
-- Threads: thread insights `views`, `likes`, `replies`, `reposts`, `quotes`, `shares`.
+| Platform | Fields | From |
+| --- | --- | --- |
+| Facebook | shares, reactions, comments, reach | post fields `shares`, `reactions.summary`, `comments.summary`; reach from post insights, `post_total_media_view_unique` then `post_impressions_unique` (or `FB_REACH_METRIC`) |
+| Instagram | reach, likes → reactions, comments, shares, saved → saves, views (Reels) | media insights |
+| Threads | views, likes → reactions, replies → comments, shares + reposts + quotes → shares | thread insights; no reach |
 
-Until it exists, the numbers can be typed into `data/insights.json` by hand from Meta Business Suite; the coach and the dashboard read the same file.
+A number Meta does not give is left out and listed under `missing` for that post, so a gap is visible rather than counted as zero. Rates per reach on Threads use views instead of reach, and are reported separately.
 
 ## Results
 

@@ -14,38 +14,47 @@ import { readFile, writeFile } from "node:fs/promises";
 import {
   BRANDS_FILE,
   DEFAULT_GRAPH_VERSION,
-  MAIN_BRAND,
+  FACEBOOK_REACH_METRICS,
   FileJournal,
   GraphClient,
   GraphError,
   InboxError,
+  MAIN_BRAND,
   THREADS_BASE_URL,
   brandTargets,
   channelStates,
   exchangeCodeForUserToken,
   exchangeLongLivedUserToken,
   exchangeThreadsLongLived,
+  facebookInsights,
   fetchConversations,
   fetchFacebookComments,
   fetchInstagramComments,
   fetchThreadsReplies,
   findBrand,
+  insightsPath,
   inspectToken,
+  instagramInsights,
   journalPath,
   listManagedPages,
   loadBrands,
   loadComments,
   loadInbox,
+  loadInsights,
   loginDialogUrl,
   mergeComments,
   mergeConversations,
+  mergeInsights,
   missingScopes,
+  parseJournalKey,
   publishEpisode,
   refreshThreadsToken,
   routeEpisode,
   saveComments,
   saveInbox,
+  saveInsights,
   sendReply,
+  threadsInsights,
   threadsProfile,
   waitForLoginCode,
   type Brand,
@@ -54,6 +63,7 @@ import {
   type Conversation,
   type EpisodePost,
   type Platform,
+  type PostMetrics,
   type Targets,
 } from "./index.js";
 import { demoGraph } from "./demo.js";
@@ -378,6 +388,45 @@ async function reply(conversationId: string, text: string) {
   console.log(`Sent to ${conversation.customer.name}.`);
 }
 
+async function pullInsights() {
+  const cache = new Map<string, Targets>();
+  const targetsOf = (brand: Brand) => {
+    if (!cache.has(brand.id)) cache.set(brand.id, accounts(brand, true).targets);
+    return cache.get(brand.id)!;
+  };
+  const reachMetrics = process.env.FB_REACH_METRIC ? [process.env.FB_REACH_METRIC] : FACEBOOK_REACH_METRICS;
+
+  const fresh: PostMetrics[] = [];
+  const gaps = new Map<string, number>();
+  for (const [key, post] of await journal().publishedByKey()) {
+    const { format } = parseJournalKey(key);
+    const t = targetsOf(findBrand(brands(), post.brand ?? MAIN_BRAND));
+    const numbers =
+      post.platform === "facebook"
+        ? await facebookInsights(t.page, post.postId, reachMetrics)
+        : post.platform === "instagram"
+          ? await instagramInsights(t.page, post.postId, format === "reels-9x16")
+          : t.threads
+            ? await threadsInsights(t.threads.client, post.postId)
+            : undefined;
+    if (!numbers) continue;
+    const { missing, ...values } = numbers;
+    for (const m of missing) gaps.set(`${post.platform} ${m}`, (gaps.get(`${post.platform} ${m}`) ?? 0) + 1);
+    fresh.push({
+      postId: post.postId,
+      platform: post.platform,
+      ...(post.brand ? { brand: post.brand } : {}),
+      ...values,
+      fetchedAt: new Date().toISOString(),
+      ...(missing.length ? { missing } : {}),
+    });
+  }
+  const all = mergeInsights(await loadInsights(dataDir()), fresh);
+  await saveInsights(dataDir(), all);
+  console.log(`Numbers for ${fresh.length} posts, ${all.length} in ${insightsPath(dataDir())}.`);
+  for (const [gap, n] of gaps) console.log(`  not available on ${n} post(s): ${gap}`);
+}
+
 // -------------------------------------------------------------------- main
 
 interface Command {
@@ -416,6 +465,11 @@ const commands: Record<string, Command> = {
     run: ([file, ...platforms]) => publish(file, platforms as Platform[]),
   },
   comments: { usage: "comments", help: "pull comments of every published episode into data/comments.json", run: pullComments },
+  insights: {
+    usage: "insights",
+    help: "pull reach, reactions, shares, saves and views of every published post into data/insights.json",
+    run: pullInsights,
+  },
   inbox: { usage: "inbox", help: "pull Messenger and Instagram conversations into data/inbox.json", run: pullInbox },
   reply: {
     usage: "reply <conversation-id> <text>",

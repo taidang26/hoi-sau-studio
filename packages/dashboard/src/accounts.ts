@@ -274,6 +274,34 @@ export class Accounts {
   }
 
   /** Whether any brand has a Page connected, so pulling can work at all. */
+  /** Latest image posts of a public Instagram business or creator account, through any connected Instagram. */
+  async discoverInstagram(handle: string): Promise<Array<{ image: string; link: string; caption?: string; account: string }>> {
+    const tg = this.brands()
+      .map((b) => {
+        try {
+          return brandTargets(b, this.env, this.clientFor, { includePaused: true }).targets;
+        } catch {
+          return undefined;
+        }
+      })
+      .find((x) => x?.igUserId);
+    if (!tg) throw new NeedsSetup(t("Cần kết nối Instagram của một kênh trước."), "/channels/hoi-sau");
+    type Media = { media_type: string; media_url?: string; thumbnail_url?: string; permalink: string; caption?: string; children?: { data: Array<{ media_type: string; media_url?: string }> } };
+    let found: { business_discovery?: { username: string; media?: { data: Media[] } } };
+    try {
+      found = await tg.page.get(tg.igUserId!, {
+        fields: `business_discovery.username(${handle}){username,media.limit(12){media_type,media_url,thumbnail_url,permalink,caption,children{media_type,media_url}}}`,
+      });
+    } catch {
+      throw new Error(t("Không đọc được @{handle}. Chỉ đọc được kênh doanh nghiệp hoặc nhà sáng tạo công khai.", { handle }));
+    }
+    const bd = found.business_discovery;
+    return (bd?.media?.data ?? []).flatMap((m) => {
+      const image = m.media_type === "IMAGE" ? m.media_url : m.media_type === "CAROUSEL_ALBUM" ? m.children?.data.find((c) => c.media_type === "IMAGE")?.media_url : m.thumbnail_url;
+      return image ? [{ image, link: m.permalink, caption: m.caption, account: bd!.username }] : [];
+    });
+  }
+
   anyPage(): boolean {
     try {
       return this.brands().some((b) => brandTargets(b, this.env, this.clientFor, { includePaused: true }).targets);

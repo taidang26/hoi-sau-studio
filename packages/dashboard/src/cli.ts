@@ -11,8 +11,10 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DEFAULT_GRAPH_VERSION, GraphClient, sendReply } from "@hoi-sau/channel";
 import { DEMO, demoGraph } from "@hoi-sau/channel/dist/demo.js";
-import { CHARACTERS_DIR, createEpisode, EPISODES_DIR, listEpisodes, mockSparkTransport, MuseSpark, openStudio, runEpisode, SERIES_DIR } from "@hoi-sau/studio";
+import { CHARACTERS_DIR, createEpisode, EPISODES_DIR, listCharacters, listEpisodes, loadProfile, mockSparkTransport, MuseSpark, openStudio, runEpisode, SERIES_DIR } from "@hoi-sau/studio";
 import { Accounts } from "./accounts.js";
+import { demoAnalyst, Research, seedResearch } from "./research.js";
+import { t } from "./i18n.js";
 import { seedLessons, writeDemoData } from "./seed.js";
 import { Studio } from "./studio.js";
 import { defaultPaths, startDashboard } from "./server.js";
@@ -82,6 +84,22 @@ if (demo && listEpisodes(studioDirs.episodesDir).length === 0) {
   }
 }
 
+// Tư liệu: kept under the data dir, never committed. The demo reads with fixed recipes and cannot reach Instagram.
+const cast = () =>
+  listCharacters(studioDirs.charactersDir).map((slug) => loadProfile(slug, studioDirs.charactersDir)).map((p) => ({ slug: p.slug, name: p.name, about: `${p.role}; ${p.core_gag}` }));
+const demoReader = demoAnalyst(() => cast().map((c) => c.slug));
+const research = new Research({
+  dir: join(paths.dataDir, "research"),
+  cast,
+  analyst: museMock ? () => demoReader : () => MuseSpark.fromEnv(),
+  discover: demo
+    ? async () => {
+        throw new Error(t("Đang xem dữ liệu mẫu nên không đọc Instagram thật."));
+      }
+    : (handle) => accounts.discoverInstagram(handle),
+});
+if (demo) await seedResearch(research);
+
 const port = Number(process.env.PORT || 4321);
 await startDashboard(
   {
@@ -89,6 +107,7 @@ await startDashboard(
     inbox,
     studio,
     accounts,
+    research,
     demo,
     banner: demo ? "Đang xem dữ liệu mẫu. Bài đăng, bình luận và tin nhắn ở đây là bịa, chỉ để thử giao diện." : undefined,
     channel: () => ({

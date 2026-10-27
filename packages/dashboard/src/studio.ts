@@ -227,7 +227,7 @@ const steps = (id: string, dir: string) => {
 const castName = (s: State, slug: string) => s.characters.find((c) => c.profile.slug === slug)?.profile.name ?? slug;
 const aiNote = (st: Studio) => (st.opts.mock ? `<span class="muted small">${esc(t("Bản thử: AI không chạy thật."))}</span>` : st.ready ? "" : `<span class="muted small">${esc(t("Cần khoá AI Muse."))} <a href="/settings">${esc(t("Mở Cài đặt"))}</a></span>`);
 
-export function studioPage(s: State, st: Studio, error?: string): string {
+export function studioPage(s: State, st: Studio, error?: string, inspiration = ""): string {
   const dir = st.opts.episodesDir;
   const rows = listEpisodes(dir)
     .reverse()
@@ -260,6 +260,7 @@ export function studioPage(s: State, st: Studio, error?: string): string {
 <label>${esc(t("Hướng truyện"))}<textarea name="direction" rows="3" required placeholder="${esc(t("Chuyện gì xảy ra trong tập này"))}">${esc(ideas.map((c) => c.text).join("\n"))}</textarea></label>
 <fieldset class="pick-format"><legend>${esc(t("Kiểu truyện"))}</legend>${EPISODE_FORMATS.map((f) => `<label class="format-pick"><input type="radio" name="format" value="${f}"${f === "strip3" ? " checked" : ""}><span class="fmt fmt-${f}">${f === "strip3" ? "<i></i><i></i><i></i>" : "<i></i><i></i><i></i><i></i><i></i>"}</span>${esc(t(FORMAT_LABEL[f]))}</label>`).join("")}</fieldset>
 ${ideas.length ? `<fieldset><legend>${esc(t("Ghi công người bình luận"))}</legend>${ideas.map((c) => `<label class="check"><input type="checkbox" name="credit" value="${esc(`${c.author.name}::${c.text}`)}" checked> <b>${esc(c.author.name)}</b>: <span class="muted">${esc(c.text)}</span></label>`).join("")}</fieldset>` : `<p class="muted small">${t('Mẹo: chọn bình luận hay ở trang <a href="/comments">Bình luận</a>, chúng sẽ hiện ở đây làm hướng truyện.')}</p>`}
+${inspiration}
 <div class="row-actions"><button class="btn on">${esc(t("Tạo tập"))}</button>${aiNote(st)}</div></form>`;
 
   const flow = `<ol class="flow">${EPISODE_STEPS.map((x, i) => `<li><b>${i + 1}</b>${esc(t(STEP_LABEL[x]))}</li>`).join("")}</ol>`;
@@ -296,7 +297,7 @@ function motionSection(st: Studio, id: string): string {
 
 const media = (id: string, file: string) => `/studio-media/${encodeURIComponent(id)}/${file.split("/").map(encodeURIComponent).join("/")}`;
 
-export function episodeStudioPage(s: State, st: Studio, id: string, error?: string): string | undefined {
+export function episodeStudioPage(s: State, st: Studio, id: string, error?: string, extra = ""): string | undefined {
   const dir = st.opts.episodesDir;
   const ep = readStep<EpisodeSpec>(id, "episode", dir);
   if (!ep) return undefined;
@@ -328,10 +329,11 @@ ${next ? `<form class="run" method="post" action="/studio/${esc(id)}/run"><butto
   const dl = (rows: Array<[string, string | undefined]>) => `<dl class="kv">${rows.filter(([, v]) => v).map(([k, v]) => `<dt>${esc(t(k))}</dt><dd>${esc(v)}</dd>`).join("")}</dl>`;
   const body = `<p><a href="/studio">← Studio</a></p><header class="page-head"><div><h1>${esc(premise?.title ?? t("Tập mới"))}</h1><p class="muted">${esc(t(FORMAT_LABEL[ep.format ?? "carousel"]))} · ${esc(t("vai chính"))}: ${esc(name(ep.lead))}${ep.characters.length > 1 ? ` · ${esc(t("cùng"))}: ${esc(ep.characters.slice(1).map(name).join(", "))}` : ""}</p></div>${steps(id, dir)}</header>
 ${runBar}
-<section class="card"><h2>${esc(t("Hướng từ khán giả"))}</h2><p>${esc(ep.direction)}</p>${ep.credits.length ? `<p class="muted small">${esc(t("Ghi công"))}: ${ep.credits.map((c) => esc(c.name)).join(", ")}</p>` : ""}</section>
+<section class="card"><h2>${esc(t("Hướng từ khán giả"))}</h2><p class="pre">${esc(ep.direction)}</p>${ep.credits.length ? `<p class="muted small">${esc(t("Ghi công"))}: ${ep.credits.map((c) => esc(c.name)).join(", ")}</p>` : ""}</section>
 ${motionSection(st, id)}
 ${letter?.page ? `<section class="card"><h2>${esc(t("Trang ghép"))}</h2><img class="strip-page" src="${media(id, letter.page)}" alt=""></section>` : ""}
 ${letter ? `<section class="card"><h2>${esc(t("Bản hoàn chỉnh"))}</h2><div class="pages">${letter.pages.map((p) => `<figure><img src="${media(id, p.file)}" alt="${esc(t("Khung {n}", { n: p.n }))}" loading="lazy"><figcaption>${p.n}${p.overflow ? ` · <span class="tag over">${esc(t("{n} lời thoại tràn", { n: p.overflow }))}</span>` : ""}</figcaption></figure>`).join("")}</div></section>` : ""}
+${extra}
 ${section("premise", premise ? dl([["Một câu", premise.logline], ["Mở đầu", premise.setup], ["Bất ngờ", premise.twist], ["Móc hồi sau", premise.hook], ["Khách mời", premise.cameo ? `${premise.cameo.name}: ${premise.cameo.description}` : undefined]]) : "")}
 ${section("beats", beats ? `<ol class="beats">${beats.beats.map((b) => `<li><span class="tag">${esc(b.purpose)}</span> ${esc(b.what_happens)}</li>`).join("")}</ol>` : "")}
 ${section("script", script ? `<div class="scroll"><table><thead><tr><th>#</th><th>${esc(t("Bối cảnh"))}</th><th>${esc(t("Hành động"))}</th><th>${esc(t("Lời thoại"))}</th></tr></thead><tbody>${script.panels.map((p, i) => `<tr><td>${i + 1}</td><td>${esc(p.setting)}</td><td>${esc(p.action)}<br><span class="muted small">${p.expressions.map((e) => `${esc(name(e.character))}: ${esc(e.expression)}`).join(" · ")}</span></td><td>${p.dialogue.map((d) => `<b>${esc(name(d.speaker))}:</b> ${esc(d.text)}`).join("<br>") || `<span class="muted">(${esc(t("không thoại"))})</span>`}</td></tr>`).join("")}</tbody></table></div>` : "")}

@@ -47,6 +47,7 @@ const NAV = [
   ["/studio", "Studio", icon('<path d="M4 20l4-1 11-11a2.1 2.1 0 0 0-3-3L5 16z"/><path d="M14 7l3 3"/>')],
   ["/characters", "Nhân vật", icon('<circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/>')],
   ["/style", "Phong cách", icon('<circle cx="12" cy="12" r="9"/><circle cx="8.5" cy="10" r="1.3"/><circle cx="12" cy="7.5" r="1.3"/><circle cx="15.5" cy="10" r="1.3"/><path d="M12 21a2.5 2.5 0 0 1 0-5h2.5a2.5 2.5 0 0 0 2.5-2.5"/>')],
+  ["/research", "Tư liệu", icon('<rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-8 9"/>')],
   ["/comments", "Bình luận", icon('<path d="M4 5h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H9l-5 4V6a1 1 0 0 1 1-1z"/>')],
   ["/inbox", "Hộp thư", icon('<path d="M3 13l3-8h12l3 8v5a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/><path d="M3 13h5l1.5 2.5h5L16 13h5"/>')],
   ["/episodes", "Tập đã đăng", icon('<rect x="3" y="4" width="18" height="16" rx="3"/><path d="M3 9h18M8 4v5M16 4v5"/>')],
@@ -285,6 +286,8 @@ export interface SheetControls {
   drawing?: string;
   error?: string;
   ok?: string;
+  /** More cards for the page, e.g. notes pinned from Tư liệu. */
+  extra?: string;
 }
 
 const SHOT: Record<string, string> = { sheet: "Model sheet", poses: "Bộ tư thế", desk: "Thử: bàn làm việc", meeting: "Thử: phòng họp", gag: "Thử: miếng hài" };
@@ -310,6 +313,7 @@ ${flash(draw?.ok, draw?.error)}
 ${modelSheet(c)}
 <section class="card"><div class="card-head"><h2>${esc(t("Thử độ nhất quán"))}</h2>${drawBar}</div>${images}</section>
 ${depth(c)}
+${draw?.extra ?? ""}
 <div class="grid2"><section class="card"><h2>${esc(t("Ngoại hình"))}</h2><p>${esc(p.look.description)}</p>${p.look.icon ? `<h3>${esc(t("Đồ nhận diện"))}</h3><p>${esc(p.look.icon)}</p>` : ""}<h3>${esc(t("Không được vẽ sai"))}</h3>${list(p.look.signature)}<h3>${esc(t("Biểu cảm"))}</h3>${list(Object.entries(p.look.expressions).map(([k, v]) => `${k}: ${v}`))}</section>
 <section class="card"><h2>${esc(t("Tính cách và giọng"))}</h2>${list(p.personality)}<h3>${esc(t("Câu cửa miệng"))}</h3>${list(p.voice.catchphrases)}<h3>${esc(t("Không bao giờ nói"))}</h3>${list(p.never_says)}</section></div>`;
   return layout(p.name, "/characters", body);

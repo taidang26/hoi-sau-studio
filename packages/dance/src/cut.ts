@@ -144,6 +144,8 @@ export interface CutPart {
 }
 
 export interface CutResult {
+  /** The whole character: parts only lose pixels at its outer edge, never where they meet each other. */
+  body: Mask;
   bones: Record<Bone, { pivot: Vec; tip: Vec }>;
   parts: CutPart[];
 }
@@ -232,8 +234,9 @@ export async function cutRig(sam: SamLike, image: Buffer, opts: { phrases?: Part
   // The torso keeps whatever SAM left between the parts, so nothing goes missing.
   const stray = rest.map((v, i) => v & (torso[i] ^ 1)) as Mask;
   parts.push({ name: "torso", bone: "torso", mask: union([torso, stray], n), z: 2 }, { name: "head", bone: "head", mask: head, z: 5 });
-  for (const p of parts) p.mask = dilate(p.mask, width, height, 2, body);
-  return { img, cut: { bones, parts } };
+  // Parts are not grown into each other: a grown edge carries the neighbour's ink line,
+  // which shows as a ghost outline once the parts turn.
+  return { img, cut: { body, bones, parts } };
 }
 
 function nearEdge(mask: Mask, width: number, height: number, x: number, y: number, r: number): boolean {
@@ -271,8 +274,8 @@ export async function writeCutRig(dir: string, name: string, img: Img, cut: CutR
         const d = (y * w + x) * 4;
         if (!p.mask[s]) continue;
         img.data.copy(rgba, d, s * 4, s * 4 + 4);
-        if (nearEdge(p.mask, width, height, x0 + x, y0 + y, 3)) {
-          // Paper-white pixels at a part's edge are background the mask caught: clear them, fade the light grey ones.
+        if (nearEdge(cut.body, width, height, x0 + x, y0 + y, 2)) {
+          // Paper-white pixels at the character's outer edge are background the mask caught: clear them, fade the light grey ones.
           const lo = Math.min(rgba[d], rgba[d + 1], rgba[d + 2]);
           const hi = Math.max(rgba[d], rgba[d + 1], rgba[d + 2]);
           // Light grey halo too: anti-aliasing between the ink line and the paper.

@@ -177,10 +177,14 @@ async function setup(shortToken: string) {
   const fb = envNames("facebook");
   const ig = optionalEnvNames("instagram");
   const { accessToken } = await exchangeLongLivedUserToken(client(), required("META_APP_ID"), required("META_APP_SECRET"), shortToken);
-  const pages = await listManagedPages(client(accessToken));
-  if (pages.length === 0) throw new Error("This account manages no Pages. Was pages_show_list granted?");
-
   const wanted = fb.pageId ? process.env[fb.pageId] : undefined;
+  const pages = await listManagedPages(client(accessToken), { pageId: wanted });
+  if (pages.length === 0) {
+    throw new Error(
+      "This account manages no Pages. Check pages_show_list was granted; if the Page belongs to a business portfolio, add business_management to the login.",
+    );
+  }
+
   const page = wanted ? pages.find((p) => p.id === wanted) : pages.length === 1 ? pages[0] : undefined;
   if (!page) {
     console.log("Pages this account manages:");

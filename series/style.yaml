@@ -11,14 +11,15 @@ base: >-
   colours with at most one soft shadow tone. A soft pink blush on the cheeks.
   Simple round eyes with one white highlight, eyebrows that do the acting.
   Big, readable poses and expressions that land at phone size. Uncluttered
-  Vietnamese office settings with a few telling props. Bright, cheerful
-  daylight: light airy backgrounds, sunny windows, fresh clean colours. Even
-  a late or stressful moment is warm golden afternoon light, never dark.
+  Vietnamese office settings with a few telling props. Lighting fits the
+  scene and stays cheerful: daytime by default, with light airy backgrounds
+  and fresh clean colours. When the story needs evening or night (overtime,
+  a party), keep it warm and lively, lit by lamps and screens, never gloomy.
 avoid:
   - photorealism, 3D render, glossy or airbrushed shading, gradients
   - anime sparkle eyes, manga screentone
   - drawn text, letters, numbers on signs, speech bubbles, captions, logos
-  - dark, dim, gloomy or night-time scenes, heavy shadows, a mood of despair
+  - gloomy, murky or depressing lighting, heavy shadows, a mood of despair
 variants:
   - id: warm-pastel
     label: Pastel ấm, nền một màu

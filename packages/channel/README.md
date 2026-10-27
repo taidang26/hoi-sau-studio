@@ -26,7 +26,7 @@ Threads (separate login, token lasts about 60 days):
 1. Open Threads with the brand's Instagram account to create the profile.
 2. In the app dashboard add the **Access the Threads API** use case with `threads_basic`, `threads_content_publish`, `threads_read_replies`; copy its app secret into `.env` as `THREADS_APP_SECRET`.
 3. Invite the profile as a Threads tester and accept in the Threads app (Settings › Account › Website permissions › Invites).
-4. Generate a token in the use case's User Token Generator and run `npm run channel -- threads-setup <token>`.
+4. Generate a token in the use case's User Token Generator and click Copy next to it, then run `npm run channel -- threads-setup` (it reads the token from the clipboard, so it is never pasted into a terminal; passing it as an argument also works).
 5. `check` shows the days left; `threads-refresh` extends it.
 
 For a character brand add `--brand <id>` (for example `--brand lolo`); its `.env` names are listed in `channels.yaml`.
@@ -38,7 +38,7 @@ For a character brand add `--brand <id>` (for example `--brand lolo`); its `.env
 | `brands` | Brands, their channels and status, and which `.env` names are still empty |
 | `login [port]` | Facebook Login in the browser, then the same as `setup` |
 | `setup <token>` | Page id, Page token and Instagram id into `.env` |
-| `threads-setup <token>` / `threads-refresh` | Threads profile and 60-day token; extend it |
+| `threads-setup [token]` / `threads-refresh` | Threads profile and 60-day token; extend it |
 | `check` | Token validity, missing permissions, Threads days left |
 | `publish <episode.json> [platform...]` | Post to the episode's brands, or `--brand <id>` |
 | `comments` | Pull comments of every published episode |

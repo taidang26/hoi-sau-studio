@@ -8,7 +8,7 @@
  * the main brand). META_GRAPH_MOCK=1 swaps Meta for the fake in demo.ts.
  */
 
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import {
@@ -255,7 +255,26 @@ async function storeThreadsToken(token: string, expiresIn: number | undefined, m
   return until;
 }
 
-async function threadsSetup(shortToken: string) {
+/** Reads the clipboard, so a token copied from the dashboard never has to be pasted into a terminal. */
+function readClipboard(): string {
+  const [cmd, args]: [string, string[]] =
+    process.platform === "win32"
+      ? ["powershell", ["-NoProfile", "-Command", "Get-Clipboard"]]
+      : process.platform === "darwin"
+        ? ["pbpaste", []]
+        : ["xclip", ["-selection", "clipboard", "-o"]];
+  try {
+    return execFileSync(cmd, args, { encoding: "utf8" }).trim();
+  } catch {
+    throw new Error("Could not read the clipboard. Pass the token as an argument instead.");
+  }
+}
+
+async function threadsSetup(tokenArg?: string) {
+  const shortToken = tokenArg ?? readClipboard();
+  if (!/^\S{20,}$/.test(shortToken)) {
+    throw new Error("That does not look like a Threads token. Click Copy next to the token in the User Token Generator, then run this again.");
+  }
   const names = envNames("threads");
   const long = await exchangeThreadsLongLived(threadsClient(), required("THREADS_APP_SECRET"), shortToken);
   const profile = await threadsProfile(threadsClient(long.accessToken));
@@ -405,9 +424,8 @@ const commands: Record<string, Command> = {
     run: ([token]) => setup(token),
   },
   "threads-setup": {
-    usage: "threads-setup <short-lived Threads token>",
-    help: "swap it for a 60-day token and save the Threads profile",
-    args: 1,
+    usage: "threads-setup [short-lived Threads token]",
+    help: "swap it (or the one on the clipboard) for a 60-day token and save the Threads profile",
     run: ([token]) => threadsSetup(token),
   },
   "threads-refresh": { usage: "threads-refresh", help: "extend the Threads token by another 60 days", run: threadsRefresh },

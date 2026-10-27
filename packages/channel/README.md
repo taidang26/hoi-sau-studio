@@ -4,6 +4,7 @@ Gets each episode in front of people and brings their comments back.
 
 - **Publish** an episode to Facebook, Instagram and Threads, for the main Hồi Sau brand and for the brand of the character who leads it (`channels.yaml`).
 - **Comments**: pull comments and Threads replies of every published episode into `data/comments.json` for the listening step in `packages/story`.
+- **Talking back**: send the character comments a person approved, and read each post's numbers.
 - **Inbox**: Messenger and Instagram direct messages, answered within Meta's 24-hour window.
 
 The Meta app runs in **Development mode**. The Pages and accounts belong to the developer, who is an Admin of the app, so App Review is not needed. Background and pitfalls: [docs/meta-integration-notes.md](../../docs/meta-integration-notes.md).
@@ -40,8 +41,10 @@ For a character brand add `--brand <id>` (for example `--brand lolo`); its `.env
 | `setup <token>` | Page id, Page token and Instagram id into `.env` |
 | `threads-setup [token]` / `threads-refresh` | Threads profile and 60-day token; extend it |
 | `check` | Token validity, missing permissions, Threads days left |
-| `publish <episode.json> [platform...]` | Post to the episode's brands, or `--brand <id>` |
+| `publish <episode.json> [platform...]` | Post to the episode's brands, or `--brand <id>`. Refuses an episode the owner has not approved, or one changed since (`episodes/<id>/approval.json`, [docs/safety.md](../../docs/safety.md)); `EPISODES_DIR` overrides the folder |
 | `comments` | Pull comments of every published episode |
+| `insights` | Reactions, shares, saves and reach of every published post into `data/insights.json`; metrics a post does not support are skipped. `story coach` uses them |
+| `send-replies` | Post the approved first comments and character replies in `data/replies.json` (drafted by `story replies` / `story first-comment`), each once, from the account that published the post |
 | `inbox` / `reply <conversation-id> <text>` | Pull conversations; answer one |
 
 An episode file looks like [examples/episode.json](examples/episode.json). Media must be public HTTPS URLs because Meta downloads them itself. Threads captions stop at 500 characters, so set `captions.threads` for a shorter one.

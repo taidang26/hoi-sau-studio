@@ -11,7 +11,7 @@ flowchart LR
   sheet -->|human approves| locked[Locked model sheet]
   series[Series bible<br>world, rules, cast, arc, canon] --> premise
   comments[Picked comments] --> premise
-  premise[Premise] --> beats[Beats] --> script[Panel script] --> board[Storyboard]
+  premise[Premise] --> beats[Beats] --> script[Panel script] --> gate{Safety gate} --> board[Storyboard]
   board -->|Muse Image + style, model and pose sheets| panels[Panels]
   locked --> panels
   panels -->|Muse Spark vision| review{On model?}
@@ -56,6 +56,7 @@ Image models drift: an outfit changes colour, a signature prop disappears, the f
 | 1 | Premise | Muse Spark | bible brief, cast brief, direction, credits | `premise.json`: title, logline, setup, twist, hook, cameo |
 | 2 | Beats | Muse Spark | premise | `beats.json`: 4–6 beats, each with a purpose (`strip3`: exactly 3, setup, worse, twist) |
 | 3 | Panel script | Muse Spark | premise, beats | `script.json`: setting, action, expressions, at most 2 lines of dialogue per panel |
+| 3b | Safety gate | rules + Muse Spark | every text of the episode, `series/safety.yaml`, never_says | `safety.json`; a fail stops here ([safety.md](safety.md)) |
 | 4 | Storyboard | Muse Spark | script | `storyboard.json`: shot, angle, composition, staging (left/center/right) |
 | 5 | Panels | Muse Image | script, storyboard, model sheets | `panels/panel-N.png`, `panels.json` (prompt, response id) |
 | 6 | Review + redraw | Muse Spark vision, Muse Image edit | panels, model sheets | `review.json`, `panels/panel-N-fixK.png` |
@@ -99,6 +100,6 @@ The same actions are in the dashboard (`npm run dashboard`). **Phong cách** dra
 
 ## Cost and limits
 
-A four-panel episode makes 5 Muse Spark writing calls (premise, beats, script, storyboard, canon), 4 Muse Image panels, 4 Muse Spark vision reviews, plus one edit and one extra review per failed panel. At about $0.01 per image, the drawing part of an episode costs under $0.10.
+A four-panel episode makes 6 Muse Spark text calls (premise, beats, script, safety, storyboard, canon), 4 Muse Image panels, 4 Muse Spark vision reviews, plus one edit and one extra review per failed panel. At about $0.01 per image, the drawing part of an episode costs under $0.10.
 
 Real runs need `META_API_KEY` in `.env` and network access to `api.meta.ai`. With `MUSE_MOCK=1` or `--mock`, nothing is sent.

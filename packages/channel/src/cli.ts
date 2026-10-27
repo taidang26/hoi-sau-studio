@@ -11,6 +11,7 @@
 import { execFileSync, spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import {
   BRANDS_FILE,
   DEFAULT_GRAPH_VERSION,
@@ -43,6 +44,13 @@ import {
   publishEpisode,
   refreshThreadsToken,
   routeEpisode,
+  approvalProblems,
+  fetchInsights,
+  loadReplies,
+  saveInsights,
+  saveReplies,
+  sendApproved,
+  type PostInsights,
   saveComments,
   saveInbox,
   sendReply,
@@ -326,6 +334,11 @@ async function check() {
 
 async function publish(file: string, only: Platform[]) {
   const post = JSON.parse(await readFile(file, "utf8")) as EpisodePost;
+  // Only what the owner approved goes out, exactly as approved. The fake Meta skips this for demos and tests.
+  if (!mock) {
+    const problems = approvalProblems(join(process.env.EPISODES_DIR || "episodes", post.episodeId), post);
+    if (problems.length) throw new Error(`Not publishing ${post.episodeId}:\n  ${problems.join("\n  ")}`);
+  }
   // --brand posts to that brand only. Otherwise channels.yaml routes by the lead character.
   const routes = chosenBrand
     ? [{ brand: currentBrand() }]
@@ -383,6 +396,39 @@ async function pullComments() {
   const { all, added } = mergeComments(await loadComments(dataDir()), fetched);
   await saveComments(dataDir(), all);
   console.log(`${added.length} new comments, ${all.length} in total.`);
+}
+
+/** Accounts per brand, looked up once; paused channels included, since their posts still get comments. */
+function accountsCache() {
+  const cache = new Map<string, Targets>();
+  return (id = MAIN_BRAND) => {
+    const brand = findBrand(brands(), id);
+    if (!cache.has(brand.id)) cache.set(brand.id, accounts(brand, true).targets);
+    return cache.get(brand.id)!;
+  };
+}
+
+async function pullInsights() {
+  const targetsOf = accountsCache();
+  const found: PostInsights[] = [];
+  for (const post of await journal().published()) {
+    try {
+      found.push(await fetchInsights(targetsOf(post.brand), post.platform, post.postId));
+    } catch (e) {
+      console.warn(`${post.platform} ${post.postId}: ${(e as Error).message}`);
+    }
+  }
+  await saveInsights(dataDir(), found);
+  console.log(`Numbers for ${found.length} posts.`);
+}
+
+async function sendReplies() {
+  const targetsOf = accountsCache();
+  // Each comment goes out from the account that published its post.
+  const brandOf = new Map((await journal().published()).map((p) => [p.postId, p.brand]));
+  const { list, sent, failed } = await sendApproved((c) => targetsOf(c.brand ?? brandOf.get(c.postId)), await loadReplies(dataDir()));
+  await saveReplies(dataDir(), list);
+  console.log(`${sent} sent, ${failed} failed.`);
 }
 
 async function pullInbox() {
@@ -449,6 +495,12 @@ const commands: Record<string, Command> = {
     run: ([file, ...platforms]) => publish(file, platforms as Platform[]),
   },
   comments: { usage: "comments", help: "pull comments of every published episode into data/comments.json", run: pullComments },
+  insights: { usage: "insights", help: "reactions, shares, saves and reach of every published post into data/insights.json", run: pullInsights },
+  "send-replies": {
+    usage: "send-replies",
+    help: "post the approved character comments in data/replies.json, each once",
+    run: sendReplies,
+  },
   inbox: { usage: "inbox", help: "pull Messenger and Instagram conversations into data/inbox.json", run: pullInbox },
   reply: {
     usage: "reply <conversation-id> <text>",

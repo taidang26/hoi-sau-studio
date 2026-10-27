@@ -9,6 +9,9 @@
   },
   "references": [
     {
+      "path": "../channel"
+    },
+    {
       "path": "../svg-text"
     },
     {

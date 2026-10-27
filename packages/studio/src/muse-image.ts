@@ -64,16 +64,23 @@ export function apiSize(size: string): string {
 }
 
 /**
- * Muse Image may answer in WebP, which the SVG renderer cannot embed, so every
- * image becomes a PNG, centre-cropped to the size asked for.
+ * Every image becomes a PNG (the SVG renderer cannot embed WebP), centre-
+ * cropped to the aspect ratio asked for at the resolution Muse drew it.
+ * `size` only picks the shape: Muse renders at about 2.5 MP (1280x1920 for a
+ * tall frame), and shrinking that to the request's 1024 px would throw detail
+ * away. Final post sizes are set later, in one downscale.
  */
 export async function normalizeImage(image: Buffer, size?: string): Promise<Buffer> {
-  const img = sharp(image);
-  if (size) {
-    const [w, h] = size.split("x").map(Number);
-    if (w && h) img.resize(w, h, { fit: "cover", position: "centre" });
-  }
   try {
+    const img = sharp(image);
+    const [w, h] = (size ?? "").split("x").map(Number);
+    const meta = await img.metadata();
+    if (w && h && meta.width && meta.height) {
+      const ratio = w / h;
+      const cw = Math.min(meta.width, Math.round(meta.height * ratio));
+      const ch = Math.min(meta.height, Math.round(meta.width / ratio));
+      img.extract({ left: Math.floor((meta.width - cw) / 2), top: Math.floor((meta.height - ch) / 2), width: cw, height: ch });
+    }
     return await img.png().toBuffer();
   } catch {
     // Not an image sharp can read (test stubs); pass it through untouched.
@@ -133,7 +140,8 @@ export class MuseImage {
         ]
       : turn.prompt;
     if (turn.previousResponseId) body.previous_response_id = turn.previousResponseId;
-    if (turn.size) body.tools = [{ type: "image_generation", size: apiSize(turn.size) }];
+    // PNG, not the default lossy WebP: line art and flat colour show WebP artefacts.
+    if (turn.size) body.tools = [{ type: "image_generation", size: apiSize(turn.size), output_format: "png" }];
     return body;
   }
 
@@ -181,6 +189,22 @@ const TENSE: Array<[RegExp, string]> = [
   [/\b(defending itself|attack(ed|ing)?|fight(ing)?|threat(ening)?)\b/gi, "startled"],
   [/\b(scream(ing)?|panic(king)?|terrified|horror)\b/gi, "surprised"],
   [/\b(deer in headlights)\b/gi, "a surprised statue"],
+  // Cartoon exaggeration that reads as injury or distress when taken literally.
+  [/\bmelting off ([^,.;]+?) in despair like a puddle\b/gi, "sliding off $1 like soft jelly"],
+  [/\b(melting|melts?)\b/gi, "drooping"],
+  [/\bsquashed flat under\b/gi, "half hidden behind"],
+  [/\b(squashed|crushed|flattened)\b/gi, "buried"],
+  [/\b(toppling|collapsing|collapsed)\b/gi, "wobbly"],
+  [/\btears streaming like fountains\b/gi, "big cartoon teardrops"],
+  [/\b(tears streaming|streaming tears|crying|sobbing)\b/gi, "teary-eyed"],
+  [/\b(despair|despairing|agony|anguish)\b/gi, "a comic sulk"],
+  [/\banger veins?( on the forehead)?\b/gi, "a small cartoon cross mark"],
+  [/\bsteam puffs from the ears\b/gi, "little puffs of steam"],
+  [/\beyes popping( out)?\b/gi, "eyes wide"],
+  [/\bspiral eyes|eyes turned to spirals\b/gi, "dizzy eyes"],
+  [/\bjaw dropped to the floor\b/gi, "mouth wide open"],
+  [/\bfur standing on end\b/gi, "fluffed-up fur"],
+  [/\blate at night alone in a dark office\b/gi, "after hours in a cosy office"],
 ];
 
 /** A gentler wording of a prompt Meta's filter refused. */

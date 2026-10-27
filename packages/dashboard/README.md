@@ -17,6 +17,20 @@ npm run dashboard             # real data from CHANNEL_DATA_DIR (default data/)
 
 It reads the same files the channel and studio CLIs write and re-reads them on every request, so a refresh shows the latest pull. No database, no client framework: Node's `http` server and server-rendered HTML.
 
+## For people, not coders
+
+Everything is done from buttons; no commands, file names or setting names appear on screen.
+
+- **Vietnamese / English** switch at the bottom of the menu (remembered in a cookie).
+- **Bright, fluid layout:** full width on wide screens, icon sidebar on laptops, top bar with a menu on phones.
+- **Settings:** paste the app keys once; they are written to `.env` and only ever shown as "set" / "missing".
+- **Channels → Kết nối Facebook:** logs in through Facebook in the browser, picks the Page (and its Instagram), and saves the Page token. Threads takes a pasted token. Each account has Pause / Turn on, written back to `channels.yaml` with its comments kept.
+- **Lấy bình luận mới / Lấy tin nhắn mới** pull comments and messages with a button.
+- **Characters:** create with the AI or by hand, and edit any profile in a form (palette swatches, voice, never-says, inner life); the YAML keeps its comments. "Vẽ model sheet" draws the sheet with Muse Image.
+- **Overview → Việc hôm nay:** the day's steps with a progress ring.
+
+Known gap: behind Firebase Hosting only the `__session` cookie is forwarded, so the language choice does not stick there yet.
+
 ## Studio
 
 - **Nhân vật → Tạo nhân vật**: one line of idea, and Muse Spark writes the full profile into `characters/<slug>/`.

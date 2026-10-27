@@ -51,10 +51,11 @@ npm run studio -- sheet approve <slug>   # copies the sheet to characters/<slug>
 npm run studio -- episode new ep-001 --lead cu-li --with ca-noc --direction "…" --credit "Tên: bình luận"
 npm run studio -- episode new ep-001 --lead cu-li --from-listen data/listen/ep-001.json   # direction + credit from `story listen`
 npm run studio -- episode run ep-001 [--from step] [--to step] [--mock]
+npm run studio -- episode approve ep-001 [--post episodes/ep-001/post.json] [--despite-warnings]   # owner's sign-off; publish checks it
 npm run studio -- episode list
 ```
 
-Steps and files are described in [docs/studio-pipeline.md](../../docs/studio-pipeline.md). From code:
+Steps and files are described in [docs/studio-pipeline.md](../../docs/studio-pipeline.md). The `safety` step after the script stops anything on the banned list before it is drawn, and only an approved episode can be published ([docs/safety.md](../../docs/safety.md)). From code:
 
 ```ts
 import { createEpisode, openStudio, runEpisode } from "@hoi-sau/studio";

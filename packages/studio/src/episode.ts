@@ -1,13 +1,19 @@
 /**
  * One episode, step by step, each step saved to episodes/<id>/<step>.json:
  *
- *   premise → beats → script → storyboard → panels → review → letter → canon
+ *   premise → beats → script → safety → storyboard → panels → review → letter → canon
  *
  * A step reads only what earlier steps saved, so any step can be rerun alone
  * (`--from script` reruns script and everything after it). Writing steps use
  * Muse Spark with a JSON schema; drawing uses Muse Image with each
  * character's locked model sheet as a reference; self-review uses Muse Spark
  * vision against the same sheet and asks Muse Image to fix only what is wrong.
+ *
+ * `safety` is a gate: every text of the episode is checked by rule and by Muse
+ * Spark against series/safety.yaml and the cast's never_says, and nothing is
+ * drawn unless it passes. Every step written is logged with its hash in
+ * provenance.jsonl, and `approveEpisode` (approve.ts) is the owner's sign-off
+ * that `channel publish` checks.
  */
 
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
@@ -16,6 +22,15 @@ import { fileURLToPath } from "node:url";
 import sharp from "sharp";
 import { BUBBLE_KINDS, composePanel, imageSize, snugBubble, svgToPng, type BubbleKind, type DialogueLine } from "@hoi-sau/svg-text";
 import {
+  AUDIENCE_DATA_RULE,
+  BANNED_RULE,
+  type EpisodeText,
+  gateEpisode,
+  loadSafety,
+  ruleCheck,
+  SAFETY_SCHEMA,
+  type SafetyPolicy,
+  type SafetyVerdict,
   episodeNumber,
   type Llm,
   loadMemorySync,
@@ -34,10 +49,13 @@ import { type ChatMessage, type MuseSpark, S } from "./muse-spark.js";
 import { CHARACTERS_DIR, type Profile } from "./profile.js";
 import { iconLine } from "./prompts.js";
 import { type SeriesStyle, styleReference, styleText } from "./style.js";
+import { officeBrief, officePanelText, type Office } from "./office.js";
+import { sha256 } from "@hoi-sau/channel";
+import { type EpisodeSource, logProvenance, whoAmI } from "./provenance.js";
 
 export const EPISODES_DIR = fileURLToPath(new URL("../../../episodes", import.meta.url));
 
-export const EPISODE_STEPS = ["premise", "beats", "script", "storyboard", "panels", "review", "letter", "canon"] as const;
+export const EPISODE_STEPS = ["premise", "beats", "script", "safety", "storyboard", "panels", "review", "letter", "canon"] as const;
 export type EpisodeStep = (typeof EPISODE_STEPS)[number];
 
 export interface EpisodeSpec {
@@ -50,6 +68,8 @@ export interface EpisodeSpec {
   credits: Array<{ name: string; comment: string }>;
   /** "carousel" (default): 4–6 panels posted one by one. "strip3": exactly three panels, the rule of three, posted one by one too. */
   format?: EpisodeFormat;
+  /** Where the direction came from; also the first line of provenance.jsonl. */
+  source?: EpisodeSource;
   createdAt: string;
 }
 
@@ -123,11 +143,15 @@ export interface StudioContext {
   bible: SeriesBible;
   /** series/style.yaml; without it panels use the lead's look.style. */
   style?: SeriesStyle;
+  /** series/office.yaml: who sits where and the background coworkers. */
+  office?: Office;
   profiles: Map<string, Profile>;
   dir?: string;
   charactersDir?: string;
   /** Where bible.yaml, season-<n>.yaml and story-memory.json live. */
   seriesDir?: string;
+  /** series/safety.yaml; loaded from seriesDir when not given. */
+  safety?: SafetyPolicy;
   /** Redraw attempts per failed panel. */
   maxRedraws?: number;
   log?: (s: string) => void;
@@ -188,14 +212,21 @@ export function readStep<T>(id: string, step: string, dir?: string): T | undefin
 
 function writeStep(id: string, step: string, value: unknown, dir?: string): void {
   mkdirSync(episodeDir(id, dir), { recursive: true });
-  writeFileSync(file(id, step, dir), JSON.stringify(value, null, 2) + "\n");
+  const text = JSON.stringify(value, null, 2) + "\n";
+  writeFileSync(file(id, step, dir), text);
+  logProvenance(episodeDir(id, dir), { event: step, sha256: sha256(text) });
 }
 
-export function createEpisode(spec: Omit<EpisodeSpec, "createdAt">, dir?: string): EpisodeSpec {
+export function createEpisode(spec: Omit<EpisodeSpec, "createdAt">, dir?: string, safety: SafetyPolicy = loadSafety()): EpisodeSpec {
   if (!/^[a-z0-9-]+$/.test(spec.id)) throw new Error("episode id: lowercase letters, digits and dashes only");
+  // Cheap early stop: an injected or banned direction never reaches the writer. The safety step checks it all again.
+  const early = ruleCheck([{ where: "direction", text: spec.direction }, ...spec.credits.flatMap((c, i) => [{ where: `credit ${i + 1}`, text: `${c.name}: ${c.comment}` }])], safety);
+  if (early.length) throw new Error(`episode ${spec.id} refused by the safety rules:\n${early.map((i) => `  - ${i.where}: ${i.topic} (${i.detail})`).join("\n")}`);
   if (existsSync(file(spec.id, "episode", dir))) throw new Error(`episode ${spec.id} already exists`);
   if (spec.format && !EPISODE_FORMATS.includes(spec.format)) throw new Error(`format must be one of ${EPISODE_FORMATS.join(", ")}`);
-  const full = { ...spec, characters: [...new Set([spec.lead, ...spec.characters])], createdAt: new Date().toISOString() };
+  const full = { ...spec, characters: [...new Set([spec.lead, ...spec.characters])], source: spec.source ?? { kind: "manual" as const, by: whoAmI() }, createdAt: new Date().toISOString() };
+  mkdirSync(episodeDir(spec.id, dir), { recursive: true });
+  logProvenance(episodeDir(spec.id, dir), { event: "created", by: full.source.by, source: full.source, detail: full.direction });
   writeStep(spec.id, "episode", full, dir);
   return full;
 }
@@ -268,6 +299,8 @@ function writerMessages(ctx: StudioContext, ep: EpisodeSpec, task: string, earli
         `Series bible: ${seriesBrief(ctx, ep)}`,
         `Cast for this episode: ${castBrief(ctx, ep.characters)}`,
         "Use only the cast slugs given above in character and speaker fields.",
+        BANNED_RULE(safetyOf(ctx)),
+        AUDIENCE_DATA_RULE,
       ].join("\n\n"),
     },
     {
@@ -278,6 +311,37 @@ function writerMessages(ctx: StudioContext, ep: EpisodeSpec, task: string, earli
     },
   ];
 }
+
+const safetyOf = (ctx: StudioContext) => (ctx.safety ??= loadSafety(ctx.seriesDir ?? SERIES_DIR));
+
+/** Every text the episode carries, from the audience's direction to each line of dialogue. */
+export function episodeTexts(id: string, dir?: string): EpisodeText[] {
+  const ep = readStep<EpisodeSpec>(id, "episode", dir);
+  const premise = readStep<Premise>(id, "premise", dir);
+  const beats = readStep<Beats>(id, "beats", dir);
+  const script = readStep<Script>(id, "script", dir);
+  const out: EpisodeText[] = [];
+  const add = (where: string, text: string | undefined | null) => text?.trim() && out.push({ where, text });
+  add("direction", ep?.direction);
+  ep?.credits.forEach((c, i) => (add(`credit ${i + 1} name`, c.name), add(`credit ${i + 1} comment`, c.comment)));
+  if (premise) {
+    for (const k of ["title", "logline", "setup", "twist", "hook", "trigger"] as const) add(`premise.${k}`, premise[k]);
+    if (premise.cameo) (add("cameo name", premise.cameo.name), add("cameo look", premise.cameo.description));
+  }
+  beats?.beats.forEach((b, i) => add(`beat ${i + 1}`, b.what_happens));
+  add("script title", script?.title);
+  script?.panels.forEach((p, i) => {
+    add(`panel ${i + 1} setting`, p.setting);
+    add(`panel ${i + 1} action`, p.action);
+    p.dialogue.forEach((d, j) => add(`panel ${i + 1} line ${j + 1} (${d.speaker})`, d.text));
+  });
+  return out;
+}
+
+/** Hash of the texts the safety step judged, to notice edits made after it. */
+export const textsHash = (texts: EpisodeText[]) => sha256(JSON.stringify(texts));
+
+export type SafetyRecord = SafetyVerdict & { textsHash: string };
 
 // ── schemas ────────────────────────────────────────────────────────────────
 
@@ -329,7 +393,7 @@ const storyboardSchema = (n: Range) =>
       S.obj({
         shot: S.enum(["wide", "medium", "close-up", "extreme close-up"]),
         angle: S.enum(["eye level", "high angle", "low angle"]),
-        composition: S.str("English, one or two sentences for the illustrator: setting, poses, props, what draws the eye. Lighting fits the scene and stays cheerful: daytime by default; evening or night only when the story needs it, then warm and lively, never gloomy. Tension comes from poses and faces, not lighting. Leave soft, simple background (wall, window, ceiling) in the top third for dialogue. Never a thought cloud or speech bubble: thoughts and lines are lettered later."),
+        composition: S.str("English, one or two sentences for the illustrator: setting, poses, props, what draws the eye. Lighting fits the scene and stays cheerful: daytime by default; evening or night only when the story needs it, then warm and lively, never gloomy. Tension comes from poses and faces, not lighting. Push the acting to cartoon extremes: squash and stretch, extreme faces, big dynamic poses, drawn comic effects (sweat drops, motion lines, shock lines, steam). Leave soft, simple background (wall, window, ceiling) in the top third for dialogue. Never a thought cloud or speech bubble: thoughts and lines are lettered later."),
         staging: S.arr(S.obj({ character: S.str("cast slug"), position: S.enum(["left", "center", "right"]) }), 1, 3),
       }),
       n.min,
@@ -387,13 +451,13 @@ function modelSheet(ctx: StudioContext, slug: string): string | undefined {
 }
 
 /** Model sheet, then pose sheet when one is locked. */
-function characterRefs(ctx: StudioContext, slug: string): string[] {
+export function characterRefs(ctx: StudioContext, slug: string): string[] {
   const p = ctx.profiles.get(slug);
   return [modelSheet(ctx, slug), sheetImage(ctx, slug, p?.look.pose_sheet)].filter((x): x is string => Boolean(x));
 }
 
 /** The style sentence every panel gets: the series style when set, else the lead's own. */
-function panelStyle(ctx: StudioContext, ep: EpisodeSpec): string {
+export function panelStyle(ctx: StudioContext, ep: EpisodeSpec): string {
   return ctx.style ? styleText(ctx.style) : ctx.profiles.get(ep.lead)!.look.style;
 }
 
@@ -410,7 +474,8 @@ export function episodePanelPrompt(ctx: StudioContext, ep: EpisodeSpec, sp: Scri
     `${bp.shot} shot, ${bp.angle}. ${bp.composition}`,
     who,
     cameo && sp.action.includes(cameo.name) ? `Also a coworker: ${cameo.description}.` : "",
-    `Match the character sheets and pose sheets exactly. Single comic panel. Style: ${style} Cheerful lighting that fits the scene (daytime unless the composition says otherwise), never gloomy. The scene fills the whole panel edge to edge; the top third shows soft, simple background (wall, window, ceiling) with no busy detail, ready for dialogue added later, never a blank band or a separate strip of plain colour, and keep every character away from the very top and bottom edges (the panel is trimmed slightly there). No text, no letters, no speech bubbles, no thought clouds, no captions, no symbols floating above heads.`,
+    ctx.office ? officePanelText(ctx.office, bp.staging.map((st) => st.character)) : "",
+    `Match the character sheets and pose sheets exactly. Single comic panel. Style: ${style} Cheerful lighting that fits the scene (daytime unless the composition says otherwise), never gloomy. The scene fills the whole panel edge to edge; the top third shows soft, simple background (wall, window, ceiling) with no busy detail, ready for dialogue added later, never a blank band or a separate strip of plain colour, and keep every character away from the very top and bottom edges (the panel is trimmed slightly there). No text, no letters, no speech bubbles, no thought clouds, no captions. Drawn comic effects are welcome as pictures: sweat drops, motion lines, shock lines, anger veins, steam puffs, sparkles. Exaggerated cartoon acting with squash and stretch and extreme faces.`,
   ]
     .filter(Boolean)
     .join(" ");
@@ -499,12 +564,30 @@ export async function runStep(ctx: StudioContext, id: string, step: EpisodeStep)
       );
       return writeStep(id, "script", sanitizeScript(raw, ep, ctx.bible), dir);
     }
+    case "safety": {
+      const texts = episodeTexts(id, dir);
+      const cast = ep.characters.map((c) => ctx.profiles.get(c)!);
+      const llm: Llm = { model: ctx.spark.model, complete: async (req) => ({ text: JSON.stringify(await ctx.spark.json("safety", SAFETY_SCHEMA, [{ role: "system", content: req.system }, { role: "user", content: req.user }])) }) };
+      const verdict = await gateEpisode(llm, texts, safetyOf(ctx), cast);
+      writeStep(id, "safety", { ...verdict, textsHash: textsHash(texts) } satisfies SafetyRecord, dir);
+      if (!verdict.pass) throw new SafetyError(id, verdict);
+      return;
+    }
     case "storyboard": {
+      // Nothing is drawn unless the safety gate passed on the text as it is now.
+      const gate = need<SafetyRecord>("safety");
+      if (!gate.pass) throw new SafetyError(id, gate);
+      if (gate.textsHash !== textsHash(episodeTexts(id, dir))) throw new Error(`${id}: the story changed after the safety check; rerun with --from safety`);
       const script = need<Script>("script");
       const raw = await ctx.spark.json<Storyboard>(
         "storyboard",
         storyboardSchema(panelRange(ep, ctx.bible)),
-        writerMessages(ctx, ep, "Storyboard every script panel: shot size, angle, composition for the illustrator, and where each character stands. Vary shots; end on a close-up when it lands the joke.", { script }),
+        writerMessages(
+          ctx,
+          ep,
+          "Storyboard every script panel: shot size, angle, composition for the illustrator, and where each character stands. Vary shots; end on a close-up when it lands the joke. Follow the office floor plan: characters at their desks sit in their own seats, and the windows, meeting room and pantry stay where the plan puts them.",
+          ctx.office ? { script, office: officeBrief(ctx.office) } : { script },
+        ),
       );
       return writeStep(id, "storyboard", sanitizeBoard(raw, script), dir);
     }
@@ -621,7 +704,8 @@ async function reviewPanel(ctx: StudioContext, ep: EpisodeSpec, sp: ScriptPanel,
           const p = ctx.profiles.get(c)!;
           return `${p.name} must have: ${p.look.signature.join("; ")}.${p.look.icon ? ` Its identifying item must be clearly visible: ${p.look.icon}.` : ""} Palette: ${p.look.palette.map((s) => s.hex).join(", ")}.`;
         }),
-        "Fail the panel if a signature feature is wrong or missing, a character is off-model, there is drawn text, a speech bubble or a thought cloud, or anything unsafe. The first image is the panel; any others are the locked model sheets.",
+        "Fail the panel if a signature feature is wrong or missing, a character is off-model, there is drawn text, a speech bubble or a thought cloud, a human figure anywhere (every coworker is an animal), or anything unsafe. The first image is the panel; any others are the locked model sheets.",
+        `Unsafe means anything on this list, even in the background: ${safetyOf(ctx).topics.map((t) => t.describe).join("; ")}.`,
       ].join("\n"),
     },
     { type: "image_url", image_url: { url: `data:${imageSize(data).mime};base64,${data.toString("base64")}` } },
@@ -633,11 +717,26 @@ async function reviewPanel(ctx: StudioContext, ep: EpisodeSpec, sp: ScriptPanel,
   return ctx.spark.json("review", reviewSchema, [{ role: "user", content }]);
 }
 
+/** The gate said no. The message lists every issue so the editor can fix the direction or the script. */
+export class SafetyError extends Error {
+  constructor(
+    readonly episodeId: string,
+    readonly verdict: SafetyVerdict,
+  ) {
+    super(`${episodeId}: stopped by the safety check:\n${verdict.issues.map((i) => `  - ${i.where}: ${i.topic} (${i.by}) ${i.detail}`).join("\n")}`);
+  }
+}
+
 /** Run from `from` (default: first step not yet saved) to the end. */
 export async function runEpisode(ctx: StudioContext, id: string, opts: { from?: EpisodeStep; to?: EpisodeStep } = {}): Promise<EpisodeStep[]> {
   const done = doneSteps(id, ctx.dir);
   const start = opts.from ? EPISODE_STEPS.indexOf(opts.from) : EPISODE_STEPS.findIndex((s) => !done.includes(s));
   if (start < 0) return [];
+  // An episode drawn before the gate existed: check it without redrawing anything.
+  if (!opts.from && EPISODE_STEPS[start] === "safety" && done.includes("storyboard")) {
+    await runStep(ctx, id, "safety");
+    return ["safety", ...(await runEpisode(ctx, id, opts))];
+  }
   const end = opts.to ? EPISODE_STEPS.indexOf(opts.to) : EPISODE_STEPS.length - 1;
   const ran: EpisodeStep[] = [];
   for (const step of EPISODE_STEPS.slice(start, end + 1)) {

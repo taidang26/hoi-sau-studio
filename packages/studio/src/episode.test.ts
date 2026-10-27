@@ -114,7 +114,8 @@ test("a strip3 episode: three beats, a wide last panel, sheets + poses + style a
   assert.equal(readStep<{ panels: unknown[] }>("ep-002", "script", box.episodesDir)!.panels.length, 3);
 
   const draws = image.calls;
-  assert.deepEqual(draws.slice(0, 3).map((d) => d.tools[0].size), ["1024x1280", "1024x1280", "1536x1024"]);
+  // The API takes 1024x1536 for portrait; the result is cropped back to 4:5.
+  assert.deepEqual(draws.slice(0, 3).map((d) => d.tools[0].size), ["1024x1536", "1024x1536", "1536x1024"]);
   // Panel 1: style reference, then the lead's model sheet and pose sheet (te-te has no locked sheet yet).
   const refs = draws[0].input[0].content.filter((c: any) => c.type === "input_image");
   assert.equal(refs.length, 3);

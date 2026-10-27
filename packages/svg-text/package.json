@@ -11,7 +11,7 @@
   },
   "scripts": {
     "build": "tsc -b",
-    "test": "tsc -b && node --test dist/*.test.js",
+    "test": "tsc -b && node ../../scripts/run-tests.mjs",
     "demo": "tsc -b && node dist/demo.js"
   },
   "files": [

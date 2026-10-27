@@ -77,7 +77,7 @@ export function consistencyBeats(p: Profile): PoseBeat[] {
     },
     {
       id: "meeting",
-      scene: `the character from the sheet in a small office meeting room with two plain generic human coworkers seen from behind, ${p.look.expressions.stressed ?? p.look.expressions.default}`,
+      scene: `the character from the sheet in a small office meeting room with two other cartoon animal coworkers seen from behind, ${p.look.expressions.stressed ?? p.look.expressions.default}`,
       size: "1024x1280",
     },
     {

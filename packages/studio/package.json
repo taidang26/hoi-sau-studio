@@ -8,6 +8,7 @@
   "dependencies": {
     "@hoi-sau/story": "0.0.0",
     "@hoi-sau/svg-text": "0.0.0",
+    "sharp": "^0.34.4",
     "yaml": "^2.9.1"
   },
   "bin": {
@@ -15,7 +16,7 @@
   },
   "scripts": {
     "build": "tsc -b",
-    "test": "tsc -b && node --test dist/*.test.js",
+    "test": "tsc -b && node ../../scripts/run-tests.mjs",
     "cli": "node dist/cli.js"
   }
 }

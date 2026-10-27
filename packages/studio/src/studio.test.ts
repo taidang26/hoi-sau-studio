@@ -73,7 +73,7 @@ test("request body follows the Responses API shape", () => {
     model: "muse-image-1.0",
     input: "a",
     previous_response_id: "resp_1",
-    tools: [{ type: "image_generation", size: "1024x1280" }],
+    tools: [{ type: "image_generation", size: "1024x1536" }],
   });
   const withRef = client.requestBody({ prompt: "b", references: ["data:image/png;base64,AA"] }) as any;
   assert.equal(withRef.input[0].role, "user");
@@ -199,4 +199,35 @@ test("mock images draw the staged characters from their portraits", async () => 
   const scene = sceneFromPrompt("medium shot, eye level. Lolo (slow loris (cu li)) on the left, x. Poppy (pufferfish (cá nóc)) on the right, y.", cast, 1);
   assert.deepEqual(scene.places.map((p) => [p.cast.name, p.position]), [["Lolo", "left"], ["Poppy", "right"]]);
   assert.equal(sceneFromPrompt("An original character sheet for a comic series. " + cast[0].description, cast, 2).kind, "sheet");
+});
+
+test("sizes the API refuses map to the nearest it takes, and the image comes back as PNG cropped to the asked size", async () => {
+  const { apiSize, normalizeImage } = await import("./muse-image.js");
+  assert.equal(apiSize("1024x1280"), "1024x1536");
+  assert.equal(apiSize("1536x1024"), "1536x1024");
+  assert.equal(apiSize("1080x1080"), "1024x1024");
+  const sharp = (await import("sharp")).default;
+  const webp = await sharp({ create: { width: 1024, height: 1536, channels: 3, background: "#f7d774" } }).webp().toBuffer();
+  const png = await normalizeImage(webp, "1024x1280");
+  const meta = await sharp(png).metadata();
+  assert.deepEqual([meta.format, meta.width, meta.height], ["png", 1024, 1280]);
+});
+
+test("a prompt the content filter refuses is retried once with gentler wording", async () => {
+  const { generateSoftly, MuseImageError, softenPrompt } = await import("./muse-image.js");
+  assert.match(softenPrompt("fully inflated spiky ball, tiny fins shaking"), /^A gentle, wholesome[^]*puffed-up ball, tiny fins flustered/);
+  const prompts: string[] = [];
+  const client = {
+    generate: async (t: { prompt: string }) => {
+      prompts.push(t.prompt);
+      if (prompts.length === 1) throw new MuseImageError("Muse Image 400: The response was filtered due to the prompt triggering our content management policy", 400, true);
+      return { id: "r2", image: Buffer.from(""), note: "", usage: {} };
+    },
+  };
+  assert.equal((await generateSoftly(client, { prompt: "angry pufferfish" })).id, "r2");
+  assert.equal(prompts.length, 2);
+  assert.match(prompts[1], /flustered pufferfish/);
+  // Other errors are not retried.
+  const failing = { generate: async () => { throw new MuseImageError("Muse Image 401: bad key", 401); } };
+  await assert.rejects(generateSoftly(failing, { prompt: "x" }), /401/);
 });

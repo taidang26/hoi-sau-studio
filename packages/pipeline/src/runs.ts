@@ -24,6 +24,8 @@ export interface StageRecord {
 }
 
 export interface PostRecord {
+  /** Brand from channels.yaml; absent for the main brand, Hồi Sau. */
+  brand?: string;
   platform: Platform;
   format: Format;
   status: "published" | "failed" | "skipped";
@@ -44,6 +46,8 @@ export interface Run {
   direction?: Direction;
   stages: StageRecord[];
   posts: PostRecord[];
+  /** Our own question replies under Threads posts, one per brand. */
+  replies?: { brand: string; postId: string }[];
   /** Relative to the episodes folder. */
   video?: string;
   cover?: string;

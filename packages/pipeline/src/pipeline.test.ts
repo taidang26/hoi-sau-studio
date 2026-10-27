@@ -128,7 +128,15 @@ test("mock: two days end to end, the second episode written from the first one's
   assert.equal(day1.status, "done", day1.error);
   assert.equal(day1.direction?.source, "fallback");
   assert.deepEqual(day1.stages.map((s) => s.name), ["listen", "direction", "studio", "motion", "package", "upload", "publish"]);
-  assert.equal(day1.posts.filter((p) => p.status === "published").length, 5);
+  const published = day1.posts.filter((p) => p.status === "published");
+  assert.equal(published.filter((p) => !p.brand).length, 5, "Hồi Sau gets every episode on all three platforms");
+  if (day1.direction?.lead === "cu-li") {
+    assert.deepEqual(
+      published.filter((p) => p.brand === "lolo").map((p) => p.platform).sort(),
+      ["facebook", "facebook", "instagram", "instagram"],
+      "Lolo's own channel gets the episodes Lolo leads; its Threads is paused",
+    );
+  } else assert.equal(published.length, 5, "character channels only get the episodes their character leads");
   assert.match(day1.stages.find((s) => s.name === "publish")!.note!, /Đã trả lời câu hỏi dưới bài Threads/);
   const epDir = join(demoDir, "studio", "episodes", day1.episodeId!);
   assert.ok(existsSync(join(epDir, "motion", "reel.mp4")));

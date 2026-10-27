@@ -10,11 +10,11 @@
 import { cpSync, existsSync, readFileSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { DEFAULT_GRAPH_VERSION, GraphClient, THREADS_BASE_URL } from "@hoi-sau/channel";
+import { type Brand, brandTargets, DEFAULT_GRAPH_VERSION, GraphClient, loadBrands, type Platform, THREADS_BASE_URL } from "@hoi-sau/channel";
 import { DEMO, demoGraph } from "@hoi-sau/channel/dist/demo.js";
 import { CHARACTERS_DIR, EPISODES_DIR, openStudio, SERIES_DIR } from "@hoi-sau/studio";
 import { hostFromEnv, MockHost } from "./host.js";
-import { type ChannelSetup, parsePlan, type PipelineDeps } from "./pipeline.js";
+import { type BrandSetup, type ChannelSetup, parsePlan, type PipelineDeps } from "./pipeline.js";
 
 export const ROOT = fileURLToPath(new URL("../../..", import.meta.url));
 
@@ -65,18 +65,15 @@ export function buildDeps(flags: ConfigFlags, env: NodeJS.ProcessEnv = process.e
     if (!existsSync(dirs.charactersDir)) cpSync(CHARACTERS_DIR, dirs.charactersDir, { recursive: true });
     if (!existsSync(dirs.seriesDir)) cpSync(SERIES_DIR, dirs.seriesDir, { recursive: true });
     const graph = demoGraph({ containerPolls: 1 });
-    const page = new GraphClient({ token: DEMO.pageToken, fetch: graph.fetch, backoffMs: 1 });
-    const threads = new GraphClient({ token: "demo-threads-token", baseUrl: THREADS_BASE_URL, fetch: graph.fetch, backoffMs: 1 });
+    const client = (token: string, platform: Platform) =>
+      new GraphClient({ token, baseUrl: platform === "threads" ? THREADS_BASE_URL : undefined, fetch: graph.fetch, backoffMs: 1 });
     return {
       ...common,
       mode: "mock",
       dataDir,
       episodesDir: dirs.episodesDir,
       studio: openStudio({ mock: true, ...dirs, log: flags.log }),
-      channel: {
-        targets: { page, pageId: DEMO.pageId, igUserId: DEMO.igUserId, threads: { client: threads, userId: DEMO.threadsUserId } },
-        threadsUsername: DEMO.threadsUsername,
-      },
+      channel: (() => { const brands = loadBrands(); return brandSetups(brands, demoEnv(brands), client); })(),
       host: new MockHost(),
       pollIntervalMs: 1,
     };
@@ -93,15 +90,33 @@ export function buildDeps(flags: ConfigFlags, env: NodeJS.ProcessEnv = process.e
   };
 }
 
-function liveChannel(env: NodeJS.ProcessEnv): ChannelSetup | undefined {
-  if (!env.FB_PAGE_ID || !env.FB_PAGE_TOKEN) return undefined;
-  const page = new GraphClient({ token: env.FB_PAGE_TOKEN, version: env.META_GRAPH_VERSION || DEFAULT_GRAPH_VERSION });
-  const threads =
-    env.THREADS_USER_ID && env.THREADS_TOKEN
-      ? { client: new GraphClient({ token: env.THREADS_TOKEN, baseUrl: THREADS_BASE_URL }), userId: env.THREADS_USER_ID }
-      : undefined;
+export function liveChannel(env: NodeJS.ProcessEnv, brands: Brand[] = loadBrands()): ChannelSetup {
+  const version = env.META_GRAPH_VERSION || DEFAULT_GRAPH_VERSION;
+  return brandSetups(brands, env, (token, platform) =>
+    platform === "threads" ? new GraphClient({ token, baseUrl: THREADS_BASE_URL }) : new GraphClient({ token, version }),
+  );
+}
+
+function brandSetups(brands: Brand[], env: Record<string, string | undefined>, client: (token: string, platform: Platform) => GraphClient): ChannelSetup {
   return {
-    targets: { page, pageId: env.FB_PAGE_ID, igUserId: env.IG_USER_ID || undefined, threads },
-    threadsUsername: env.THREADS_USERNAME || undefined,
+    brands: brands.map((brand): BrandSetup => {
+      const found = brandTargets(brand, env, client);
+      const username = brand.channels.find((c) => c.platform === "threads")?.env.username;
+      return { brand, ...found, threadsUsername: (username && env[username]) || undefined };
+    }),
   };
+}
+
+/** Every account in channels.yaml pointed at the demo Meta, so mock runs post wherever a live run would. */
+function demoEnv(brands: Brand[]): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const b of brands)
+    for (const c of b.channels) {
+      const e = c.env;
+      if (e.pageId) env[e.pageId] = DEMO.pageId;
+      if (e.token) env[e.token] = c.platform === "threads" ? "demo-threads-token" : DEMO.pageToken;
+      if (e.userId) env[e.userId] = c.platform === "threads" ? DEMO.threadsUserId : DEMO.igUserId;
+      if (e.username) env[e.username] = DEMO.threadsUsername;
+    }
+  return env;
 }

@@ -22,13 +22,15 @@ npm run pipeline -- status                # last runs, stage by stage
 | motion | 9:16 motion comic, checked against Reels rules | `episodes/<id>/motion/` |
 | package | Captions per platform, carousel as 1080x1350 JPEG (Instagram takes only JPEG) | `episodes/<id>/post.json` |
 | upload | Copy media to a public HTTPS folder | URLs in `post.json` |
-| publish | Reels to Facebook, Instagram, Threads; carousel to Facebook, Instagram (`PIPELINE_POSTS` changes this) | `data/publish-journal.json` |
+| publish | To every brand in `channels.yaml` that should get the episode, on its live platforms: Reels to Facebook, Instagram, Threads; carousel to Facebook, Instagram (`PIPELINE_POSTS` changes this) | `data/publish-journal.json` |
 
 Episode ids are `<lead>-ep-NNN`, numbered across the series.
 
 **Choosing a comment.** Replies and comments with links, abuse, or almost no words are dropped. The rest score one point, plus two per distinct person who replied, plus one for naming a character, plus one for sounding like a suggestion ("cho…", "tập sau…"). The winner and up to two people who backed it are credited and appear in the episode. A comment is used once.
 
 **One episode, three shapes.** Facebook gets the long caption: logline, the question, how the next episode is chosen, credits. Instagram gets the title and question in the first two lines (the feed cuts there), credits, and a full block of hashtags. Threads gets a one-line hook with one topic tag, and the question is posted as our own first reply under it, where the conversation starts (needs the `threads_manage_replies` scope; without it the post still goes out and the stage notes the missing reply). All of it is in `post.json`.
+
+**Brands.** Hồi Sau gets every episode. A character's own brand (Lolo, Poppy…) gets the episodes that character leads (`posts: lead`, or `cast` for every episode it appears in). A platform that is `paused`/`planned` or has empty `.env` variables is skipped with the reason in the run record; the others still post. Each brand's Threads post gets its own question reply, and comments are read back from every brand's posts. `post.json` carries `lead` and `characters` for the routing; `Run.posts[].brand` is set for brands other than Hồi Sau.
 
 **Safety hold.** If Studio's self-review still fails a panel after redrawing, the episode is made but not posted, and the run ends as `partial` with the reason, for a person to check on the dashboard. `PIPELINE_PUBLISH_FAILED_REVIEW=1` turns this off.
 
@@ -63,6 +65,6 @@ Stage status is `running`, `done`, `warn`, `skipped` or `failed`; run status is 
 ## What a real run needs in `.env`
 
 - `META_API_KEY` for Muse Spark and Muse Image.
-- `FB_PAGE_ID`, `FB_PAGE_TOKEN` (and `IG_USER_ID`, `THREADS_*`) from `npm run channel -- setup` / `threads-setup`. Platforms without credentials are skipped, not failed.
+- The variables `channels.yaml` names for each live brand (`FB_PAGE_ID`, `FB_PAGE_TOKEN`, `IG_USER_ID`, `THREADS_*`, and `*_LOLO` for Lolo), from `npm run channel -- login` / `setup`. Platforms without credentials are skipped, not failed.
 - `MEDIA_DIR` and `MEDIA_BASE_URL`: a folder that is served on public HTTPS (a static host, a bucket synced from that folder, or a tunnel). Instagram and Threads fetch media by URL.
 - `ffmpeg` on PATH (`winget install Gyan.FFmpeg` on Windows).

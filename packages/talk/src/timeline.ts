@@ -121,7 +121,7 @@ export function buildTimeline(t: TimelineInput): { frames: Frame[]; chunks: Chun
   let close = false;
   for (let i = 0; i < lines.length; i++) {
     if (i > 0 && lines[i].gesture !== lines[i - 1].gesture) close = !close;
-    framing.push(gesture(lines[i].gesture).punch ? 1.22 : close ? 1.12 : 1);
+    framing.push(gesture(lines[i].gesture).punch ? 1.15 : close ? 1.12 : 1);
   }
   const frames: Frame[] = [];
   let chunkIdx = 0;
@@ -137,7 +137,8 @@ export function buildTimeline(t: TimelineInput): { frames: Frame[]; chunks: Chun
     const from = li > 0 && gesture(g).punch ? framing[li - 1] : target;
     const zoom = from + (target - from) * ease(into / 0.25) + 0.03 * Math.min(1, into / 4);
     const face = t.face(g) ?? { x: 640, y: 820 };
-    const near = (zoom - 1) / 0.22;
+    // Close framings lean toward the face, but not all the way, so raised arms stay in shot.
+    const near = 0.6 * Math.min(1, (zoom - 1) / 0.15);
     const camera: Camera = {
       zoom,
       cx: 640 + (face.x - 640) * near + 18 * Math.sin(s * 0.45),

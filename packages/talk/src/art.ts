@@ -13,6 +13,8 @@ import type { Sam } from "@hoi-sau/dance";
 import { GESTURES, type Gesture } from "./gestures.js";
 import { changedBox, maskBox, patchFeature, readRgb, unionBox, writePng, type Box, type Raster } from "./patch.js";
 
+const EXPIRED = /referenced response not found|expired/i;
+
 export const TALK_SIZE = "1024x1536";
 
 export interface GestureArt {
@@ -101,33 +103,43 @@ export async function drawTalkArt(ctx: StudioContext, slug: string, dir: string,
   const basePng = readFileSync(join(dir, art.base.file));
 
   for (const g of GESTURES.filter((g) => !opts.only || opts.only.includes(g.id))) {
-    let ga = art.gestures[g.id];
-    if (!ga || !existsSync(join(dir, ga.file))) {
-      log?.(`drawing gesture ${g.id}`);
-      const res = await generateSoftly(ctx.image, { prompt: gesturePrompt(g), size: TALK_SIZE, previousResponseId: art.base.response, references: [dataUrl(basePng)] }, log);
-      writeFileSync(join(dir, `${g.id}.png`), res.image);
-      ga = art.gestures[g.id] = { response: res.id, file: `${g.id}.png` };
-      save();
-    }
-    const png = readFileSync(join(dir, ga.file));
-    const img = await readRgb(png);
-    const variants: Array<["mouth" | "blink", string, string]> = [["mouth", MOUTH_PROMPT, "the mouth"]];
-    if (g.blink) variants.push(["blink", BLINK_PROMPT, "the eyes"]);
-    for (const [kind, prompt, phrase] of variants) {
-      if (ga[kind] && existsSync(join(dir, ga[kind]!.file))) continue;
-      log?.(`drawing ${g.id} with ${kind === "mouth" ? "the mouth open" : "the eyes closed"}`);
-      const res = await generateSoftly(ctx.image, { prompt, size: TALK_SIZE, previousResponseId: ga.response, references: [dataUrl(png)] }, log);
-      writeFileSync(join(dir, `${g.id}.${kind}.raw.png`), res.image);
-      const edit = await readRgb(res.image);
-      const feature = await featureBox(opts.sam, phrase, png, img, edit, log);
-      if (!feature) {
-        log?.(`${g.id} ${kind}: the edit changed nothing; skipped.`);
-        continue;
+    // Muse Image forgets old responses; an edit chained to a forgotten gesture redraws that gesture once.
+    for (let attempt = 0; ; attempt++) {
+      try {
+        let ga = art.gestures[g.id];
+        if (!ga || !existsSync(join(dir, ga.file))) {
+          log?.(`drawing gesture ${g.id}`);
+          const res = await generateSoftly(ctx.image, { prompt: gesturePrompt(g), size: TALK_SIZE, previousResponseId: art.base.response, references: [dataUrl(basePng)] }, log);
+          writeFileSync(join(dir, `${g.id}.png`), res.image);
+          ga = art.gestures[g.id] = { response: res.id, file: `${g.id}.png` };
+          save();
+        }
+        const png = readFileSync(join(dir, ga.file));
+        const img = await readRgb(png);
+        const variants: Array<["mouth" | "blink", string, string]> = [["mouth", MOUTH_PROMPT, "the mouth"]];
+        if (g.blink) variants.push(["blink", BLINK_PROMPT, "the eyes"]);
+        for (const [kind, prompt, phrase] of variants) {
+          if (ga[kind] && existsSync(join(dir, ga[kind]!.file))) continue;
+          log?.(`drawing ${g.id} with ${kind === "mouth" ? "the mouth open" : "the eyes closed"}`);
+          const res = await generateSoftly(ctx.image, { prompt, size: TALK_SIZE, previousResponseId: ga.response, references: [dataUrl(png)] }, log);
+          writeFileSync(join(dir, `${g.id}.${kind}.raw.png`), res.image);
+          const edit = await readRgb(res.image);
+          const feature = await featureBox(opts.sam, phrase, png, img, edit, log);
+          if (!feature) {
+            log?.(`${g.id} ${kind}: the edit changed nothing; skipped.`);
+            continue;
+          }
+          const patched = patchFeature(img, edit, feature);
+          writeFileSync(join(dir, `${g.id}.${kind}.png`), await writePng(patched.image));
+          ga[kind] = { file: `${g.id}.${kind}.png`, box: patched.box };
+          save();
+        }
+        break;
+      } catch (e) {
+        if (attempt || !EXPIRED.test((e as Error).message)) throw e;
+        log?.(`${g.id}: Muse Image no longer has this gesture's response; drawing it again.`);
+        delete art.gestures[g.id];
       }
-      const patched = patchFeature(img, edit, feature);
-      writeFileSync(join(dir, `${g.id}.${kind}.png`), await writePng(patched.image));
-      ga[kind] = { file: `${g.id}.${kind}.png`, box: patched.box };
-      save();
     }
   }
   save();

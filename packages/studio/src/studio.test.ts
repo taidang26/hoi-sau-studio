@@ -290,3 +290,21 @@ test("brand art: an avatar and a Facebook-size cover for every brand, offline", 
     assert.ok(existsSync(a.coverTitle));
   }
 });
+
+test("edge art: one picture per character of its secret side, offline", async () => {
+  const { makeEdgeArt, edgePrompt, EDGE_SIZE } = await import("./edge-art.js");
+  const { openStudio } = await import("./studio.js");
+  const { imageSize } = await import("@hoi-sau/svg-text");
+  const ctx = openStudio({ mock: true });
+  for (const slug of listCharacters()) {
+    const p = loadProfile(slug);
+    assert.ok(p.edge, `${slug} has an edge`);
+    assert.ok(edgePrompt(ctx, slug).includes(p.look.expressions.edge!), `${slug} prompt draws its edge`);
+    assert.match(edgePrompt(ctx, slug), /No text/);
+  }
+  const out = mkdtempSync(join(tmpdir(), "edge-"));
+  const { files } = await makeEdgeArt(ctx, ["cu-li", "chon-bac-ma"], out);
+  assert.equal(files.length, 2);
+  for (const f of files) assert.deepEqual(imageSize(readFileSync(f)), { ...EDGE_SIZE, mime: "image/png" });
+  assert.match(readFileSync(join(out, "index.html"), "utf8"), /Rico/);
+});

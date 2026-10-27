@@ -4,6 +4,7 @@
  *
  *   npm run studio -- characters                 validate and list character profiles
  *   npm run studio -- brand-art [brand…] [--mock] profile pictures and cover photos for the pages in channels.yaml
+ *   npm run studio -- edge [slug…] [--mock]      one picture of each character's rebellious or weird side
  *   npm run studio -- office                     draw the office floor plan to series/office-plan.png
  *   npm run studio -- style [--mock]             draw the test scene in every series style variant
  *   npm run studio -- style approve <variant>    lock that render as the series style reference
@@ -37,6 +38,7 @@ import { approveSheet, openStudio } from "./studio.js";
 import { approveStyle, loadStyle, runStyleTest, styleReference, styleText } from "./style.js";
 import { loadOffice, officePlanSvg } from "./office.js";
 import { loadBrandList, makeBrandArt } from "./brand-art.js";
+import { makeEdgeArt } from "./edge-art.js";
 import { SERIES_DIR } from "./bible.js";
 import { ALL_FONT_PATHS, svgToPng } from "@hoi-sau/svg-text";
 
@@ -85,6 +87,15 @@ async function main(argv: string[]): Promise<void> {
     const out = join(ROOT, "output", "brand-art");
     const { art } = await makeBrandArt(ctx, brands, out, console.log);
     console.log(`${art.length} brands → ${out} (avatar.png, cover.png, cover-title.png each)`);
+    return;
+  }
+
+  if (cmd === "edge") {
+    const ctx = openStudio({ mock, log: console.log });
+    const slugs = args.length ? args : listCharacters();
+    const out = join(ROOT, "output", "edge");
+    const { files } = await makeEdgeArt(ctx, slugs, out, console.log);
+    console.log(`${files.length} pictures → ${join(out, "index.html")}`);
     return;
   }
 

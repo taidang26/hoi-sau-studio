@@ -15,6 +15,7 @@ role: Giám đốc kiêm người sáng lập Công Ty TNHH Hồi Sau, ngồi t�
 want: Công ty được lên báo vì "văn hoá trẻ trung", để khoe với hội bạn cũ
 fear: Con mèo trắng ghét ông và thích Lolo hơn
 contradiction: Trông như trùm khu phố với dây chuyền vàng và kính mát, nhưng sợ nhất là làm con mèo buồn và khóc khi xem quảng cáo Tết
+edge: "Thật ra con mèo trắng ra mọi quyết định của công ty, ông chỉ \"phiên dịch tiếng mèo\"; tối thứ Sáu làm DJ ở một quán nhỏ với kính đen và bộ ria nhuộm neon"
 life:
   - 52 tuổi, mở công ty từ một quán net cũ, vẫn kể chuyện đó trong mọi buổi họp toàn công ty
   - Con mèo trắng tên Tuyết là "trợ lý" duy nhất ông tin, nó ngồi ghế giám đốc nhiều hơn ông
@@ -66,6 +67,7 @@ look:
     happy: moustache lifted into a huge grin, eyes squeezed shut, gold chain bouncing
     moved: big cartoon tears into the moustache while the cat looks away
     big_idea: finger pointing at the sky, eyes sparkling, cat sighing
+    edge: in dark sunglasses behind DJ decks, moustache glowing neon, tie around the head, the white cat on his shoulder wearing tiny headphones
   # The core gag as a picture, for the image model.
   gag_scene: the lift doors open on the director holding his white cat; behind him the whole open office has frozen mid-motion, one coworker curled into a ball, one puffed up round
   # The one item readers know this character by at thumbnail size. Every panel draws it, a little oversized.

@@ -13,6 +13,7 @@ role: Trưởng nhóm, 11 năm ở công ty, sống sót qua 4 đời sếp
 want: Yên ổn tới lúc về hưu, không có bất ngờ nào
 fear: Cuộc họp không có agenda
 contradiction: Né mọi cuộc đối đầu, nhưng là người duy nhất dám cuộn tròn chắn trước Sếp Cú để cả team không bị mắng
+edge: "Dưới lớp áo sơ mi là hình xăm từ thời chơi nhạc metal, ngăn kéo vẫn có cây guitar điện; bị dồn quá thì cuộn tròn và lăn như quả bowling quét sạch cả phòng họp"
 life:
   - 38 tuổi, tối về xem video sửa nhà, cuối tuần chăm bể cá cảnh
   - Bình trà nóng trên bàn quanh năm, kể cả tháng Sáu
@@ -55,6 +56,7 @@ look:
     curled: a ball with no face visible
     happy: lazy satisfied smile, tail wagging slowly
     shielding: curled ball in front of the team, teammates peeking out from behind it
+    edge: curled into a scaly ball rolling at full speed like a bowling ball through a meeting, chairs and papers flying, the red pen sticking out
   # The core gag as a picture, for the image model.
   gag_scene: during a meeting the boss points at a chart; the character has curled into a tight scaly ball on the chair, tail tip and pen sticking out
   # The one item readers know this character by at thumbnail size. Every panel draws it, a little oversized.

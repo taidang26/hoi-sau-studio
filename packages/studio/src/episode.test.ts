@@ -334,5 +334,5 @@ test("safety: a banned or injected direction is refused, the gate stops drawing,
   assert.match(approvalProblems(dir, post).join(), /final\/01.png changed after approval/);
 
   // A failed gate cannot be approved at all.
-  assert.match(checkForApproval("ep-002", box.episodesDir).blockers.join(), /safety check failed/);
+  assert.deepEqual(checkForApproval("ep-002", box.episodesDir).blockers.map((b) => b.code), ["safety-failed", "not-lettered"]);
 });

@@ -54,6 +54,20 @@ function threadsConversation(post: string) {
   ];
 }
 
+/** Sample per-post numbers. Facebook post IDs look like "<page>_<post>"; Threads calls carry the Threads token. */
+function insights(c: MockCall, post: string) {
+  const row = (name: string, value: number) => ({ name, period: "lifetime", values: [{ value }] });
+  const asked = (c.params.metric ?? "").split(",");
+  const table: Record<string, number> = c.headers.Authorization?.includes("threads")
+    ? { views: 640, likes: 41, replies: 9, reposts: 3, quotes: 1, shares: 2 }
+    : post.includes("_")
+      ? { post_total_media_view_unique: 1200, post_impressions_unique: 1180 }
+      : { reach: 830, likes: 57, comments: 12, shares: 9, saved: 14, views: 2100 };
+  const unknown = asked.filter((m) => !(m in table));
+  if (unknown.length) return graphError(400, 100, `(#100) Invalid metric: ${unknown.join(",")}`);
+  return { data: asked.map((m) => row(m, table[m])) };
+}
+
 function conversations(platform: string | undefined) {
   if (platform === "instagram") {
     const customer = { id: "igsid_1", username: "linh.vp" };
@@ -120,6 +134,9 @@ export function demoGraph(opts: { containerPolls?: number } = {}) {
     }
     if (igContainers.has(id) && fields === "status_code") {
       return { status_code: igContainers.check(id) ? "FINISHED" : "IN_PROGRESS" };
+    }
+    if (fields.startsWith("shares")) {
+      return { id, shares: { count: 7 }, reactions: { summary: { total_count: 96 } }, comments: { summary: { total_count: 18 } } };
     }
     switch (fields) {
       case "status":
@@ -194,6 +211,9 @@ export function demoGraph(opts: { containerPolls?: number } = {}) {
 
     // Comments: Facebook post IDs look like "<page>_<post>", Instagram media IDs do not.
     "GET :post/comments": (_c, a) => ({ data: a.post.includes("_") ? facebookComments(a.post) : instagramComments(a.post) }),
+
+    // Insights per post
+    "GET :post/insights": (c, a) => insights(c, a.post),
 
     // Inbox
     "GET :page/conversations": (c) => ({ data: conversations(c.params.platform) }),

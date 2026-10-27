@@ -90,7 +90,17 @@ export function mockSparkTransport(opts: { failReview?: number[] } = {}): { tran
             action: `Khung ${i + 1}: ${who.join(" và ")} ở bàn làm việc`,
             expressions: [{ character: lead.slug, expression: lead.expressions[i % lead.expressions.length] ?? "default" }],
             // Lines from the speakers' own catchphrases; the last panel stays silent.
-            dialogue: i === n - 1 ? [] : [{ speaker: who[i % who.length], text: (i % 2 ? other : lead).voice.catchphrases[i === 2 ? 1 : 0] ?? lead.voice.catchphrases[0] }],
+            // The opening line is a thought and the second a shout, so offline runs show every balloon.
+            dialogue:
+              i === n - 1
+                ? []
+                : [
+                    {
+                      speaker: who[i % who.length],
+                      text: (i % 2 ? other : lead).voice.catchphrases[i === 2 ? 1 : 0] ?? lead.voice.catchphrases[0],
+                      kind: i === 0 ? "thought" : i === 1 ? "shout" : "speech",
+                    },
+                  ],
           };
         }),
       };
@@ -102,6 +112,11 @@ export function mockSparkTransport(opts: { failReview?: number[] } = {}): { tran
       out = opts.failReview?.includes(reviews)
         ? { pass: false, issues: [{ character: lead.slug, feature: "palette", problem: "fur colour drifted" }], fix: "restore the fur colour from the model sheet" }
         : { pass: true, issues: [], fix: "" };
+    } else if (name === "safety") {
+      // Flags texts with an obviously unsafe word; the rule half of the gate does the rest.
+      const texts: Array<{ where: string; text: string }> = JSON.parse(text.match(/TEXTS_JSON: (\[.*\])/)?.[1] ?? "[]");
+      const issues = texts.filter((t) => /chính trị|chinh tri|chiến tranh|tình dục/i.test(t.text)).map((t) => ({ where: t.where, topic: "unsafe", detail: "mock: unsafe word" }));
+      out = { pass: !issues.length, issues };
     } else if (name === "recap") out = { summary: (text.split("EPISODE:\n")[1] ?? "").split("\n").slice(0, 2).join(" ") || "Một ngày ở văn phòng.", threads_closed: [], threads_opened: [] };
     else if (name === "canon") out = { facts: [{ fact: `${other.name} đã làm xong việc từ sáng mà không nói với ai`, characters: [other.slug] }] };
     else throw new Error(`mock Muse Spark has no answer for schema "${name}"`);

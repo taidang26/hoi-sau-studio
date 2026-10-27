@@ -19,7 +19,9 @@
     "channel": "tsc -b && node packages/channel/dist/cli.js",
     "dashboard": "tsc -b && node packages/dashboard/dist/cli.js",
     "motion": "tsc -b && node packages/motion/dist/cli.js",
-    "pipeline": "tsc -b && node packages/pipeline/dist/cli.js"
+    "pipeline": "tsc -b && node packages/pipeline/dist/cli.js",
+    "site": "node scripts/site.mjs",
+    "cloud": "node scripts/cloud.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

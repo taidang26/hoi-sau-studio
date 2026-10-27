@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { DEMO } from "./demo.js";
 import { createMockGraph, graphError } from "./mock.js";
-import { GraphClient, publishEpisode, PublishError, validatePost, type EpisodePost, type JournalEntry, type PublishJournal } from "./index.js";
+import { GraphClient, publishEpisode, PublishError, resolveMediaUrls, validatePost, type EpisodePost, type JournalEntry, type PublishJournal } from "./index.js";
 import { carousel, demoTargets, fast, reels, strip, tempJournal } from "./testkit.js";
 
 const codes = (platform: "facebook" | "instagram" | "threads", post: EpisodePost) => validatePost(platform, post).map((v) => v.code);
@@ -109,4 +109,13 @@ test("a missing account is a clear error", async () => {
     publishEpisode("instagram", carousel, { ...targets, igUserId: undefined }, await tempJournal(), fast),
     (e) => e instanceof PublishError && e.code === "NO_IG_ACCOUNT",
   );
+});
+
+test("relative media paths are read under the media base URL", () => {
+  const base = "https://hoisau.dangtrantai.com/media";
+  assert.deepEqual(resolveMediaUrls(["cu-li-ep-003/01.jpg", "https://cdn.example.com/a.jpg"], base), [
+    "https://hoisau.dangtrantai.com/media/cu-li-ep-003/01.jpg",
+    "https://cdn.example.com/a.jpg",
+  ]);
+  assert.throws(() => resolveMediaUrls(["a.jpg"], ""), /MEDIA_BASE_URL/);
 });

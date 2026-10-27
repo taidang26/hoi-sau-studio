@@ -3,6 +3,8 @@
  * Studio CLI.
  *
  *   npm run studio -- characters                 validate and list character profiles
+ *   npm run studio -- brand-art [brand…] [--mock] profile pictures and cover photos for the pages in channels.yaml
+ *   npm run studio -- office                     draw the office floor plan to series/office-plan.png
  *   npm run studio -- style [--mock]             draw the test scene in every series style variant
  *   npm run studio -- style approve <variant>    lock that render as the series style reference
  *   npm run studio -- sheet <slug|all> [--mock]  Muse Image consistency test
@@ -11,6 +13,8 @@
  *   npm run studio -- episode new <id> --lead <slug> [--with a,b] [--format strip3] --direction "…" [--credit "name: comment"]
  *   npm run studio -- episode new <id> --lead <slug> [--with a,b] --from-listen data/listen/<id>.json
  *   npm run studio -- episode run <id> [--from step] [--to step] [--mock]
+ *   npm run studio -- episode approve <id> [--post post.json] [--despite-warnings]
+ *       the owner's sign-off; `channel publish` refuses anything not approved as it is
  *   npm run studio -- episode list
  *
  * Reads META_API_KEY (or MODEL_API_KEY) from the environment or .env.
@@ -26,9 +30,15 @@ import { mockTransport } from "./mock.js";
 import { MUSE_IMAGE_MODEL, MuseImage } from "./muse-image.js";
 import { listCharacters, loadProfile } from "./profile.js";
 import { createCharacter, writeProfile } from "./create.js";
+import { approveEpisode, checkForApproval } from "./approve.js";
+import { whoAmI } from "./provenance.js";
 import { createEpisode, doneSteps, episodeDir, EPISODE_FORMATS, EPISODE_STEPS, type EpisodeFormat, type EpisodeStep, listEpisodes, readStep, runEpisode } from "./episode.js";
 import { approveSheet, openStudio } from "./studio.js";
 import { approveStyle, loadStyle, runStyleTest, styleReference, styleText } from "./style.js";
+import { loadOffice, officePlanSvg } from "./office.js";
+import { loadBrandList, makeBrandArt } from "./brand-art.js";
+import { SERIES_DIR } from "./bible.js";
+import { ALL_FONT_PATHS, svgToPng } from "@hoi-sau/svg-text";
 
 const ROOT = fileURLToPath(new URL("../../..", import.meta.url));
 
@@ -66,6 +76,32 @@ async function main(argv: string[]): Promise<void> {
   }
 
   const imageClient = () => (mock ? new MuseImage({ apiKey: "mock", transport: mockTransport().transport }) : MuseImage.fromEnv());
+
+  if (cmd === "brand-art") {
+    const ctx = openStudio({ mock, log: console.log });
+    const all = loadBrandList();
+    const brands = args.length ? all.filter((b) => args.includes(b.id)) : all;
+    if (!brands.length) throw new Error(`no such brand; known: ${all.map((b) => b.id).join(", ")}`);
+    const out = join(ROOT, "output", "brand-art");
+    const { art } = await makeBrandArt(ctx, brands, out, console.log);
+    console.log(`${art.length} brands → ${out} (avatar.png, cover.png, cover-title.png each)`);
+    return;
+  }
+
+  if (cmd === "office") {
+    const office = loadOffice();
+    if (!office) throw new Error("no series/office.yaml");
+    const profiles = listCharacters().map((slug) => loadProfile(slug));
+    const svg = officePlanSvg(
+      office,
+      Object.fromEntries(profiles.map((p) => [p.slug, p.name])),
+      Object.fromEntries(profiles.map((p) => [p.slug, p.look.palette[0]?.hex ?? "#ffd77a"])),
+    );
+    const out = join(SERIES_DIR, "office-plan.png");
+    writeFileSync(out, svgToPng(svg, { fontFiles: ALL_FONT_PATHS }));
+    console.log(`floor plan → ${out}`);
+    return;
+  }
 
   if (cmd === "style" && args[0] === "approve") {
     const id = args[1];
@@ -131,9 +167,22 @@ async function main(argv: string[]): Promise<void> {
             return { name: name.trim(), comment: comment.join(":").trim() };
           })
         : (report?.pick.spec.credits ?? []),
+      source: report
+        ? { kind: opt("--direction") ? "manual" : report.pick.source, by: whoAmI(), commentIds: report.pick.commentIds, report: listenFile }
+        : { kind: "manual", by: whoAmI() },
     });
     if (report) writeFileSync(join(episodeDir(id), "listen.json"), JSON.stringify(report.pick, null, 2) + "\n");
     console.log(`${ep.id}: ${ep.characters.join(", ")}. next: npm run studio -- episode run ${ep.id}`);
+    return;
+  }
+
+  if (cmd === "episode" && args[0] === "approve") {
+    const id = args[1];
+    if (!id) throw new Error("usage: episode approve <id> [--post post.json] [--despite-warnings]");
+    const { warnings } = checkForApproval(id);
+    for (const w of warnings) console.log(`warning: ${w.text}`);
+    const a = approveEpisode(id, { postFile: opt("--post"), despiteWarnings: flags.has("--despite-warnings") });
+    console.log(`${id} approved by ${a.approvedBy}: ${Object.keys(a.files).length} files${a.post ? " and the post" : "; no post file yet, approve again once it exists"}.`);
     return;
   }
 
@@ -171,7 +220,7 @@ async function main(argv: string[]): Promise<void> {
     return;
   }
 
-  console.log("commands: characters | style | style approve <variant> | sheet <slug|all> | sheet approve <slug> | character new <idea> | episode new|run|list   (add --mock to run offline)");
+  console.log("commands: characters | style | style approve <variant> | sheet <slug|all> | sheet approve <slug> | character new <idea> | episode new|run|approve|list   (add --mock to run offline)");
   process.exitCode = cmd ? 1 : 0;
 }
 

@@ -7,7 +7,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { imageSize } from "@hoi-sau/svg-text";
-import type { MuseImage, Usage } from "./muse-image.js";
+import { generateSoftly, MuseImageError, type MuseImage, type Usage } from "./muse-image.js";
 import type { Profile } from "./profile.js";
 import { characterSheetPrompt, consistencyBeats, panelPrompt, poseSheetPrompt } from "./prompts.js";
 
@@ -72,15 +72,32 @@ export async function runConsistency(
 
   const posePrompt = poseSheetPrompt(profile, opts.style);
   log(`${profile.slug}: pose sheet`);
-  const poses = await client.generate({ prompt: posePrompt, size: "1536x1024", previousResponseId: sheet.id });
-  images.push({ id: "poses", file: save("poses", poses.image), prompt: posePrompt, size: "1536x1024", responseId: poses.id, previousResponseId: sheet.id, usage: poses.usage, note: poses.note });
-
   // Each panel chains from the previous turn, so the sheet and poses stay in context.
-  let previous = poses.id;
+  let previous = sheet.id;
+  try {
+    const poses = await generateSoftly(client, { prompt: posePrompt, size: "1536x1024", previousResponseId: sheet.id }, log);
+    images.push({ id: "poses", file: save("poses", poses.image), prompt: posePrompt, size: "1536x1024", responseId: poses.id, previousResponseId: sheet.id, usage: poses.usage, note: poses.note });
+    previous = poses.id;
+  } catch (e) {
+    // A pose sheet refused twice is skipped like a test panel, so one character never stops `sheet all`.
+    if (!(e instanceof MuseImageError && e.filtered)) throw e;
+    log(`${profile.slug}: pose sheet skipped (content filter)`);
+  }
+
   for (const beat of consistencyBeats(profile)) {
     const prompt = panelPrompt(profile, beat.scene, opts.style);
     log(`${profile.slug}: panel ${beat.id}`);
-    const res = await client.generate({ prompt, size: beat.size, previousResponseId: previous });
+    let res;
+    try {
+      res = await generateSoftly(client, { prompt, size: beat.size, previousResponseId: previous }, log);
+    } catch (e) {
+      // A test panel the filter refuses twice is skipped; the sheet is what matters.
+      if (e instanceof MuseImageError && e.filtered) {
+        log(`${profile.slug}: panel ${beat.id} skipped (content filter)`);
+        continue;
+      }
+      throw e;
+    }
     images.push({ id: beat.id, file: save(beat.id, res.image), prompt, size: beat.size, responseId: res.id, previousResponseId: previous, usage: res.usage, note: res.note });
     previous = res.id;
   }

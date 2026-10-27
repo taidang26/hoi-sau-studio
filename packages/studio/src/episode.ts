@@ -1,20 +1,36 @@
 /**
  * One episode, step by step, each step saved to episodes/<id>/<step>.json:
  *
- *   premise → beats → script → storyboard → panels → review → letter → canon
+ *   premise → beats → script → safety → storyboard → panels → review → letter → canon
  *
  * A step reads only what earlier steps saved, so any step can be rerun alone
  * (`--from script` reruns script and everything after it). Writing steps use
  * Muse Spark with a JSON schema; drawing uses Muse Image with each
  * character's locked model sheet as a reference; self-review uses Muse Spark
  * vision against the same sheet and asks Muse Image to fix only what is wrong.
+ *
+ * `safety` is a gate: every text of the episode is checked by rule and by Muse
+ * Spark against series/safety.yaml and the cast's never_says, and nothing is
+ * drawn unless it passes. Every step written is logged with its hash in
+ * provenance.jsonl, and `approveEpisode` (approve.ts) is the owner's sign-off
+ * that `channel publish` checks.
  */
 
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { composePanel, imageSize, svgToPng, type DialogueLine } from "@hoi-sau/svg-text";
+import sharp from "sharp";
+import { BUBBLE_KINDS, composePanel, imageSize, snugBubble, svgToPng, type BubbleKind, type DialogueLine } from "@hoi-sau/svg-text";
 import {
+  AUDIENCE_DATA_RULE,
+  BANNED_RULE,
+  type EpisodeText,
+  gateEpisode,
+  loadSafety,
+  ruleCheck,
+  SAFETY_SCHEMA,
+  type SafetyPolicy,
+  type SafetyVerdict,
   episodeNumber,
   type Llm,
   loadMemorySync,
@@ -28,15 +44,18 @@ import {
   WRITER_GUIDE,
 } from "@hoi-sau/story";
 import { addCanon, SERIES_DIR, type CanonFact, type SeriesBible } from "./bible.js";
-import type { MuseImage } from "./muse-image.js";
+import { generateSoftly, type MuseImage } from "./muse-image.js";
 import { type ChatMessage, type MuseSpark, S } from "./muse-spark.js";
 import { CHARACTERS_DIR, type Profile } from "./profile.js";
 import { iconLine } from "./prompts.js";
 import { type SeriesStyle, styleReference, styleText } from "./style.js";
+import { officeBrief, officePanelText, type Office } from "./office.js";
+import { sha256 } from "@hoi-sau/channel";
+import { type EpisodeSource, logProvenance, whoAmI } from "./provenance.js";
 
 export const EPISODES_DIR = fileURLToPath(new URL("../../../episodes", import.meta.url));
 
-export const EPISODE_STEPS = ["premise", "beats", "script", "storyboard", "panels", "review", "letter", "canon"] as const;
+export const EPISODE_STEPS = ["premise", "beats", "script", "safety", "storyboard", "panels", "review", "letter", "canon"] as const;
 export type EpisodeStep = (typeof EPISODE_STEPS)[number];
 
 export interface EpisodeSpec {
@@ -47,8 +66,10 @@ export interface EpisodeSpec {
   direction: string;
   /** Commenters to credit; they may appear as coworkers drawn from text only. */
   credits: Array<{ name: string; comment: string }>;
-  /** "carousel" (default): 4–6 panels posted one by one. "strip3": three panels on one 4:5 page. */
+  /** "carousel" (default): 4–6 panels posted one by one. "strip3": exactly three panels, the rule of three, posted one by one too. */
   format?: EpisodeFormat;
+  /** Where the direction came from; also the first line of provenance.jsonl. */
+  source?: EpisodeSource;
   createdAt: string;
 }
 
@@ -76,7 +97,8 @@ export interface ScriptPanel {
   characters: string[];
   action: string;
   expressions: Array<{ character: string; expression: string }>;
-  dialogue: Array<{ speaker: string; text: string }>;
+  /** kind: said aloud, thought, shouted or whispered; it picks the balloon. Older scripts have none (speech). */
+  dialogue: Array<{ speaker: string; text: string; kind?: BubbleKind }>;
 }
 
 export interface Script {
@@ -121,11 +143,15 @@ export interface StudioContext {
   bible: SeriesBible;
   /** series/style.yaml; without it panels use the lead's look.style. */
   style?: SeriesStyle;
+  /** series/office.yaml: who sits where and the background coworkers. */
+  office?: Office;
   profiles: Map<string, Profile>;
   dir?: string;
   charactersDir?: string;
   /** Where bible.yaml, season-<n>.yaml and story-memory.json live. */
   seriesDir?: string;
+  /** series/safety.yaml; loaded from seriesDir when not given. */
+  safety?: SafetyPolicy;
   /** Redraw attempts per failed panel. */
   maxRedraws?: number;
   log?: (s: string) => void;
@@ -134,16 +160,44 @@ export interface StudioContext {
 }
 
 const PANEL_SIZE = "1024x1280";
-const WIDE_PANEL_SIZE = "1536x1024";
 
 /** How many panels a format takes. */
 export function panelRange(ep: Pick<EpisodeSpec, "format">, bible: SeriesBible): { min: number; max: number } {
   return ep.format === "strip3" ? { min: 3, max: 3 } : bible.format.panels;
 }
 
-/** strip3 ends on a wide panel: the twist gets the whole bottom row. */
-export function panelSize(ep: Pick<EpisodeSpec, "format">, n: number): string {
-  return ep.format === "strip3" && n === 3 ? WIDE_PANEL_SIZE : PANEL_SIZE;
+/**
+ * Every panel is 4:5 and posts as its own image, in both formats. Feeds are
+ * read on phones, and three panels shrunk onto one page made the lettering
+ * too small to read there.
+ */
+export function panelSize(_ep: Pick<EpisodeSpec, "format">, _n: number): string {
+  return PANEL_SIZE;
+}
+
+/** A posted image, 4:5. Lettering is sized against it. */
+export const POST_SIZE = { width: 1080, height: 1350 };
+
+/**
+ * Bring a panel to the post size before lettering. A panel near 4:5 is
+ * centre-cropped. One far from it (an old wide panel) is shown whole over a
+ * blurred, darkened copy of itself, so nothing in the drawing is cut.
+ */
+export async function fitPost(image: Buffer, size = POST_SIZE): Promise<Buffer> {
+  const { width, height } = size;
+  try {
+    const meta = await sharp(image).metadata();
+    const ratio = (meta.width ?? width) / (meta.height ?? height);
+    if (Math.abs(Math.log(ratio / (width / height))) < 0.25) {
+      return await sharp(image).resize(width, height, { fit: "cover", position: "centre" }).png().toBuffer();
+    }
+    const back = await sharp(image).resize(width, height, { fit: "cover" }).blur(30).modulate({ brightness: 0.7 }).toBuffer();
+    const front = await sharp(image).resize(width, height, { fit: "inside" }).toBuffer();
+    return await sharp(back).composite([{ input: front, gravity: "centre" }]).png().toBuffer();
+  } catch {
+    // Not an image sharp can read (test stubs); letter it as it is.
+    return image;
+  }
 }
 
 // ── storage ────────────────────────────────────────────────────────────────
@@ -158,14 +212,21 @@ export function readStep<T>(id: string, step: string, dir?: string): T | undefin
 
 function writeStep(id: string, step: string, value: unknown, dir?: string): void {
   mkdirSync(episodeDir(id, dir), { recursive: true });
-  writeFileSync(file(id, step, dir), JSON.stringify(value, null, 2) + "\n");
+  const text = JSON.stringify(value, null, 2) + "\n";
+  writeFileSync(file(id, step, dir), text);
+  logProvenance(episodeDir(id, dir), { event: step, sha256: sha256(text) });
 }
 
-export function createEpisode(spec: Omit<EpisodeSpec, "createdAt">, dir?: string): EpisodeSpec {
+export function createEpisode(spec: Omit<EpisodeSpec, "createdAt">, dir?: string, safety: SafetyPolicy = loadSafety()): EpisodeSpec {
   if (!/^[a-z0-9-]+$/.test(spec.id)) throw new Error("episode id: lowercase letters, digits and dashes only");
+  // Cheap early stop: an injected or banned direction never reaches the writer. The safety step checks it all again.
+  const early = ruleCheck([{ where: "direction", text: spec.direction }, ...spec.credits.flatMap((c, i) => [{ where: `credit ${i + 1}`, text: `${c.name}: ${c.comment}` }])], safety);
+  if (early.length) throw new Error(`episode ${spec.id} refused by the safety rules:\n${early.map((i) => `  - ${i.where}: ${i.topic} (${i.detail})`).join("\n")}`);
   if (existsSync(file(spec.id, "episode", dir))) throw new Error(`episode ${spec.id} already exists`);
   if (spec.format && !EPISODE_FORMATS.includes(spec.format)) throw new Error(`format must be one of ${EPISODE_FORMATS.join(", ")}`);
-  const full = { ...spec, characters: [...new Set([spec.lead, ...spec.characters])], createdAt: new Date().toISOString() };
+  const full = { ...spec, characters: [...new Set([spec.lead, ...spec.characters])], source: spec.source ?? { kind: "manual" as const, by: whoAmI() }, createdAt: new Date().toISOString() };
+  mkdirSync(episodeDir(spec.id, dir), { recursive: true });
+  logProvenance(episodeDir(spec.id, dir), { event: "created", by: full.source.by, source: full.source, detail: full.direction });
   writeStep(spec.id, "episode", full, dir);
   return full;
 }
@@ -238,6 +299,8 @@ function writerMessages(ctx: StudioContext, ep: EpisodeSpec, task: string, earli
         `Series bible: ${seriesBrief(ctx, ep)}`,
         `Cast for this episode: ${castBrief(ctx, ep.characters)}`,
         "Use only the cast slugs given above in character and speaker fields.",
+        BANNED_RULE(safetyOf(ctx)),
+        AUDIENCE_DATA_RULE,
       ].join("\n\n"),
     },
     {
@@ -248,6 +311,37 @@ function writerMessages(ctx: StudioContext, ep: EpisodeSpec, task: string, earli
     },
   ];
 }
+
+const safetyOf = (ctx: StudioContext) => (ctx.safety ??= loadSafety(ctx.seriesDir ?? SERIES_DIR));
+
+/** Every text the episode carries, from the audience's direction to each line of dialogue. */
+export function episodeTexts(id: string, dir?: string): EpisodeText[] {
+  const ep = readStep<EpisodeSpec>(id, "episode", dir);
+  const premise = readStep<Premise>(id, "premise", dir);
+  const beats = readStep<Beats>(id, "beats", dir);
+  const script = readStep<Script>(id, "script", dir);
+  const out: EpisodeText[] = [];
+  const add = (where: string, text: string | undefined | null) => text?.trim() && out.push({ where, text });
+  add("direction", ep?.direction);
+  ep?.credits.forEach((c, i) => (add(`credit ${i + 1} name`, c.name), add(`credit ${i + 1} comment`, c.comment)));
+  if (premise) {
+    for (const k of ["title", "logline", "setup", "twist", "hook", "trigger"] as const) add(`premise.${k}`, premise[k]);
+    if (premise.cameo) (add("cameo name", premise.cameo.name), add("cameo look", premise.cameo.description));
+  }
+  beats?.beats.forEach((b, i) => add(`beat ${i + 1}`, b.what_happens));
+  add("script title", script?.title);
+  script?.panels.forEach((p, i) => {
+    add(`panel ${i + 1} setting`, p.setting);
+    add(`panel ${i + 1} action`, p.action);
+    p.dialogue.forEach((d, j) => add(`panel ${i + 1} line ${j + 1} (${d.speaker})`, d.text));
+  });
+  return out;
+}
+
+/** Hash of the texts the safety step judged, to notice edits made after it. */
+export const textsHash = (texts: EpisodeText[]) => sha256(JSON.stringify(texts));
+
+export type SafetyRecord = SafetyVerdict & { textsHash: string };
 
 // ── schemas ────────────────────────────────────────────────────────────────
 
@@ -278,7 +372,15 @@ const scriptSchema = (n: Range) =>
         characters: S.arr(S.str("cast slug"), 1, 3),
         action: S.str("Vietnamese, what we see. The joke should read from the picture alone."),
         expressions: S.arr(S.obj({ character: S.str(), expression: S.str("a key from that character's expressions") }), 0, 3),
-        dialogue: S.arr(S.obj({ speaker: S.str("cast slug"), text: S.str("Vietnamese, at most 12 words. Avoid calling characters by name.") }), 0, 2),
+        dialogue: S.arr(
+          S.obj({
+            speaker: S.str("cast slug"),
+            text: S.str("Vietnamese, at most 12 words. Avoid calling characters by name."),
+            kind: S.enum(BUBBLE_KINDS, "speech: said aloud. thought: only in their head. shout: loud, short. whisper: quiet aside."),
+          }),
+          0,
+          2,
+        ),
       }),
       n.min,
       n.max,
@@ -291,7 +393,7 @@ const storyboardSchema = (n: Range) =>
       S.obj({
         shot: S.enum(["wide", "medium", "close-up", "extreme close-up"]),
         angle: S.enum(["eye level", "high angle", "low angle"]),
-        composition: S.str("English, one or two sentences for the illustrator: setting, poses, props, what draws the eye. Keep the top quarter calm for dialogue."),
+        composition: S.str("English, one or two sentences for the illustrator: setting, poses, props, what draws the eye. Lighting fits the scene and stays cheerful: daytime by default; evening or night only when the story needs it, then warm and lively, never gloomy. Tension comes from poses and faces, not lighting. Push the acting to cartoon extremes: squash and stretch, extreme faces, big dynamic poses, drawn comic effects (sweat drops, motion lines, shock lines, steam). Leave soft, simple background (wall, window, ceiling) in the top third for dialogue. Never a thought cloud or speech bubble: thoughts and lines are lettered later."),
         staging: S.arr(S.obj({ character: S.str("cast slug"), position: S.enum(["left", "center", "right"]) }), 1, 3),
       }),
       n.min,
@@ -319,7 +421,7 @@ function sanitizeScript(script: Script, ep: EpisodeSpec, bible: SeriesBible): Sc
     ...p,
     characters: [...new Set(p.characters.map(fix))],
     expressions: p.expressions.filter((e) => cast.has(e.character)),
-    dialogue: p.dialogue.slice(0, 2).map((d) => ({ speaker: fix(d.speaker), text: d.text.trim() })),
+    dialogue: p.dialogue.slice(0, 2).map((d) => ({ speaker: fix(d.speaker), text: d.text.trim(), kind: BUBBLE_KINDS.includes(d.kind!) ? d.kind : "speech" })),
   }));
   return { ...script, panels };
 }
@@ -349,13 +451,13 @@ function modelSheet(ctx: StudioContext, slug: string): string | undefined {
 }
 
 /** Model sheet, then pose sheet when one is locked. */
-function characterRefs(ctx: StudioContext, slug: string): string[] {
+export function characterRefs(ctx: StudioContext, slug: string): string[] {
   const p = ctx.profiles.get(slug);
   return [modelSheet(ctx, slug), sheetImage(ctx, slug, p?.look.pose_sheet)].filter((x): x is string => Boolean(x));
 }
 
 /** The style sentence every panel gets: the series style when set, else the lead's own. */
-function panelStyle(ctx: StudioContext, ep: EpisodeSpec): string {
+export function panelStyle(ctx: StudioContext, ep: EpisodeSpec): string {
   return ctx.style ? styleText(ctx.style) : ctx.profiles.get(ep.lead)!.look.style;
 }
 
@@ -372,60 +474,58 @@ export function episodePanelPrompt(ctx: StudioContext, ep: EpisodeSpec, sp: Scri
     `${bp.shot} shot, ${bp.angle}. ${bp.composition}`,
     who,
     cameo && sp.action.includes(cameo.name) ? `Also a coworker: ${cameo.description}.` : "",
-    `Match the character sheets and pose sheets exactly. Single comic panel. Style: ${style} Keep the top quarter calm and uncluttered for dialogue added later. No text, no letters, no speech bubbles, no captions.`,
+    ctx.office ? officePanelText(ctx.office, bp.staging.map((st) => st.character)) : "",
+    `Match the character sheets and pose sheets exactly. Single comic panel. Style: ${style} Cheerful lighting that fits the scene (daytime unless the composition says otherwise), never gloomy. The scene fills the whole panel edge to edge; the top third shows soft, simple background (wall, window, ceiling) with no busy detail, ready for dialogue added later, never a blank band or a separate strip of plain colour, and keep every character away from the very top and bottom edges (the panel is trimmed slightly there). No text, no letters, no speech bubbles, no thought clouds, no captions. Drawn comic effects are welcome as pictures: sweat drops, motion lines, shock lines, anger veins, steam puffs, sparkles. Exaggerated cartoon acting with squash and stretch and extreme faces.`,
   ]
     .filter(Boolean)
     .join(" ");
 }
 
-/**
- * strip3 page, 1080x1350 (4:5): panels 1 and 2 side by side on top, the wide
- * twist across the bottom, thick black borders on white. Each box matches its
- * panel's aspect ratio (4:5 and 3:2), so nothing is cropped unless the model
- * returns a different ratio; then the centre is kept.
- */
-export function stripPage(panels: Buffer[], size = { width: 1080, height: 1350 }): string {
-  const { width, height } = size;
-  const side = 40;
-  const gutter = 30;
-  const topW = (width - 2 * side - gutter) / 2;
-  const topH = topW * 1.25;
-  const bottomW = width - 2 * side;
-  const bottomH = bottomW / 1.5;
-  const y0 = (height - topH - gutter - bottomH) / 2;
-  const boxes = [
-    { x: side, y: y0, w: topW, h: topH },
-    { x: side + topW + gutter, y: y0, w: topW, h: topH },
-    { x: side, y: y0 + topH + gutter, w: bottomW, h: bottomH },
-  ];
-  const cells = panels.slice(0, 3).map((data, i) => {
-    const b = boxes[i];
-    const href = `data:${imageSize(data).mime};base64,${data.toString("base64")}`;
-    return (
-      `<image href="${href}" x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" preserveAspectRatio="xMidYMid slice"/>` +
-      `<rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" fill="none" stroke="#111" stroke-width="6" stroke-linejoin="round"/>`
-    );
-  });
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><rect width="100%" height="100%" fill="#fff"/>${cells.join("")}</svg>`;
+/** Dialogue size as a share of panel width, for reading on a phone. */
+export const PHONE_FONT = 0.044;
+export const PHONE_MIN_FONT = 0.036;
+
+/** Roughly where a speaker's head is, from staging and shot. Coordinates as shares of the panel. */
+function headAt(bp: BoardPanel, pos: Position): { x: number; y: number } {
+  const X: Record<Position, number> = { left: 0.27, center: 0.5, right: 0.73 };
+  const y = bp.shot === "wide" ? 0.5 : bp.shot === "medium" ? 0.42 : 0.36;
+  return { x: X[pos], y };
 }
 
-/** Bubble boxes from staging: above the speaker, tail pointing down at them. Coordinates in px. */
+/**
+ * Bubbles from staging. Each is sized to its words, sits in the calm top of
+ * the panel above its speaker, and aims a short tail (or a trail of puffs for
+ * a thought) at the speaker's head. A second line reads after the first:
+ * lower, and on its own side when the speakers stand apart. Coordinates in px.
+ */
 export function bubbleLayout(sp: ScriptPanel, bp: BoardPanel, width: number, height: number): DialogueLine[] {
-  const X: Record<Position, number> = { left: 0.27, center: 0.5, right: 0.73 };
-  const lines = sp.dialogue.length;
+  const margin = width * 0.035;
+  // A feed image is about 390 pt wide on a phone. 4.4% of the width is about
+  // 17 pt there; below 3.6% (14 pt) a line counts as overflow so review flags it.
+  const fontSize = Math.round(width * PHONE_FONT);
+  const minFontSize = Math.round(width * PHONE_MIN_FONT);
+  const placed: Array<{ x: number; y: number; w: number; h: number }> = [];
   return sp.dialogue.map((d, i) => {
+    const kind = d.kind ?? "speech";
     const pos = bp.staging.find((s) => s.character === d.speaker)?.position ?? "center";
-    const w = width * (lines > 1 ? 0.46 : 0.6);
-    const h = height * 0.16;
-    // Two lines read top-left then lower-right, in speaking order.
-    const cx = lines > 1 ? width * (i === 0 ? 0.28 : 0.72) : width * X[pos];
-    const y = height * (0.035 + i * 0.085);
-    const x = Math.min(Math.max(cx - w / 2, width * 0.03), width * 0.97 - w);
-    return {
-      speaker: d.speaker,
-      text: d.text,
-      bubble: { x, y, width: w, height: h, draw: true, tail: { x: width * X[pos], y: y + h + height * 0.09 } },
-    };
+    const head = headAt(bp, pos);
+    const two = sp.dialogue.length > 1;
+    // Bangers is condensed, so shouts get a larger size to read as loud.
+    const size = kind === "shout" ? Math.round(fontSize * 1.25) : fontSize;
+    const { width: w, height: h } = snugBubble(d.text, kind, { fontSize: size, maxWidth: width * (two ? 0.52 : 0.62) });
+    // Lean towards the reading order: the first of two sits left of its speaker, the second right.
+    const lean = two ? (i === 0 ? -0.06 : 0.06) : 0;
+    let x = Math.min(Math.max((head.x + lean) * width - w / 2, margin), width - margin - w);
+    let y = height * 0.03 + (two && i > 0 ? height * 0.05 : 0);
+    const prev = placed[i - 1];
+    if (prev && x < prev.x + prev.w + margin * 0.5 && prev.x < x + w + margin * 0.5) {
+      // They would touch: hang the second below the first, nudged aside.
+      y = prev.y + prev.h * 0.82;
+      x = Math.min(Math.max(prev.x + prev.w * 0.35, margin), width - margin - w);
+    }
+    placed.push({ x, y, w, h });
+    const aim = { x: head.x * width, y: Math.max(head.y * height, y + h + height * 0.06) };
+    return { speaker: d.speaker, text: d.text, bubble: { x, y, width: w, height: h, kind, draw: true, tail: aim }, options: { maxFontSize: size, minFontSize, strokeWidth: Math.max(3, width / 300) } };
   });
 }
 
@@ -451,7 +551,7 @@ export async function runStep(ctx: StudioContext, id: string, step: EpisodeStep)
       const n = panelRange(ep, ctx.bible);
       const task =
         ep.format === "strip3"
-          ? 'Break it into exactly 3 beats, the rule of three: beat 1 sets up the everyday trigger, beat 2 repeats the pattern one step worse, beat 3 is the twist (purpose "punchline") and must land from the drawing alone. Panel 3 is drawn wide.'
+          ? 'Break it into exactly 3 beats, the rule of three: beat 1 sets up the everyday trigger, beat 2 repeats the pattern one step worse, beat 3 is the twist (purpose "punchline") and must land from the drawing alone. Each panel is posted as its own swipeable image.'
           : `Break it into ${n.min}–${n.max} beats. Last beat is the hook for "hồi sau".`;
       const beats = await ctx.spark.json<Beats>("beats", beatsSchema(n), writerMessages(ctx, ep, task, { premise: need("premise") }));
       return writeStep(id, "beats", beats, dir);
@@ -464,12 +564,30 @@ export async function runStep(ctx: StudioContext, id: string, step: EpisodeStep)
       );
       return writeStep(id, "script", sanitizeScript(raw, ep, ctx.bible), dir);
     }
+    case "safety": {
+      const texts = episodeTexts(id, dir);
+      const cast = ep.characters.map((c) => ctx.profiles.get(c)!);
+      const llm: Llm = { model: ctx.spark.model, complete: async (req) => ({ text: JSON.stringify(await ctx.spark.json("safety", SAFETY_SCHEMA, [{ role: "system", content: req.system }, { role: "user", content: req.user }])) }) };
+      const verdict = await gateEpisode(llm, texts, safetyOf(ctx), cast);
+      writeStep(id, "safety", { ...verdict, textsHash: textsHash(texts) } satisfies SafetyRecord, dir);
+      if (!verdict.pass) throw new SafetyError(id, verdict);
+      return;
+    }
     case "storyboard": {
+      // Nothing is drawn unless the safety gate passed on the text as it is now.
+      const gate = need<SafetyRecord>("safety");
+      if (!gate.pass) throw new SafetyError(id, gate);
+      if (gate.textsHash !== textsHash(episodeTexts(id, dir))) throw new Error(`${id}: the story changed after the safety check; rerun with --from safety`);
       const script = need<Script>("script");
       const raw = await ctx.spark.json<Storyboard>(
         "storyboard",
         storyboardSchema(panelRange(ep, ctx.bible)),
-        writerMessages(ctx, ep, "Storyboard every script panel: shot size, angle, composition for the illustrator, and where each character stands. Vary shots; end on a close-up when it lands the joke.", { script }),
+        writerMessages(
+          ctx,
+          ep,
+          "Storyboard every script panel: shot size, angle, composition for the illustrator, and where each character stands. Vary shots; end on a close-up when it lands the joke. Follow the office floor plan: characters at their desks sit in their own seats, and the windows, meeting room and pantry stay where the plan puts them.",
+          ctx.office ? { script, office: officeBrief(ctx.office) } : { script },
+        ),
       );
       return writeStep(id, "storyboard", sanitizeBoard(raw, script), dir);
     }
@@ -496,7 +614,7 @@ export async function runStep(ctx: StudioContext, id: string, step: EpisodeStep)
         if (i === 0 && styleRef) refs.unshift(styleRef);
         const prompt = episodePanelPrompt(ctx, ep, sp, bp, premise.cameo);
         log(`${id}: panel ${i + 1}${refs.length ? ` (+${refs.length} reference)` : ""}`);
-        const res = await ctx.image.generate({ prompt, size: panelSize(ep, i + 1), previousResponseId: previous, references: refs });
+        const res = await generateSoftly(ctx.image, { prompt, size: panelSize(ep, i + 1), previousResponseId: previous, references: refs }, (m) => log(`${id}: panel ${i + 1}: ${m}`));
         const name = `panel-${i + 1}.${imageSize(res.image).mime.split("/")[1]}`;
         writeFileSync(join(out, name), res.image);
         renders.push({ n: i + 1, file: `panels/${name}`, responseId: res.id, prompt, history: [] });
@@ -514,7 +632,7 @@ export async function runStep(ctx: StudioContext, id: string, step: EpisodeStep)
         let redrawn = false;
         for (let attempt = 0; !verdict.pass && attempt < (ctx.maxRedraws ?? 1); attempt++) {
           log(`${id}: redraw panel ${r.n}: ${verdict.fix}`);
-          const res = await ctx.image.generate({
+          const res = await generateSoftly(ctx.image, {
             prompt: `Edit this panel. Change only this: ${verdict.fix}. Keep everything else exactly the same: composition, background, other characters, colours. No text.`,
             previousResponseId: current.responseId,
             size: panelSize(ep, r.n),
@@ -539,7 +657,7 @@ export async function runStep(ctx: StudioContext, id: string, step: EpisodeStep)
       mkdirSync(out, { recursive: true });
       const pages: Array<{ n: number; file: string; overflow: number }> = [];
       for (const r of renders) {
-        const data = readFileSync(join(episodeDir(id, dir), r.file));
+        const data = await fitPost(readFileSync(join(episodeDir(id, dir), r.file)));
         const size = imageSize(data);
         const lines = bubbleLayout(script.panels[r.n - 1], board.panels[r.n - 1], size.width, size.height);
         const { svg, overflow } = composePanel({ data, ...size }, lines);
@@ -547,14 +665,6 @@ export async function runStep(ctx: StudioContext, id: string, step: EpisodeStep)
         writeFileSync(join(out, name), svgToPng(svg));
         writeFileSync(join(out, `${String(r.n).padStart(2, "0")}.svg`), svg);
         pages.push({ n: r.n, file: `final/${name}`, overflow: overflow.length });
-      }
-      // strip3 also posts as one page: two panels on top, the wide twist below.
-      if (ep.format === "strip3") {
-        const lettered = pages.map((p) => readFileSync(join(episodeDir(id, dir), p.file)));
-        const page = stripPage(lettered);
-        writeFileSync(join(out, "page.svg"), page);
-        writeFileSync(join(out, "page.png"), svgToPng(page));
-        return writeStep(id, "letter", { pages, page: "final/page.png" }, dir);
       }
       return writeStep(id, "letter", { pages }, dir);
     }
@@ -594,7 +704,8 @@ async function reviewPanel(ctx: StudioContext, ep: EpisodeSpec, sp: ScriptPanel,
           const p = ctx.profiles.get(c)!;
           return `${p.name} must have: ${p.look.signature.join("; ")}.${p.look.icon ? ` Its identifying item must be clearly visible: ${p.look.icon}.` : ""} Palette: ${p.look.palette.map((s) => s.hex).join(", ")}.`;
         }),
-        "Fail the panel if a signature feature is wrong or missing, a character is off-model, there is drawn text or a speech bubble, or anything unsafe. The first image is the panel; any others are the locked model sheets.",
+        "Fail the panel if a signature feature is wrong or missing, a character is off-model, there is drawn text, a speech bubble or a thought cloud, a human figure anywhere (every coworker is an animal), or anything unsafe. The first image is the panel; any others are the locked model sheets.",
+        `Unsafe means anything on this list, even in the background: ${safetyOf(ctx).topics.map((t) => t.describe).join("; ")}.`,
       ].join("\n"),
     },
     { type: "image_url", image_url: { url: `data:${imageSize(data).mime};base64,${data.toString("base64")}` } },
@@ -606,11 +717,26 @@ async function reviewPanel(ctx: StudioContext, ep: EpisodeSpec, sp: ScriptPanel,
   return ctx.spark.json("review", reviewSchema, [{ role: "user", content }]);
 }
 
+/** The gate said no. The message lists every issue so the editor can fix the direction or the script. */
+export class SafetyError extends Error {
+  constructor(
+    readonly episodeId: string,
+    readonly verdict: SafetyVerdict,
+  ) {
+    super(`${episodeId}: stopped by the safety check:\n${verdict.issues.map((i) => `  - ${i.where}: ${i.topic} (${i.by}) ${i.detail}`).join("\n")}`);
+  }
+}
+
 /** Run from `from` (default: first step not yet saved) to the end. */
 export async function runEpisode(ctx: StudioContext, id: string, opts: { from?: EpisodeStep; to?: EpisodeStep } = {}): Promise<EpisodeStep[]> {
   const done = doneSteps(id, ctx.dir);
   const start = opts.from ? EPISODE_STEPS.indexOf(opts.from) : EPISODE_STEPS.findIndex((s) => !done.includes(s));
   if (start < 0) return [];
+  // An episode drawn before the gate existed: check it without redrawing anything.
+  if (!opts.from && EPISODE_STEPS[start] === "safety" && done.includes("storyboard")) {
+    await runStep(ctx, id, "safety");
+    return ["safety", ...(await runEpisode(ctx, id, opts))];
+  }
   const end = opts.to ? EPISODE_STEPS.indexOf(opts.to) : EPISODE_STEPS.length - 1;
   const ran: EpisodeStep[] = [];
   for (const step of EPISODE_STEPS.slice(start, end + 1)) {

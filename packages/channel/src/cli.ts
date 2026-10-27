@@ -8,44 +8,58 @@
  * the main brand). META_GRAPH_MOCK=1 swaps Meta for the fake in demo.ts.
  */
 
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import {
   BRANDS_FILE,
   DEFAULT_GRAPH_VERSION,
-  MAIN_BRAND,
+  FACEBOOK_REACH_METRICS,
   FileJournal,
   GraphClient,
   GraphError,
   InboxError,
+  MAIN_BRAND,
   THREADS_BASE_URL,
   brandTargets,
   channelStates,
   exchangeCodeForUserToken,
   exchangeLongLivedUserToken,
   exchangeThreadsLongLived,
+  facebookInsights,
   fetchConversations,
   fetchFacebookComments,
   fetchInstagramComments,
   fetchThreadsReplies,
   findBrand,
+  insightsPath,
   inspectToken,
+  instagramInsights,
   journalPath,
   listManagedPages,
   loadBrands,
   loadComments,
   loadInbox,
+  loadInsights,
   loginDialogUrl,
   mergeComments,
   mergeConversations,
+  mergeInsights,
   missingScopes,
+  parseJournalKey,
   publishEpisode,
   refreshThreadsToken,
   routeEpisode,
+  approvalProblems,
+  loadReplies,
+  saveReplies,
+  sendApproved,
   saveComments,
   saveInbox,
+  saveInsights,
   sendReply,
+  threadsInsights,
   threadsProfile,
   waitForLoginCode,
   type Brand,
@@ -54,6 +68,7 @@ import {
   type Conversation,
   type EpisodePost,
   type Platform,
+  type PostMetrics,
   type Targets,
 } from "./index.js";
 import { demoGraph } from "./demo.js";
@@ -177,10 +192,14 @@ async function setup(shortToken: string) {
   const fb = envNames("facebook");
   const ig = optionalEnvNames("instagram");
   const { accessToken } = await exchangeLongLivedUserToken(client(), required("META_APP_ID"), required("META_APP_SECRET"), shortToken);
-  const pages = await listManagedPages(client(accessToken));
-  if (pages.length === 0) throw new Error("This account manages no Pages. Was pages_show_list granted?");
-
   const wanted = fb.pageId ? process.env[fb.pageId] : undefined;
+  const pages = await listManagedPages(client(accessToken), { pageId: wanted });
+  if (pages.length === 0) {
+    throw new Error(
+      "This account manages no Pages. Check pages_show_list was granted; if the Page belongs to a business portfolio, add business_management to the login.",
+    );
+  }
+
   const page = wanted ? pages.find((p) => p.id === wanted) : pages.length === 1 ? pages[0] : undefined;
   if (!page) {
     console.log("Pages this account manages:");
@@ -229,6 +248,9 @@ async function login(portArg?: string) {
     state,
     version: process.env.META_GRAPH_VERSION || DEFAULT_GRAPH_VERSION,
     configId: process.env.META_LOGIN_CONFIG_ID || undefined,
+    // Comma-separated subset, e.g. only the pages_* scopes while the Page has no Instagram yet,
+    // so Facebook does not make you pick an unrelated Instagram account.
+    scopes: process.env.META_LOGIN_SCOPES ? process.env.META_LOGIN_SCOPES.split(",").map((s) => s.trim()) : undefined,
   });
 
   const code = await waitForLoginCode({
@@ -252,9 +274,36 @@ async function storeThreadsToken(token: string, expiresIn: number | undefined, m
   return until;
 }
 
-async function threadsSetup(shortToken: string) {
+/** Reads the clipboard, so a token copied from the dashboard never has to be pasted into a terminal. */
+function readClipboard(): string {
+  const [cmd, args]: [string, string[]] =
+    process.platform === "win32"
+      ? ["powershell", ["-NoProfile", "-Command", "Get-Clipboard"]]
+      : process.platform === "darwin"
+        ? ["pbpaste", []]
+        : ["xclip", ["-selection", "clipboard", "-o"]];
+  try {
+    return execFileSync(cmd, args, { encoding: "utf8" }).trim();
+  } catch {
+    throw new Error("Could not read the clipboard. Pass the token as an argument instead.");
+  }
+}
+
+async function threadsSetup(tokenArg?: string) {
+  const shortToken = tokenArg ?? readClipboard();
+  if (!/^\S{20,}$/.test(shortToken)) {
+    throw new Error("That does not look like a Threads token. Click Copy next to the token in the User Token Generator, then run this again.");
+  }
   const names = envNames("threads");
-  const long = await exchangeThreadsLongLived(threadsClient(), required("THREADS_APP_SECRET"), shortToken);
+  let long: { accessToken: string; expiresIn?: number };
+  try {
+    long = await exchangeThreadsLongLived(threadsClient(), required("THREADS_APP_SECRET"), shortToken);
+  } catch (e) {
+    // The dashboard's User Token Generator already hands out a 60-day token,
+    // which Meta refuses to exchange again. Use it as it is if it works.
+    if (!(e instanceof GraphError) || (e.kind !== "token" && e.kind !== "invalid")) throw e;
+    long = { accessToken: shortToken };
+  }
   const profile = await threadsProfile(threadsClient(long.accessToken));
   const until = await storeThreadsToken(long.accessToken, long.expiresIn, {
     [names.userId!]: profile.id,
@@ -292,6 +341,11 @@ async function check() {
 
 async function publish(file: string, only: Platform[]) {
   const post = JSON.parse(await readFile(file, "utf8")) as EpisodePost;
+  // Only what the owner approved goes out, exactly as approved. The fake Meta skips this for demos and tests.
+  if (!mock) {
+    const problems = approvalProblems(join(process.env.EPISODES_DIR || "episodes", post.episodeId), post);
+    if (problems.length) throw new Error(`Not publishing ${post.episodeId}:\n  ${problems.join("\n  ")}`);
+  }
   // --brand posts to that brand only. Otherwise channels.yaml routes by the lead character.
   const routes = chosenBrand
     ? [{ brand: currentBrand() }]
@@ -351,6 +405,25 @@ async function pullComments() {
   console.log(`${added.length} new comments, ${all.length} in total.`);
 }
 
+/** Accounts per brand, looked up once; paused channels included, since their posts still get comments. */
+function accountsCache() {
+  const cache = new Map<string, Targets>();
+  return (id = MAIN_BRAND) => {
+    const brand = findBrand(brands(), id);
+    if (!cache.has(brand.id)) cache.set(brand.id, accounts(brand, true).targets);
+    return cache.get(brand.id)!;
+  };
+}
+
+async function sendReplies() {
+  const targetsOf = accountsCache();
+  // Each comment goes out from the account that published its post.
+  const brandOf = new Map((await journal().published()).map((p) => [p.postId, p.brand]));
+  const { list, sent, failed } = await sendApproved((c) => targetsOf(c.brand ?? brandOf.get(c.postId)), await loadReplies(dataDir()));
+  await saveReplies(dataDir(), list);
+  console.log(`${sent} sent, ${failed} failed.`);
+}
+
 async function pullInbox() {
   const fetched: Conversation[] = [];
   // Every brand with a Page, paused ones too: people keep writing to a paused Page.
@@ -378,6 +451,45 @@ async function reply(conversationId: string, text: string) {
   console.log(`Sent to ${conversation.customer.name}.`);
 }
 
+async function pullInsights() {
+  const cache = new Map<string, Targets>();
+  const targetsOf = (brand: Brand) => {
+    if (!cache.has(brand.id)) cache.set(brand.id, accounts(brand, true).targets);
+    return cache.get(brand.id)!;
+  };
+  const reachMetrics = process.env.FB_REACH_METRIC ? [process.env.FB_REACH_METRIC] : FACEBOOK_REACH_METRICS;
+
+  const fresh: PostMetrics[] = [];
+  const gaps = new Map<string, number>();
+  for (const [key, post] of await journal().publishedByKey()) {
+    const { format } = parseJournalKey(key);
+    const t = targetsOf(findBrand(brands(), post.brand ?? MAIN_BRAND));
+    const numbers =
+      post.platform === "facebook"
+        ? await facebookInsights(t.page, post.postId, reachMetrics)
+        : post.platform === "instagram"
+          ? await instagramInsights(t.page, post.postId, format === "reels-9x16")
+          : t.threads
+            ? await threadsInsights(t.threads.client, post.postId)
+            : undefined;
+    if (!numbers) continue;
+    const { missing, ...values } = numbers;
+    for (const m of missing) gaps.set(`${post.platform} ${m}`, (gaps.get(`${post.platform} ${m}`) ?? 0) + 1);
+    fresh.push({
+      postId: post.postId,
+      platform: post.platform,
+      ...(post.brand ? { brand: post.brand } : {}),
+      ...values,
+      fetchedAt: new Date().toISOString(),
+      ...(missing.length ? { missing } : {}),
+    });
+  }
+  const all = mergeInsights(await loadInsights(dataDir()), fresh);
+  await saveInsights(dataDir(), all);
+  console.log(`Numbers for ${fresh.length} posts, ${all.length} in ${insightsPath(dataDir())}.`);
+  for (const [gap, n] of gaps) console.log(`  not available on ${n} post(s): ${gap}`);
+}
+
 // -------------------------------------------------------------------- main
 
 interface Command {
@@ -402,9 +514,8 @@ const commands: Record<string, Command> = {
     run: ([token]) => setup(token),
   },
   "threads-setup": {
-    usage: "threads-setup <short-lived Threads token>",
-    help: "swap it for a 60-day token and save the Threads profile",
-    args: 1,
+    usage: "threads-setup [short-lived Threads token]",
+    help: "swap it (or the one on the clipboard) for a 60-day token and save the Threads profile",
     run: ([token]) => threadsSetup(token),
   },
   "threads-refresh": { usage: "threads-refresh", help: "extend the Threads token by another 60 days", run: threadsRefresh },
@@ -416,6 +527,16 @@ const commands: Record<string, Command> = {
     run: ([file, ...platforms]) => publish(file, platforms as Platform[]),
   },
   comments: { usage: "comments", help: "pull comments of every published episode into data/comments.json", run: pullComments },
+  insights: {
+    usage: "insights",
+    help: "pull reach, reactions, shares, saves and views of every published post into data/insights.json",
+    run: pullInsights,
+  },
+  "send-replies": {
+    usage: "send-replies",
+    help: "post the approved character comments in data/replies.json, each once",
+    run: sendReplies,
+  },
   inbox: { usage: "inbox", help: "pull Messenger and Instagram conversations into data/inbox.json", run: pullInbox },
   reply: {
     usage: "reply <conversation-id> <text>",

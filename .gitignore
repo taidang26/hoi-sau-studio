@@ -12,6 +12,9 @@ dist/
 data/
 data-demo/
 output/
+site/public/media/
+.firebase/
+firebase-debug.log
 
 # Noise
 *.log

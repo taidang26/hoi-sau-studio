@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Bino, binturong director. Placeholder portrait until the Muse Image model sheet is locked. -->
+  <g stroke="#1b1410" stroke-width="10" stroke-linejoin="round" stroke-linecap="round">
+    <!-- navy suit over an open orange-red shirt -->
+    <path d="M40 512 C40 400 140 350 256 350 C372 350 472 400 472 512 Z" fill="#22315C"/>
+    <path d="M196 356 L256 512 L316 356 Z" fill="#E8542F"/>
+    <!-- gold chain and pendant -->
+    <path d="M170 360 C190 430 322 430 342 360" fill="none" stroke="#E3B23C" stroke-width="14"/>
+    <circle cx="256" cy="430" r="22" fill="#E3B23C"/>
+    <!-- shaggy head -->
+    <path d="M110 250 C96 150 170 92 256 92 C342 92 416 150 402 250 C392 330 330 372 256 372 C182 372 120 330 110 250 Z" fill="#2E2B2A"/>
+    <!-- ears with white tips -->
+    <circle cx="140" cy="140" r="34" fill="#2E2B2A"/>
+    <circle cx="372" cy="140" r="34" fill="#2E2B2A"/>
+    <!-- grey face -->
+    <ellipse cx="256" cy="250" rx="110" ry="92" fill="#B9B3AC"/>
+    <!-- cap -->
+    <path d="M150 140 C160 70 352 70 362 140 Z" fill="#1E1E1E"/>
+    <path d="M300 138 L420 150" stroke-width="18"/>
+  </g>
+  <path d="M120 120 a20 20 0 0 1 36 -10 M356 110 a20 20 0 0 1 36 10" stroke="#ffffff" stroke-width="8" fill="none"/>
+  <!-- small cheerful eyes -->
+  <path d="M206 222 q14 -14 28 0 M278 222 q14 -14 28 0" stroke="#1b1410" stroke-width="9" fill="none" stroke-linecap="round"/>
+  <ellipse cx="256" cy="258" rx="16" ry="12" fill="#1b1410"/>
+  <!-- huge white walrus moustache -->
+  <path d="M256 268 C220 262 170 270 150 318 C190 306 220 304 256 296 C292 304 322 306 362 318 C342 270 292 262 256 268 Z" fill="#F4F1EA" stroke="#1b1410" stroke-width="8" stroke-linejoin="round"/>
+  <!-- white cat peeking at the bottom right -->
+  <g stroke="#1b1410" stroke-width="8" stroke-linejoin="round">
+    <path d="M360 512 C360 450 380 420 420 420 C460 420 480 450 480 512 Z" fill="#ffffff"/>
+    <path d="M384 430 L392 396 L410 424 M430 424 L448 396 L456 430" fill="#ffffff"/>
+  </g>
+  <path d="M398 456 h14 M430 456 h14" stroke="#1b1410" stroke-width="7" stroke-linecap="round"/>
+</svg>

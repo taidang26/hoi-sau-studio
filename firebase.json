@@ -1,0 +1,63 @@
+{
+  "hosting": [
+    {
+      "target": "hoisau",
+      "public": "site/public",
+      "cleanUrls": true,
+      "trailingSlash": false,
+      "ignore": [
+        "**/.*"
+      ],
+      "headers": [
+        {
+          "source": "/media/**",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "public, max-age=31536000, immutable"
+            },
+            {
+              "key": "Access-Control-Allow-Origin",
+              "value": "*"
+            }
+          ]
+        },
+        {
+          "source": "/callback",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-store"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "target": "demo",
+      "public": "deploy/proxy-public",
+      "rewrites": [
+        {
+          "source": "**",
+          "run": {
+            "serviceId": "hoisau-demo",
+            "region": "asia-southeast1"
+          }
+        }
+      ]
+    },
+    {
+      "target": "admin",
+      "public": "deploy/proxy-public",
+      "rewrites": [
+        {
+          "source": "**",
+          "run": {
+            "serviceId": "hoisau-admin",
+            "region": "asia-southeast1"
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Đăng nhập</title>
+<meta name="referrer" content="no-referrer">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<main>
+  <h1>Đang chuyển về máy bạn…</h1>
+  <p class="muted">Trang này chỉ chuyển mã đăng nhập của Meta về lệnh <code>npm run channel -- login</code> đang chạy trên máy bạn. Mã không được lưu ở đây.</p>
+</main>
+<script>
+  // Meta wants an HTTPS redirect, the login command listens on localhost:8765 (META_LOGIN_PORT).
+  location.replace("http://localhost:8765/callback" + location.search);
+</script>
+</body>
+</html>

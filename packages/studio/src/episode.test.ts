@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { COMIC_FONT_PATH, fitText, loadFont } from "@hoi-sau/svg-text";
+import { COMIC_FONT_PATH, fitText, imageSize, loadFont } from "@hoi-sau/svg-text";
 import { loadMemorySync } from "@hoi-sau/story";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -9,6 +9,7 @@ import { parse } from "yaml";
 import {
   approveSheet,
   bubbleLayout,
+  fitPost,
   type BoardPanel,
   CHARACTERS_DIR,
   createCharacter,
@@ -260,4 +261,14 @@ test("depth fields are optional but checked when present", () => {
   p.relationships = [{ with: "ca-noc" }];
   p.life = "một dòng";
   assert.throws(() => validateProfile(p, "cu-li"), /relationships.*life|life.*relationships/);
+});
+
+test("panels are brought to a 4:5 post: near 4:5 cropped, a wide one shown whole", async () => {
+  const sharp = (await import("sharp")).default;
+  const tall = await sharp({ create: { width: 1024, height: 1536, channels: 3, background: "#88a" } }).png().toBuffer();
+  const wide = await sharp({ create: { width: 1536, height: 1024, channels: 3, background: "#a88" } }).png().toBuffer();
+  for (const img of [tall, wide]) {
+    const out = imageSize(await fitPost(img));
+    assert.deepEqual([out.width, out.height], [1080, 1350]);
+  }
 });

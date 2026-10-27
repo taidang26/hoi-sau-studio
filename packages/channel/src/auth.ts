@@ -18,6 +18,10 @@ export const REQUIRED_SCOPES = [
   "instagram_basic",
   "instagram_content_publish",
   "instagram_manage_comments",
+  // Replying to and hiding comments as the Page, reading post reach and engagement
+  "pages_manage_engagement",
+  "read_insights",
+  "instagram_manage_insights",
   // Inbox (Messenger and Instagram direct)
   "pages_messaging",
   "instagram_manage_messages",

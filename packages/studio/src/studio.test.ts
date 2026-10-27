@@ -281,6 +281,7 @@ test("brand art: an avatar and a Facebook-size cover for every brand, offline", 
   assert.match(series, /zebra crossing/);
   assert.match(series, /Bino[\s\S]*Pango[\s\S]*Poppy[\s\S]*Lolo[\s\S]*Uni[\s\S]*Rico/, "walk order front to back, the director leads");
   assert.match(series, /full length with their feet/);
+  assert.match(series, /none sitting at a desk/);
   // Characters added later join the parade: the cover follows the cast, not a fixed four.
   assert.match(series, new RegExp(`Exactly ${["", "one", "two", "three", "four", "five", "six", "seven"][ctx.profiles.size]} main characters`));
   for (const p of ctx.profiles.values()) assert.ok(series.includes(`${p.name} (`), p.name);
@@ -305,18 +306,33 @@ test("brand art: an avatar and a Facebook-size cover for every brand, offline", 
   assert.deepEqual(readFileSync(art[0].avatar), before);
 });
 
-test("brand art: the cover crop keeps the colourful cast, not the centre", async () => {
+test("brand art: the cover crop keeps the cast's feet, even under a colourful top", async () => {
   const { coverCrop, COVER_SIZE } = await import("./brand-art.js");
   const sharp = (await import("sharp")).default;
-  // A grey office with the cast in a bright strip along the bottom.
-  const w = 1536, h = 1024;
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><rect width="${w}" height="${h}" fill="#d8d6d0"/><rect y="${h - 300}" width="${w}" height="260" fill="#e0482a"/></svg>`;
+  // Like a real drawing: orange roofs through the windows at the top, the cast lower down,
+  // red shoes at 80% of the height, then grey floor with white zebra stripes.
+  const w = 1920, h = 1280;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><rect width="${w}" height="${h}" fill="#d8d6d0"/>
+    <rect y="0" width="${w}" height="380" fill="#e07a3a"/>
+    <rect x="300" y="620" width="1300" height="380" fill="#3a8ee0"/>
+    <rect x="300" y="1000" width="1300" height="24" fill="#e0202a"/>
+    <rect y="1060" width="${w}" height="40" fill="#ffffff"/><rect y="1160" width="${w}" height="40" fill="#ffffff"/></svg>`;
   const img = await sharp(Buffer.from(svg)).png().toBuffer();
-  const out = await coverCrop(img);
-  const meta = await sharp(out).metadata();
-  assert.deepEqual([meta.width, meta.height], [COVER_SIZE.width, COVER_SIZE.height]);
-  const { data } = await sharp(out).extract({ left: 800, top: COVER_SIZE.height - 120, width: 1, height: 1 }).raw().toBuffer({ resolveWithObject: true });
-  assert.ok(data[0] > 200 && data[1] < 120, `bottom of the cover is the cast strip, got ${[...data]}`);
+  for (const size of [COVER_SIZE, { width: 1500, height: 500 }]) {
+    const out = await coverCrop(img, size);
+    const meta = await sharp(out).metadata();
+    assert.deepEqual([meta.width, meta.height], [size.width, size.height]);
+    // The shoes (y 1000-1024 of 1280) are inside, above the bottom edge.
+    const scale = size.width / w;
+    const raw = await sharp(out).removeAlpha().raw().toBuffer();
+    const redRows = [];
+    for (let y = 0; y < size.height; y++) {
+      const i = (y * size.width + Math.round(900 * scale)) * 3;
+      if (raw[i] > 200 && raw[i + 1] < 80) redRows.push(y);
+    }
+    assert.ok(redRows.length > 0, `shoes inside the ${size.width}x${size.height} crop`);
+    assert.ok(size.height - redRows[redRows.length - 1] > 10, "floor below the shoes");
+  }
 });
 
 test("edge art: one picture per character of its secret side, offline", async () => {

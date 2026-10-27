@@ -11,7 +11,7 @@ import { bodyFrame, BONES, cleanTrack, rankTracks } from "./pose.js";
 import { renderDance } from "./render.js";
 import { apply, loadRig, placement, poseRig } from "./rig.js";
 import { decodeSegments, type Segment } from "./sam.js";
-import { keepComposition } from "./scene.js";
+import { firstSteadyFrame, keepComposition, pickCast } from "./scene.js";
 import { syntheticPoses } from "./synth.js";
 
 const hasFfmpeg = (() => {
@@ -143,9 +143,25 @@ test("render: the cast takes the places of the people in the clip", { skip: !has
   const rigs = [placeholderRig(), placeholderRig()];
   const scene = keepComposition(file, rigs);
   assert.ok(scene.actors[0].height < scene.actors[1].height, "the dancer at the back is drawn smaller");
+  assert.ok(scene.actors[1].height > 1920 * 0.5, "the group is scaled up to fill the frame");
+  assert.equal((scene.actors[0].track as { id: number }).id, 2, "the dancer is followed first");
   assert.ok((scene.actors[1].layer ?? 0) > (scene.actors[0].layer ?? 0), "the one in front is painted last");
   const out = join(mkdtempSync(join(tmpdir(), "dance-")), "d.mp4");
   const r = await renderDance(file, scene, out);
   assert.equal(r.frames, 15);
   assert.ok(existsSync(out));
+});
+
+test("cast: dancer first, then the nearest person who is someone else; the dance starts once both are seen", () => {
+  const file = syntheticPoses(2);
+  const [still, dancer] = file.tracks;
+  // A second track on the dancer's body, a passer-by, and a cutaway at the start.
+  const twin = { id: 7, frames: dancer.frames.map((p) => (p ? p.map(([x, y, c]) => [x + 3, y, c] as [number, number, number]) : null)) };
+  const passer = { id: 9, frames: still.frames.map((p, i) => (i < 5 ? p : null)) };
+  const cut = { ...still, frames: still.frames.map((p, i) => (i < 12 ? null : p)) };
+  const busy = { ...file, tracks: [cut, dancer, twin, passer] };
+  assert.deepEqual(pickCast(busy, 2).map((t) => t.id).sort(), [1, 2].sort());
+  assert.equal(pickCast(busy, 2)[0].id === 2 || pickCast(busy, 2)[0].id === 7, true, "a dancer comes first");
+  assert.equal(firstSteadyFrame([cut, dancer]), 12);
+  assert.deepEqual(pickCast(busy, 2, [9, 1]).map((t) => t.id), [9, 1]);
 });

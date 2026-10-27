@@ -2,7 +2,7 @@
 /**
  *   npm run dance -- pose <video> [--out poses.json]       body poses with Meta's Keypoint R-CNN (Python, see pose/)
  *   npm run dance -- render <poses.json> --cast cu-li[,sao-la] [--out file.mp4] [--compare <video>]
- *                    [--bg "#hex"|image] [--start s] [--duration s] [--mirror]
+ *                    [--bg "#hex"|image] [--start s] [--duration s] [--mirror] [--tracks 2,1] [--no-fit]
  *   npm run dance -- rest <slug> [--mock]                   Muse Image draws the character front-on in an A-pose (rig/rest.png)
  *   npm run dance -- cut <slug> [--image rest.png]          SAM 3.1 cuts the rest drawing into a puppet (rig/rig.yaml + parts, check.png)
  *   npm run dance -- rig <slug> [--force]                   placeholder puppet from the character's palette
@@ -101,7 +101,9 @@ async function main() {
       const file = loadPoses(fromRoot(pos[0]));
       const cast = String(opt.cast || "cu-li").split(",").filter(Boolean);
       const rigs = cast.map((slug) => rigFor(slug, join(ROOT, "data", "dance", "rigs")));
-      const scene = keepComposition(file, rigs, { background: opt.bg as string | undefined, mirror: !!opt.mirror });
+      const tracks = opt.tracks ? String(opt.tracks).split(",").map(Number) : undefined;
+      const scene = keepComposition(file, rigs, { background: opt.bg as string | undefined, mirror: !!opt.mirror, tracks, fit: !opt["no-fit"] });
+      log(`following tracks ${scene.actors.map((a) => (a.track as { id: number }).id).join(", ")} from ${(scene.start ?? 0).toFixed(1)} s`);
       if (opt.start) scene.start = Number(opt.start);
       if (opt.duration) scene.duration = Number(opt.duration);
       const out = fromRoot((opt.out as string) || pos[0].replace(/(\.poses)?\.json$/, `.${cast.join("+")}.mp4`));

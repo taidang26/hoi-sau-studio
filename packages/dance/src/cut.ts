@@ -214,15 +214,29 @@ export async function cutRig(sam: SamLike, image: Buffer, opts: { phrases?: Part
   bones.torso = { pivot: hips, tip: shoulders };
   const headPts = pixels(head, width);
   const top = headPts.reduce((m, p) => Math.min(m, p[1]), Infinity);
-  const bottom = headPts.reduce((m, p) => Math.max(m, p[1]), -Infinity);
   const cx = centroid(headPts)[0];
-  bones.head = { pivot: [cx, bottom - (bottom - top) * 0.08], tip: [cx, top] };
+  // The neck is where the head touches the torso, not the head's lowest pixel:
+  // hanging ears, horns or hair would pull it down onto the chest.
+  const torsoNear = dilate(torso, width, height, 4, everything);
+  const touching = headPts.filter(([x, y]) => torsoNear[y * width + x]);
+  const neck: Vec = touching.length >= 10 ? centroid(touching) : [cx, headPts.reduce((m, p) => Math.max(m, p[1]), -Infinity)];
+  bones.head = { pivot: neck, tip: [cx, top] };
 
   // The torso keeps whatever SAM left between the parts, so nothing goes missing.
   const stray = rest.map((v, i) => v & (torso[i] ^ 1)) as Mask;
   parts.push({ name: "torso", bone: "torso", mask: union([torso, stray], n), z: 2 }, { name: "head", bone: "head", mask: head, z: 5 });
   for (const p of parts) p.mask = dilate(p.mask, width, height, 2, body);
   return { img, cut: { bones, parts } };
+}
+
+function nearEdge(mask: Mask, width: number, height: number, x: number, y: number, r: number): boolean {
+  for (let dy = -r; dy <= r; dy++)
+    for (let dx = -r; dx <= r; dx++) {
+      const xx = x + dx;
+      const yy = y + dy;
+      if (xx < 0 || yy < 0 || xx >= width || yy >= height || !mask[yy * width + xx]) return true;
+    }
+  return false;
 }
 
 /** Writes each part as a cropped transparent PNG, rig.yaml, and a check image with the joints marked. */
@@ -250,6 +264,11 @@ export async function writeCutRig(dir: string, name: string, img: Img, cut: CutR
         const d = (y * w + x) * 4;
         if (!p.mask[s]) continue;
         img.data.copy(rgba, d, s * 4, s * 4 + 4);
+        if (nearEdge(p.mask, width, height, x0 + x, y0 + y, 3)) {
+          // Paper-white pixels at a part's edge are background the mask caught: clear them, fade the near-white ones.
+          const lo = Math.min(rgba[d], rgba[d + 1], rgba[d + 2]);
+          if (lo > 225) rgba[d + 3] = Math.round(Math.max(0, Math.min(1, (250 - lo) / 25)) * rgba[d + 3]);
+        }
       }
     await sharp(rgba, { raw: { width: w, height: h, channels: 4 } }).png().toFile(join(dir, `${p.name}.png`));
     parts.push({ name: p.name, bone: p.bone, image: `${p.name}.png`, at: [x0, y0], size: [w, h], z: p.z });

@@ -13,7 +13,7 @@ export function restPrompt(ctx: StudioContext, slug: string): string {
   const style = ctx.style ? styleText(ctx.style) : p.look.style;
   return [
     `Full-body character turnaround reference, front view only, of ${p.name}: ${p.look.description}`,
-    `Signature features: ${p.look.signature.join("; ")}.`,
+    `Signature features: ${p.look.signature.join("; ")}. Draw exactly these features and nothing extra: no additional horns, ears, tails or limbs.`,
     "Pose: standing straight in a relaxed A-pose, facing the viewer, both arms held down and slightly away from the body with a clear gap of background between each arm and the torso, legs apart with a clear gap between them, feet flat, fingers visible, calm happy face.",
     "The whole body fits in the frame with empty margin on every side, centred. Plain flat pure white background, no floor, no shadow, no props in the hands, no text, nothing else in the picture.",
     style,

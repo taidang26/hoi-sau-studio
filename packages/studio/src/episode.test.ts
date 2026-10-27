@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { COMIC_FONT_PATH, fitText, imageSize, loadFont } from "@hoi-sau/svg-text";
 import { loadMemorySync } from "@hoi-sau/story";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -44,6 +44,14 @@ function sandbox() {
   const seriesDir = join(root, "series");
   cpSync(CHARACTERS_DIR, charactersDir, { recursive: true });
   cpSync(SERIES_DIR, seriesDir, { recursive: true });
+  // Start from unapproved profiles, whatever sheets this machine has locked.
+  for (const slug of readdirSync(charactersDir)) {
+    const file = join(charactersDir, slug, "profile.yaml");
+    if (!existsSync(file)) continue;
+    for (const f of readdirSync(join(charactersDir, slug))) if (/^(model|pose)-sheet\./.test(f)) rmSync(join(charactersDir, slug, f));
+    const text = readFileSync(file, "utf8").replace(/^  character_sheet:.*$/m, "  character_sheet: null").replace(/^  pose_sheet:.*\n/m, "");
+    writeFileSync(file, text);
+  }
   return { root, charactersDir, seriesDir, episodesDir: join(root, "episodes") };
 }
 

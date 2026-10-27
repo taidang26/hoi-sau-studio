@@ -332,7 +332,7 @@ const storyboardSchema = (n: Range) =>
       S.obj({
         shot: S.enum(["wide", "medium", "close-up", "extreme close-up"]),
         angle: S.enum(["eye level", "high angle", "low angle"]),
-        composition: S.str("English, one or two sentences for the illustrator: setting, poses, props, what draws the eye. Lighting fits the scene and stays cheerful: daytime by default; evening or night only when the story needs it, then warm and lively, never gloomy. Tension comes from poses and faces, not lighting. Leave soft, simple background (wall, window, ceiling) in the top third for dialogue. Never a thought cloud or speech bubble: thoughts and lines are lettered later."),
+        composition: S.str("English, one or two sentences for the illustrator: setting, poses, props, what draws the eye. Lighting fits the scene and stays cheerful: daytime by default; evening or night only when the story needs it, then warm and lively, never gloomy. Tension comes from poses and faces, not lighting. Push the acting to cartoon extremes: squash and stretch, extreme faces, big dynamic poses, drawn comic effects (sweat drops, motion lines, shock lines, steam). Leave soft, simple background (wall, window, ceiling) in the top third for dialogue. Never a thought cloud or speech bubble: thoughts and lines are lettered later."),
         staging: S.arr(S.obj({ character: S.str("cast slug"), position: S.enum(["left", "center", "right"]) }), 1, 3),
       }),
       n.min,
@@ -414,7 +414,7 @@ export function episodePanelPrompt(ctx: StudioContext, ep: EpisodeSpec, sp: Scri
     who,
     cameo && sp.action.includes(cameo.name) ? `Also a coworker: ${cameo.description}.` : "",
     ctx.office ? officePanelText(ctx.office, bp.staging.map((st) => st.character)) : "",
-    `Match the character sheets and pose sheets exactly. Single comic panel. Style: ${style} Cheerful lighting that fits the scene (daytime unless the composition says otherwise), never gloomy. The scene fills the whole panel edge to edge; the top third shows soft, simple background (wall, window, ceiling) with no busy detail, ready for dialogue added later, never a blank band or a separate strip of plain colour, and keep every character away from the very top and bottom edges (the panel is trimmed slightly there). No text, no letters, no speech bubbles, no thought clouds, no captions, no symbols floating above heads.`,
+    `Match the character sheets and pose sheets exactly. Single comic panel. Style: ${style} Cheerful lighting that fits the scene (daytime unless the composition says otherwise), never gloomy. The scene fills the whole panel edge to edge; the top third shows soft, simple background (wall, window, ceiling) with no busy detail, ready for dialogue added later, never a blank band or a separate strip of plain colour, and keep every character away from the very top and bottom edges (the panel is trimmed slightly there). No text, no letters, no speech bubbles, no thought clouds, no captions. Drawn comic effects are welcome as pictures: sweat drops, motion lines, shock lines, anger veins, steam puffs, sparkles. Exaggerated cartoon acting with squash and stretch and extreme faces.`,
   ]
     .filter(Boolean)
     .join(" ");
@@ -630,7 +630,7 @@ async function reviewPanel(ctx: StudioContext, ep: EpisodeSpec, sp: ScriptPanel,
           const p = ctx.profiles.get(c)!;
           return `${p.name} must have: ${p.look.signature.join("; ")}.${p.look.icon ? ` Its identifying item must be clearly visible: ${p.look.icon}.` : ""} Palette: ${p.look.palette.map((s) => s.hex).join(", ")}.`;
         }),
-        "Fail the panel if a signature feature is wrong or missing, a character is off-model, there is drawn text, a speech bubble or a thought cloud, or anything unsafe. The first image is the panel; any others are the locked model sheets.",
+        "Fail the panel if a signature feature is wrong or missing, a character is off-model, there is drawn text, a speech bubble or a thought cloud, a human figure anywhere (every coworker is an animal), or anything unsafe. The first image is the panel; any others are the locked model sheets.",
       ].join("\n"),
     },
     { type: "image_url", image_url: { url: `data:${imageSize(data).mime};base64,${data.toString("base64")}` } },

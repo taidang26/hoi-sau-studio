@@ -140,7 +140,9 @@ export function demoGraph(opts: { containerPolls?: number } = {}) {
     "GET oauth/access_token": (c) =>
       c.params.grant_type === "fb_exchange_token" && c.params.fb_exchange_token
         ? { access_token: "demo-long-user-token", token_type: "bearer", expires_in: 60 * 86_400 }
-        : graphError(400, 100, "Missing fb_exchange_token"),
+        : c.params.code && c.params.redirect_uri && c.params.client_secret
+          ? { access_token: "demo-short-user-token", token_type: "bearer", expires_in: 3600 }
+          : graphError(400, 100, "Missing fb_exchange_token or code"),
     "GET me/accounts": () => ({
       data: [
         {

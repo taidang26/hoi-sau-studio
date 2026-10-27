@@ -8,11 +8,12 @@
  * head-and-shoulders portrait that reads inside a small circle; the series
  * avatar is all their heads peeking over a desk.
  *
- *   npm run studio -- brand-art [brand…] [--mock]
+ *   npm run studio -- brand-art [brand…] [--only avatar|cover] [--recrop] [--mock]
  *
  * Writes output/brand-art/<brand>/avatar.png (square, up to 1600 px), cover.png
- * (1640x624, Facebook) and cover-title.png (the cover with the page name
- * lettered in the comic font).
+ * (1640x624, Facebook), cover-title.png (the cover with the page name
+ * lettered in the comic font), cover-raw.png (Muse's uncropped drawing, for
+ * --recrop) and social/<network>/ with each network's upload sizes.
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -34,6 +35,21 @@ export const COVER_SIZE = { width: 1640, height: 624 };
 /** Largest avatar written; Muse draws about 1600 px square, which is kept without upscaling. */
 export const AVATAR_SIZE = { width: 1600, height: 1600 };
 
+/**
+ * Upload sizes per network, written to <brand>/social/<network>/. Facebook
+ * shows the profile picture at 196 px and wants at least 720 for sharp
+ * screens; Instagram keeps 320 but takes 1080 and looks crisper for it;
+ * Threads shows the Instagram picture unless a different one is uploaded
+ * and has no cover. X wants a 400 px avatar and a 3:1 header, cropped again
+ * from the drawing because it is narrower than the Facebook cover.
+ */
+export const SOCIAL_SIZES = {
+  facebook: { avatar: { width: 720, height: 720 }, cover: COVER_SIZE },
+  instagram: { avatar: { width: 1080, height: 1080 } },
+  threads: { avatar: { width: 1080, height: 1080 } },
+  x: { avatar: { width: 400, height: 400 }, cover: { width: 1500, height: 500 } },
+} as const;
+
 export interface BrandInfo {
   id: string;
   name: string;
@@ -47,8 +63,8 @@ export function loadBrandList(file = CHANNELS_FILE): BrandInfo[] {
   return (doc?.brands ?? []).map(({ id, name, kind, character, tagline }) => ({ id, name: name ?? id, kind, character, tagline }));
 }
 
-/** The first four across the crossing, front first; characters added later follow in name order. */
-const WALK_ORDER = ["te-te", "ca-noc", "cu-li", "sao-la"];
+/** The director leads the line, then the first four; characters added later follow in name order. */
+const WALK_ORDER = ["cay-muc", "te-te", "ca-noc", "cu-li", "sao-la"];
 
 /** Everyone in the series, so a new character is on the next cover without touching this file. */
 export function seriesCast(ctx: StudioContext): string[] {
@@ -64,7 +80,7 @@ const NO_TEXT = "No text, no letters, no numbers, no logos, no speech bubbles.";
 
 /** Covers are cropped to 1640x624 and Facebook's phone view trims the sides, so the action sits in a central band. */
 const COVER_FRAME =
-  "Keep every character and the crossing inside the middle band of the picture (between 30% and 70% of the height) and inside the central 80% of the width; above and below that band only simple ceiling and floor that can be cropped.";
+  "Full-length figures: every character is drawn whole from the top of the head to the feet, with the feet on the crossing and a strip of empty floor below them. Keep the characters small enough that all of them, head to feet, fit inside the middle band of the picture (between 30% and 75% of the height) and the central 80% of the width; above and below that band only simple ceiling and floor that can be cropped.";
 
 function describe(ctx: StudioContext, slug: string, pose: string): string {
   const p = ctx.profiles.get(slug)!;
@@ -113,6 +129,44 @@ function refsFor(ctx: StudioContext, brand: BrandInfo): string[] {
   return styleRef ? [styleRef, ...refs] : refs;
 }
 
+/**
+ * Crops a drawing to the wide cover. Muse rarely keeps the cast in the band it
+ * is asked for, so instead of the centre the crop keeps the most colourful
+ * band: the characters are saturated, the office behind them is muted.
+ */
+export async function coverCrop(image: Buffer, size = COVER_SIZE): Promise<Buffer> {
+  try {
+    const meta = await sharp(image).metadata();
+    const scaledH = Math.round((meta.height! * size.width) / meta.width!);
+    if (scaledH <= size.height) return await fit(image, size);
+    const W = 160;
+    const H = Math.round((meta.height! * W) / meta.width!);
+    const { data, info } = await sharp(image).resize(W, H, { fit: "fill" }).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+    const rows: number[] = [];
+    for (let y = 0; y < H; y++) {
+      let sum = 0;
+      for (let x = 0; x < W; x++) {
+        const i = (y * W + x) * info.channels;
+        sum += Math.max(data[i], data[i + 1], data[i + 2]) - Math.min(data[i], data[i + 1], data[i + 2]);
+      }
+      rows.push(sum);
+    }
+    const win = Math.round((H * size.height) / scaledH);
+    let best = 0;
+    let bestScore = -1;
+    let score = rows.slice(0, win).reduce((a, b) => a + b, 0);
+    for (let top = 0; top + win <= H; top++) {
+      if (top > 0) score += rows[top + win - 1] - rows[top - 1];
+      // Ties go to the lower band: the cast stands on the floor.
+      if (score >= bestScore) [best, bestScore] = [top, score];
+    }
+    const top = Math.min(scaledH - size.height, Math.round((best * scaledH) / H));
+    return await sharp(image).resize(size.width, scaledH).extract({ left: 0, top, width: size.width, height: size.height }).png().toBuffer();
+  } catch {
+    return fit(image, size);
+  }
+}
+
 async function fit(image: Buffer, size: { width: number; height: number }, enlarge = true): Promise<Buffer> {
   try {
     return await sharp(image).resize(size.width, size.height, { fit: "cover", position: "centre", withoutEnlargement: !enlarge }).png().toBuffer();
@@ -153,7 +207,20 @@ export interface BrandArt {
   coverTitle: string;
 }
 
-export async function makeBrandArt(ctx: StudioContext, brands: BrandInfo[], outDir: string, log: (s: string) => void = () => {}): Promise<{ art: BrandArt[]; usage: Usage[] }> {
+export interface BrandArtOptions {
+  /** Draw only one of the two pictures; the other is left as it is. */
+  only?: "avatar" | "cover";
+  /** Never ask Muse: crop the cover again from the last drawing (cover-raw.png) and rewrite the network sizes. */
+  recrop?: boolean;
+}
+
+export async function makeBrandArt(
+  ctx: StudioContext,
+  brands: BrandInfo[],
+  outDir: string,
+  log: (s: string) => void = () => {},
+  opts: BrandArtOptions = {},
+): Promise<{ art: BrandArt[]; usage: Usage[] }> {
   const usage: Usage[] = [];
   const art: BrandArt[] = [];
   for (const b of brands) {
@@ -164,20 +231,50 @@ export async function makeBrandArt(ctx: StudioContext, brands: BrandInfo[], outD
     const dir = join(outDir, b.id);
     mkdirSync(dir, { recursive: true });
     const references = refsFor(ctx, b);
-    log(`${b.id}: avatar`);
-    const a = await generateSoftly(ctx.image, { prompt: avatarPrompt(ctx, b), size: "1024x1024", references }, log);
-    log(`${b.id}: cover`);
-    const c = await generateSoftly(ctx.image, { prompt: coverPrompt(ctx, b), size: "1536x1024", references }, log);
-    usage.push(...[a.usage, c.usage].filter((u): u is Usage => Boolean(u)));
-    const avatar = await fit(a.image, AVATAR_SIZE, false);
-    const cover = await fit(c.image, COVER_SIZE);
-    writeFileSync(join(dir, "avatar.png"), avatar);
-    writeFileSync(join(dir, "cover.png"), cover);
-    writeFileSync(join(dir, "cover-title.png"), titledCover(cover, b));
+    if (opts.only !== "cover" && !opts.recrop) {
+      log(`${b.id}: avatar`);
+      const a = await generateSoftly(ctx.image, { prompt: avatarPrompt(ctx, b), size: "1024x1024", references }, log);
+      if (a.usage) usage.push(a.usage);
+      writeFileSync(join(dir, "avatar.png"), await fit(a.image, AVATAR_SIZE, false));
+    }
+    if (opts.only !== "avatar") {
+      const rawFile = join(dir, "cover-raw.png");
+      if (!opts.recrop) {
+        log(`${b.id}: cover`);
+        const c = await generateSoftly(ctx.image, { prompt: coverPrompt(ctx, b), size: "1536x1024", references }, log);
+        if (c.usage) usage.push(c.usage);
+        // The uncropped drawing, so a crop can be redone without drawing again.
+        writeFileSync(rawFile, c.image);
+      }
+      // A cover drawn before the raw drawing was kept is only resized for the networks.
+      if (existsSync(rawFile)) {
+        const cover = await coverCrop(readFileSync(rawFile));
+        writeFileSync(join(dir, "cover.png"), cover);
+        writeFileSync(join(dir, "cover-title.png"), titledCover(cover, b));
+      }
+    }
+    await writeSocial(dir, b);
     writeFileSync(join(dir, "prompts.json"), JSON.stringify({ avatar: avatarPrompt(ctx, b), cover: coverPrompt(ctx, b) }, null, 2));
     art.push({ brand: b.id, avatar: join(dir, "avatar.png"), cover: join(dir, "cover.png"), coverTitle: join(dir, "cover-title.png") });
   }
   return { art, usage };
+}
+
+/** Copies of the avatar and cover at each network's own upload size. */
+async function writeSocial(dir: string, brand: BrandInfo): Promise<void> {
+  for (const [network, sizes] of Object.entries(SOCIAL_SIZES)) {
+    const out = join(dir, "social", network);
+    mkdirSync(out, { recursive: true });
+    const avatar = join(dir, "avatar.png");
+    if (existsSync(avatar)) writeFileSync(join(out, "avatar.png"), await fit(readFileSync(avatar), sizes.avatar));
+    if (!("cover" in sizes)) continue;
+    const raw = join(dir, "cover-raw.png");
+    const source = existsSync(raw) ? raw : join(dir, "cover.png");
+    if (!existsSync(source)) continue;
+    const cover = await coverCrop(readFileSync(source), sizes.cover);
+    writeFileSync(join(out, "cover.png"), cover);
+    writeFileSync(join(out, "cover-title.png"), titledCover(cover, brand));
+  }
 }
 
 export const brandArtExists = (outDir: string, id: string) => existsSync(join(outDir, id, "cover.png"));

@@ -5,7 +5,7 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { parse } from "yaml";
+import { parse, parseDocument } from "yaml";
 import { approvalProblems } from "@hoi-sau/channel";
 import {
   approveEpisode,
@@ -49,9 +49,15 @@ function sandbox() {
     const file = join(charactersDir, slug, "profile.yaml");
     if (!existsSync(file)) continue;
     for (const f of readdirSync(join(charactersDir, slug))) if (/^(model|pose)-sheet\./.test(f)) rmSync(join(charactersDir, slug, f));
-    const text = readFileSync(file, "utf8").replace(/^  character_sheet:.*$/m, "  character_sheet: null").replace(/^  pose_sheet:.*\n/m, "");
+    const text = readFileSync(file, "utf8").replace(/^  character_sheet:.*$/m, "  character_sheet: null").replace(/^  pose_sheet:.*\r?\n/m, "");
     writeFileSync(file, text);
   }
+  // Nor from canon or story memory that local episode runs wrote.
+  const bibleFile = join(seriesDir, "bible.yaml");
+  const bible = parseDocument(readFileSync(bibleFile, "utf8"));
+  bible.set("canon", []);
+  writeFileSync(bibleFile, bible.toString());
+  rmSync(join(seriesDir, "story-memory.json"), { force: true });
   return { root, charactersDir, seriesDir, episodesDir: join(root, "episodes") };
 }
 

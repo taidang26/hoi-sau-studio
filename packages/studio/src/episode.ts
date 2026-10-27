@@ -13,6 +13,7 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import sharp from "sharp";
 import { BUBBLE_KINDS, composePanel, imageSize, snugBubble, svgToPng, type BubbleKind, type DialogueLine } from "@hoi-sau/svg-text";
 import {
   episodeNumber,
@@ -150,8 +151,30 @@ export function panelSize(_ep: Pick<EpisodeSpec, "format">, _n: number): string 
   return PANEL_SIZE;
 }
 
-/** Width of a posted image. Lettering is sized against it. */
-export const POST_WIDTH = 1080;
+/** A posted image, 4:5. Lettering is sized against it. */
+export const POST_SIZE = { width: 1080, height: 1350 };
+
+/**
+ * Bring a panel to the post size before lettering. A panel near 4:5 is
+ * centre-cropped. One far from it (an old wide panel) is shown whole over a
+ * blurred, darkened copy of itself, so nothing in the drawing is cut.
+ */
+export async function fitPost(image: Buffer, size = POST_SIZE): Promise<Buffer> {
+  const { width, height } = size;
+  try {
+    const meta = await sharp(image).metadata();
+    const ratio = (meta.width ?? width) / (meta.height ?? height);
+    if (Math.abs(Math.log(ratio / (width / height))) < 0.25) {
+      return await sharp(image).resize(width, height, { fit: "cover", position: "centre" }).png().toBuffer();
+    }
+    const back = await sharp(image).resize(width, height, { fit: "cover" }).blur(30).modulate({ brightness: 0.7 }).toBuffer();
+    const front = await sharp(image).resize(width, height, { fit: "inside" }).toBuffer();
+    return await sharp(back).composite([{ input: front, gravity: "centre" }]).png().toBuffer();
+  } catch {
+    // Not an image sharp can read (test stubs); letter it as it is.
+    return image;
+  }
+}
 
 // ── storage ────────────────────────────────────────────────────────────────
 
@@ -551,12 +574,12 @@ export async function runStep(ctx: StudioContext, id: string, step: EpisodeStep)
       mkdirSync(out, { recursive: true });
       const pages: Array<{ n: number; file: string; overflow: number }> = [];
       for (const r of renders) {
-        const data = readFileSync(join(episodeDir(id, dir), r.file));
+        const data = await fitPost(readFileSync(join(episodeDir(id, dir), r.file)));
         const size = imageSize(data);
         const lines = bubbleLayout(script.panels[r.n - 1], board.panels[r.n - 1], size.width, size.height);
         const { svg, overflow } = composePanel({ data, ...size }, lines);
         const name = `${String(r.n).padStart(2, "0")}.png`;
-        writeFileSync(join(out, name), svgToPng(svg, { width: POST_WIDTH }));
+        writeFileSync(join(out, name), svgToPng(svg));
         writeFileSync(join(out, `${String(r.n).padStart(2, "0")}.svg`), svg);
         pages.push({ n: r.n, file: `final/${name}`, overflow: overflow.length });
       }

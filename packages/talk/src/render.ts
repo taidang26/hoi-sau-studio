@@ -30,8 +30,8 @@ async function flatten(base: Buffer, layers: sharp.OverlayOptions[]): Promise<Ra
   return { data, width: info.width, height: info.height };
 }
 
-/** Where the cut-out character stands on a photo: bottom-centred, this share of the frame height. */
-export const ON_PHOTO = { height: 0.62, bottom: 0.04 };
+/** Where the cut-out character stands on a photo: bottom-centred, this share of the frame height (a waist-up cut is taller and touches the bottom). */
+export const ON_PHOTO = { height: 0.62, bottom: 0.04, cutHeight: 0.55 };
 
 /** A background photo filling the frame, a touch soft so the character reads first. */
 export const photoBackdrop = (photo: string) => sharp(photo).rotate().removeAlpha().resize(OUT.w, OUT.h, { fit: "cover" }).blur(1.5).png().toBuffer();
@@ -57,14 +57,24 @@ export async function onPhoto(png: Buffer, mask: Buffer, backdrop: Buffer): Prom
       }
   if (bottom <= top) return toFrame(png);
   const box = { left, top, width: right - left + 1, height: bottom - top + 1 };
+  // A body cut straight across (drawn sitting behind a desk) runs off the bottom of the frame like a vlogger, with no shadow.
+  let base = 0;
+  for (let x = left; x <= right; x++) if (m[bottom * w0 + x] > 128) base++;
+  const cutOff = base > box.width * 0.4;
   // Two steps: sharp extracts before it joins channels within one pipeline.
   const rgba = await sharp(png).removeAlpha().joinChannel(m, { raw: { width: w0, height: h0, channels: 1 } }).png().toBuffer();
   const cut = await sharp(rgba).extract(box).png().toBuffer();
-  const height = Math.round(OUT.h * ON_PHOTO.height);
-  const width = Math.round((box.width * height) / box.height);
+  let height = Math.round(OUT.h * (cutOff ? ON_PHOTO.cutHeight : ON_PHOTO.height));
+  let width = Math.round((box.width * height) / box.height);
+  // Raised arms can make a pose wider than the frame.
+  if (width > OUT.w * 0.96) {
+    height = Math.round((height * OUT.w * 0.96) / width);
+    width = Math.round(OUT.w * 0.96);
+  }
   const sized = await sharp(cut).resize(width, height).png().toBuffer();
   const x = Math.round((OUT.w - width) / 2);
-  const y = Math.round(OUT.h * (1 - ON_PHOTO.bottom) - height);
+  const y = cutOff ? OUT.h - height : Math.round(OUT.h * (1 - ON_PHOTO.bottom) - height);
+  if (cutOff) return flatten(backdrop, [{ input: sized, left: x, top: y }]);
   const shadow = await sharp({ create: { width: Math.round(width * 0.8), height: Math.round(height * 0.06), channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
     .composite([{ input: Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${Math.round(width * 0.8)}" height="${Math.round(height * 0.06)}"><ellipse cx="50%" cy="50%" rx="48%" ry="40%" fill="black" fill-opacity="0.35"/></svg>`) }])
     .blur(8)

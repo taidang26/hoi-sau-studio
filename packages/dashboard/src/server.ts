@@ -8,11 +8,31 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { extname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { BOLD_FONT_PATH, DEFAULT_FONT_PATH } from "@hoi-sau/svg-text";
-import type { Conversation, InboxMessage } from "@hoi-sau/channel";
-import { appendMessage, loadState, toggleDirection, type Paths } from "./data.js";
-import { episodeStudioPage, newCharacterPage, Studio, studioPage, stylePage } from "./studio.js";
-import { CHARACTERS_DIR, SERIES_DIR, type EpisodeStep } from "@hoi-sau/studio";
-import { automationPage, brandPage, channelsPage, characterPage, charactersPage, commentsPage, episodesPage, inboxPage, notFoundPage, overviewPage, type ChannelStatus } from "./views.js";
+import type { Conversation, InboxMessage, Platform } from "@hoi-sau/channel";
+import { NeedsSetup, type Accounts } from "./accounts.js";
+import { editCharacterPage, newCharacterPage, saveCharacter } from "./characters.js";
+import { appendMessage, brandArtDir, loadState, toggleDirection, type Paths } from "./data.js";
+import { pickLang, t, withLang, type Lang } from "./i18n.js";
+import { characterNotes, compareSection, inspirationField, researchPage, type IdeaKind, IDEA_KINDS, type Research } from "./research.js";
+import { episodeStudioPage, friendly, Studio, studioPage, stylePage } from "./studio.js";
+import { CHARACTERS_DIR, loadProfile, readStep, SERIES_DIR, type EpisodeStep } from "@hoi-sau/studio";
+import {
+  automationPage,
+  brandPage,
+  channelsPage,
+  charactersPage,
+  characterPage,
+  charSrc,
+  commentsPage,
+  episodesPage,
+  inboxPage,
+  notFoundPage,
+  overviewPage,
+  settingsPage,
+  type Abilities,
+  type BrandControls,
+  type ChannelStatus,
+} from "./views.js";
 
 const STATIC_DIR = fileURLToPath(new URL("../static", import.meta.url));
 const FONTS: Record<string, string> = { "BeVietnamPro-SemiBold.ttf": DEFAULT_FONT_PATH, "BeVietnamPro-Bold.ttf": BOLD_FONT_PATH };
@@ -38,25 +58,46 @@ export interface DashboardOptions extends Paths {
     /** Sends a reply through the platform and returns it; throws InboxError when refused. */
     send(c: Conversation, text: string): Promise<InboxMessage>;
     /** Pulls new conversations into the data dir. Omitted when no Page is connected. */
-    pull?(): Promise<void>;
+    pull?(): Promise<number | void>;
   };
   /** Character creation and the episode pipeline. Omitted: those pages say how to enable them. */
   studio?: Studio;
+  /** Settings, account connection, pulling comments, channel on/off. */
+  accounts?: Accounts;
+  /** Tư liệu: the moodboard and what each episode learned from it. */
+  research?: Research;
+  /** Sample data: buttons that would change real accounts say so instead. */
+  demo?: boolean;
 }
 
 async function readForm(req: IncomingMessage): Promise<URLSearchParams> {
   let raw = "";
   for await (const chunk of req) {
     raw += chunk;
-    if (raw.length > 20_000) throw new Error("Form too large");
+    if (raw.length > 50_000) throw new Error("Form too large");
   }
   return new URLSearchParams(raw);
+}
+
+/** Multipart upload, parsed by the platform's own Request; files over the limit are refused. */
+async function readUpload(req: IncomingMessage, limit = 40 * 1024 * 1024): Promise<FormData> {
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const chunk of req) {
+    size += (chunk as Buffer).length;
+    if (size > limit) throw new Error(t("Ảnh lớn quá (tối đa 15 MB)."));
+    chunks.push(chunk as Buffer);
+  }
+  return new Request("http://local/upload", { method: "POST", headers: { "content-type": String(req.headers["content-type"] ?? "") }, body: Buffer.concat(chunks) }).formData();
 }
 
 const redirect = (res: ServerResponse, to: string) => {
   res.writeHead(303, { Location: to });
   res.end();
 };
+
+/** `to` with ?ok= or ?err= added, for the one-line result on the next page. */
+const withNote = (to: string, key: "ok" | "err", text: string) => `${to}${to.includes("?") ? "&" : "?"}${key}=${encodeURIComponent(text)}`;
 
 function send(res: ServerResponse, status: number, body: string, type = "text/html; charset=utf-8"): void {
   res.writeHead(status, { "Content-Type": type, "Cache-Control": "no-store" });
@@ -90,180 +131,439 @@ export function inside(root: string, rel: string): string | null {
   return full.startsWith(base + sep) ? full : null;
 }
 
+/** Same-site path to go back to, never another host. */
+const safeBack = (v: string | null | undefined, fallback = "/") => (v && /^\/(?!\/)/.test(v) ? v : fallback);
+
+const errText = (e: unknown) => friendly(e instanceof Error ? e.message : String(e));
+
 export function handler(opts: DashboardOptions) {
   const page = (res: ServerResponse, status: number, html: string) =>
-    send(res, status, opts.banner ? html.replace("<main>", `<main><div class="notice">${opts.banner}</div>`) : html);
+    send(res, status, opts.banner ? html.replace("<main>", `<main><div class="notice demo-note">${t(opts.banner)}</div>`) : html);
+  const charactersDir = () => opts.studio?.opts.charactersDir ?? opts.charactersDir ?? CHARACTERS_DIR;
+  const acc = opts.accounts;
+  // Sample data shows every button; pressing one explains that nothing real changes.
+  const abilities = (): Abilities => ({ canPull: Boolean(acc) && (Boolean(opts.demo) || acc!.anyPage()), canConnect: Boolean(acc), studio: Boolean(opts.studio) });
+
+  const route = async (req: IncomingMessage, res: ServerResponse, url: URL, path: string): Promise<void> => {
+    const q = url.searchParams;
+    const ok = q.get("ok") ?? undefined;
+    const err = q.get("err") ?? undefined;
+    const fail = (to: string, e: unknown) =>
+      e instanceof NeedsSetup ? redirect(res, withNote(e.where, "err", e.message)) : redirect(res, withNote(to, "err", errText(e)));
+    const back = (fallback: string) => {
+      const ref = req.headers.referer;
+      if (!ref) return fallback;
+      const r = new URL(ref);
+      if (r.host !== req.headers.host) return fallback;
+      r.searchParams.delete("ok");
+      r.searchParams.delete("err");
+      return r.pathname + r.search;
+    };
+
+    // Language switch: a cookie, then back where the click came from.
+    const lm = path.match(/^\/lang\/(vi|en)$/);
+    if (lm) {
+      res.writeHead(303, { Location: safeBack(q.get("back")), "Set-Cookie": `lang=${lm[1]}; Path=/; Max-Age=31536000; SameSite=Lax` });
+      return void res.end();
+    }
+
+    if (req.method === "POST" && path === "/inbox/refresh") {
+      if (opts.demo) return redirect(res, withNote("/inbox", "err", t("Đang xem dữ liệu mẫu nên không lấy tin nhắn thật.")));
+      try {
+        const n = await opts.inbox?.pull?.();
+        return redirect(res, typeof n === "number" ? withNote("/inbox", "ok", t("{n} tin nhắn mới.", { n })) : "/inbox");
+      } catch (e) {
+        return fail("/inbox", e);
+      }
+    }
+    if (req.method === "POST" && path === "/comments/refresh") {
+      const to = back("/comments");
+      if (!acc || opts.demo) return redirect(res, withNote(to, "err", t("Đang xem dữ liệu mẫu nên không lấy bình luận thật.")));
+      try {
+        return redirect(res, withNote(to, "ok", t("{n} bình luận mới.", { n: await acc.pullComments() })));
+      } catch (e) {
+        return fail(to, e);
+      }
+    }
+    const r = req.method === "POST" ? path.match(/^\/inbox\/(.+)\/reply$/) : null;
+    if (r) {
+      const id = r[1];
+      const to = `/inbox?c=${encodeURIComponent(id)}`;
+      const c = loadState(opts).inbox.find((x) => x.id === id);
+      if (!c || !opts.inbox) return redirect(res, withNote(to, "err", t("Không tìm thấy hội thoại.")));
+      try {
+        const sent = await opts.inbox.send(c, (await readForm(req)).get("text") ?? "");
+        await appendMessage(opts.dataDir, id, sent);
+        return redirect(res, to);
+      } catch (e) {
+        return fail(to, e);
+      }
+    }
+
+    // Settings and accounts.
+    if (path === "/settings") {
+      if (req.method === "POST") {
+        if (!acc || opts.demo) return redirect(res, "/settings");
+        try {
+          const n = acc.saveSettings(await readForm(req));
+          return redirect(res, withNote("/settings", "ok", n ? t("Đã lưu {n} mục.", { n }) : t("Không có gì thay đổi.")));
+        } catch (e) {
+          return fail("/settings", e);
+        }
+      }
+      const settings = acc?.settings() ?? [];
+      return page(res, 200, settingsPage(settings, { demo: Boolean(opts.demo || !acc), mock: Boolean(opts.studio?.opts.mock), ok, error: err }));
+    }
+    if (path === "/connect/facebook") {
+      const brand = q.get("brand") ?? "hoi-sau";
+      if (!acc || opts.demo) return redirect(res, withNote(`/channels/${brand}`, "err", t("Đang xem dữ liệu mẫu nên không kết nối tài khoản thật.")));
+      const proto = (req.headers["x-forwarded-proto"] as string | undefined)?.split(",")[0] ?? "http";
+      try {
+        return redirect(res, acc.startLogin(brand, `${proto}://${req.headers.host}/connect/facebook/callback`));
+      } catch (e) {
+        return fail(`/channels/${brand}`, e);
+      }
+    }
+    if (path === "/connect/facebook/callback" && acc) {
+      const state = q.get("state") ?? "";
+      const brand = acc.loginBrand(state) ?? "hoi-sau";
+      const denied = q.get("error_description") ?? q.get("error");
+      if (denied) return redirect(res, withNote(`/channels/${brand}`, "err", t("Facebook chưa cho phép: {m}", { m: denied })));
+      try {
+        const done = await acc.finishLogin(state, q.get("code") ?? "");
+        if (done.choose) return page(res, 200, brandPage(loadState(opts), done.brand, { ...brandControls(done.brand), choose: done.choose })!);
+        return redirect(res, withNote(`/channels/${done.brand}`, "ok", connectedNote(done)));
+      } catch (e) {
+        return fail(`/channels/${brand}`, e);
+      }
+    }
+    if (req.method === "POST" && path === "/connect/facebook/choose" && acc) {
+      const form = await readForm(req);
+      try {
+        const done = acc.choosePage(form.get("choice") ?? "", form.get("page") ?? "");
+        return redirect(res, withNote(`/channels/${done.brand}`, "ok", connectedNote(done)));
+      } catch (e) {
+        return fail("/channels", e);
+      }
+    }
+    const thr = req.method === "POST" ? path.match(/^\/channels\/([a-z0-9-]+)\/threads$/) : null;
+    if (thr && acc && !opts.demo) {
+      try {
+        const name = await acc.connectThreads(thr[1], (await readForm(req)).get("token") ?? "");
+        return redirect(res, withNote(`/channels/${thr[1]}`, "ok", t("Đã kết nối Threads @{name}.", { name })));
+      } catch (e) {
+        return fail(`/channels/${thr[1]}`, e);
+      }
+    }
+    const cs = req.method === "POST" ? path.match(/^\/channels\/([a-z0-9-]+)\/(facebook|instagram|threads)\/status$/) : null;
+    if (cs && acc && !opts.demo) {
+      try {
+        const status = (await readForm(req)).get("status") as "live" | "paused" | "planned";
+        acc.setStatus(cs[1], cs[2] as Platform, status);
+        return redirect(res, withNote(`/channels/${cs[1]}`, "ok", t(status === "live" ? "Đã bật kênh." : "Đã tạm dừng kênh.")));
+      } catch (e) {
+        return fail(`/channels/${cs[1]}`, e);
+      }
+    }
+    if (req.method === "POST" && (thr || cs)) return redirect(res, withNote(`/channels/${(thr ?? cs)![1]}`, "err", t("Đang xem dữ liệu mẫu nên không đổi tài khoản thật.")));
+
+    // Tư liệu.
+    const rs = opts.research;
+    if (rs && req.method === "POST" && path.startsWith("/research/")) {
+      const brand = q.get("brand") || "hoi-sau";
+      const to = `/research?brand=${encodeURIComponent(brand)}`;
+      try {
+        if (path === "/research/upload") {
+          const form = await readUpload(req);
+          const link = String(form.get("link") ?? "").trim();
+          if (link && !/^https?:\/\//i.test(link)) throw new Error(t("Link bài gốc phải bắt đầu bằng http."));
+          const files = form.getAll("files").filter((f): f is File => typeof f !== "string" && f.size > 0);
+          if (!files.length) throw new Error(t("Chưa chọn ảnh."));
+          let added = 0;
+          for (const f of files) if (rs.add(brand, Buffer.from(await f.arrayBuffer()), { from: "upload", link: link || undefined }).added) added++;
+          return redirect(res, withNote(to, "ok", added ? t("Đã thêm {n} ảnh. Bấm “AI đọc tất cả” để rút công thức.", { n: added }) : t("Ảnh này đã có trong tư liệu.")));
+        }
+        const form = await readForm(req);
+        if (path === "/research/instagram") {
+          const n = await rs.importInstagram(brand, form.get("account") ?? "");
+          return redirect(res, withNote(to, "ok", n ? t("Đã lấy {n} bài mới.", { n }) : t("Các bài này đã có trong tư liệu.")));
+        }
+        if (path === "/research/read") {
+          if (opts.studio && !opts.studio.ready) throw new NeedsSetup(t("Chưa có khoá AI Muse. Vào Cài đặt để thêm."));
+          rs.readNew(brand);
+          return redirect(res, to);
+        }
+        if (path === "/research/pin") {
+          const pin = form.get("to");
+          rs.pin(brand, form.get("idea") ?? "", pin === "next" ? { to: "next" } : pin === "character" ? { to: "character", slug: form.get("slug") ?? "" } : undefined);
+          return redirect(res, back(to));
+        }
+        if (path === "/research/remove") {
+          rs.remove(brand, form.get("clip") ?? "");
+          return redirect(res, back(to));
+        }
+      } catch (e) {
+        return fail(to, e);
+      }
+    }
+    if (rs && path === "/research") {
+      const state = loadState(opts);
+      const brands = state.brands.map((b) => ({ id: b.brand.id, name: b.brand.name }));
+      const brand = brands.some((b) => b.id === q.get("brand")) ? q.get("brand")! : (brands[0]?.id ?? "hoi-sau");
+      const kind = IDEA_KINDS.find((k) => k === q.get("kind")) as IdeaKind | undefined;
+      const cast = state.characters.map((c) => ({ slug: c.profile.slug, name: c.profile.name, src: charSrc(c) }));
+      const canDiscover = Boolean(opts.demo || acc?.anyPage());
+      return page(res, 200, researchPage(rs, { brands, cast, brand, kind, canDiscover, ready: opts.studio ? opts.studio.ready : true, demo: Boolean(opts.demo), ok, error: err }));
+    }
+    if (rs && path.startsWith("/research-media/")) {
+      const file = inside(rs.opts.dir, path.slice("/research-media/".length));
+      return file && /[\\/]files[\\/][a-f0-9]+\.(png|jpe?g|webp)$/.test(file) ? sendFile(res, file) : send(res, 404, notFoundPage());
+    }
+
+    // Characters: the form works without Muse; drawing and the AI writer need Studio.
+    if (path === "/characters/new/manual" && req.method === "POST") {
+      try {
+        return redirect(res, withNote(`/characters/${saveCharacter(await readForm(req), charactersDir())}`, "ok", t("Đã tạo nhân vật. Bước tiếp: vẽ model sheet.")));
+      } catch (e) {
+        return fail("/characters/new?manual=1", e);
+      }
+    }
+    const ed = path.match(/^\/characters\/([a-z0-9-]+)\/edit$/);
+    if (ed) {
+      if (req.method === "POST") {
+        try {
+          saveCharacter(await readForm(req), charactersDir(), ed[1]);
+          return redirect(res, withNote(`/characters/${ed[1]}`, "ok", t("Đã lưu hồ sơ.")));
+        } catch (e) {
+          return fail(`/characters/${ed[1]}/edit`, e);
+        }
+      }
+      const c = loadState(opts).characters.find((x) => x.profile.slug === ed[1]);
+      return c ? page(res, 200, editCharacterPage(loadProfile(ed[1], charactersDir()), charSrc(c), err)) : page(res, 404, notFoundPage());
+    }
+
+    const st = opts.studio;
+    if (req.method === "POST" && st) {
+      if (path === "/characters/new") {
+        const idea = (await readForm(req)).get("idea") ?? "";
+        try {
+          return redirect(res, withNote(`/characters/${await st.newCharacter(idea)}`, "ok", t("Đã tạo nhân vật. Bước tiếp: vẽ model sheet.")));
+        } catch (e) {
+          return fail("/characters/new", e);
+        }
+      }
+      const sh = path.match(/^\/characters\/([a-z0-9-]+)\/sheet$/);
+      if (sh) {
+        try {
+          st.drawSheet(sh[1]);
+          return redirect(res, `/characters/${sh[1]}`);
+        } catch (e) {
+          return fail(`/characters/${sh[1]}`, e);
+        }
+      }
+      const art = path.match(/^\/channels\/([a-z0-9-]+)\/art$/);
+      if (art) {
+        try {
+          st.drawBrandArt(art[1]);
+          return redirect(res, `/channels/${art[1]}`);
+        } catch (e) {
+          return fail(`/channels/${art[1]}`, e);
+        }
+      }
+      if (path === "/style/draw") {
+        try {
+          st.drawStyle();
+          return redirect(res, "/style");
+        } catch (e) {
+          return fail("/style", e);
+        }
+      }
+      const sa = path.match(/^\/style\/([a-z0-9-]+)\/approve$/);
+      if (sa) {
+        try {
+          st.chooseStyle(sa[1]);
+          return redirect(res, "/style");
+        } catch (e) {
+          return fail("/style", e);
+        }
+      }
+      const ap = path.match(/^\/characters\/([a-z0-9-]+)\/approve$/);
+      if (ap) {
+        try {
+          st.approve(ap[1]);
+          return redirect(res, withNote(`/characters/${ap[1]}`, "ok", t("Đã khoá model sheet.")));
+        } catch (e) {
+          return fail(`/characters/${ap[1]}`, e);
+        }
+      }
+      if (path === "/studio/new") {
+        const form = await readForm(req);
+        const ideas = form.getAll("idea");
+        try {
+          if (rs && ideas.length && form.get("direction")?.trim()) form.set("direction", `${form.get("direction")!.trim()}${rs.recipes(ideas)}`);
+          const id = st.newEpisode(form);
+          rs?.attach(ideas, id);
+          return redirect(res, `/studio/${id}`);
+        } catch (e) {
+          return fail("/studio", e);
+        }
+      }
+      const sf = path.match(/^\/studio\/([a-z0-9-]+)\/safety$/);
+      if (sf) {
+        try {
+          st.checkSafety(sf[1]);
+          return redirect(res, `/studio/${sf[1]}#review`);
+        } catch (e) {
+          return fail(`/studio/${sf[1]}`, e);
+        }
+      }
+      const apv = path.match(/^\/studio\/([a-z0-9-]+)\/approve$/);
+      if (apv) {
+        const form = await readForm(req);
+        try {
+          st.approveEpisode(apv[1], form.get("despite") === "1");
+          return redirect(res, withNote(`/studio/${apv[1]}`, "ok", t("Đã duyệt tập. Giờ có thể đăng.")));
+        } catch (e) {
+          return fail(`/studio/${apv[1]}`, e);
+        }
+      }
+      const cmp = path.match(/^\/studio\/([a-z0-9-]+)\/compare$/);
+      if (cmp && rs) {
+        try {
+          rs.compare(cmp[1], finishedPages(st, cmp[1]));
+          return redirect(res, `/studio/${cmp[1]}`);
+        } catch (e) {
+          return fail(`/studio/${cmp[1]}`, e);
+        }
+      }
+      const run = path.match(/^\/studio\/([a-z0-9-]+)\/run$/);
+      if (run) {
+        const form = await readForm(req);
+        try {
+          st.run(run[1], { from: (form.get("from") || undefined) as EpisodeStep | undefined, to: (form.get("to") || undefined) as EpisodeStep | undefined });
+          return redirect(res, `/studio/${run[1]}`);
+        } catch (e) {
+          return fail(`/studio/${run[1]}`, e);
+        }
+      }
+    }
+    if (req.method === "POST") {
+      const m = path.match(/^\/comments\/(.+)\/pick$/);
+      if (!m) return send(res, 404, notFoundPage());
+      await toggleDirection(opts.dataDir, m[1]);
+      // Back to where the click came from, keeping its filters.
+      return redirect(res, back("/comments"));
+    }
+
+    if (path.startsWith("/static/")) {
+      const name = path.slice("/static/".length);
+      if (FONTS[name]) return sendFile(res, FONTS[name]);
+      const file = inside(STATIC_DIR, name);
+      return file ? sendFile(res, file) : send(res, 404, notFoundPage());
+    }
+    if (path.startsWith("/media/")) {
+      const file = inside(opts.runsDir, path.slice("/media/".length));
+      return file ? sendFile(res, file) : send(res, 404, notFoundPage());
+    }
+    if (path.startsWith("/brand-art/")) {
+      const file = inside(st?.brandArtDir ?? brandArtDir(opts), path.slice("/brand-art/".length));
+      return file && /[\\/](avatar|cover|cover-title)\.png$/.test(file) ? sendFile(res, file) : send(res, 404, notFoundPage());
+    }
+
+    if (st && path.startsWith("/studio-media/")) {
+      const file = inside(st.opts.episodesDir, path.slice("/studio-media/".length));
+      return file && !file.includes(`${sep}layers${sep}`) ? sendFile(res, file, req.headers.range) : send(res, 404, notFoundPage());
+    }
+    const pm = path.match(/^\/portrait\/([a-z0-9-]+)\.svg$/);
+    if (pm) return sendFile(res, join(charactersDir(), pm[1], "portrait.svg"));
+    if (st && path.startsWith("/sheet/")) {
+      const file = inside(st.opts.charactersDir, path.slice("/sheet/".length));
+      return file && /[\\/](model|pose)-sheet\.(png|jpe?g|webp)$/.test(file) ? sendFile(res, file) : send(res, 404, notFoundPage());
+    }
+    if (st && path.startsWith("/style-media/")) {
+      const file = inside(st.styleDir, path.slice("/style-media/".length));
+      return file && /\.(png|jpe?g|webp)$/.test(file) ? sendFile(res, file) : send(res, 404, notFoundPage());
+    }
+    if (st && path.startsWith("/series-media/")) {
+      const file = inside(st.opts.seriesDir ?? SERIES_DIR, path.slice("/series-media/".length));
+      return file && /[\\/]style-ref\.(png|jpe?g|webp)$/.test(file) ? sendFile(res, file) : send(res, 404, notFoundPage());
+    }
+
+    const state = loadState(opts);
+    if (path === "/characters/new") return page(res, 200, newCharacterPage(Boolean(st?.opts.mock), Boolean(st?.ready), err, q.get("manual") === "1" || !st));
+    if (path === "/studio") return page(res, 200, st ? studioPage(state, st, err, rs ? inspirationField(rs, state.characters.map((c) => c.profile)) : "") : notFoundPage());
+    if (path === "/style") return page(res, 200, st ? stylePage(st, err) : notFoundPage());
+    const sp = path.match(/^\/studio\/([a-z0-9-]+)$/);
+    if (sp && st) {
+      const html = episodeStudioPage(state, st, sp[1], err, ok, rs ? compareSection(rs, sp[1], finishedPages(st, sp[1]).length > 0) : "");
+      return html ? page(res, 200, html) : page(res, 404, notFoundPage());
+    }
+    if (path === "/") return page(res, 200, overviewPage(state, opts.channel(), abilities(), ok, err));
+    if (path === "/channels") return page(res, 200, channelsPage(state));
+    const br = path.match(/^\/channels\/([a-z0-9-]+)$/);
+    if (br) {
+      const html = brandPage(state, br[1], { ...brandControls(br[1]), ok, error: err });
+      return html ? page(res, 200, html) : page(res, 404, notFoundPage());
+    }
+    if (path === "/characters") return page(res, 200, charactersPage(state, ok));
+    const ch = path.match(/^\/characters\/([a-z0-9-]+)$/);
+    if (ch) {
+      const c = state.characters.find((x) => x.profile.slug === ch[1]);
+      const job = st?.jobs.get(`sheet:${ch[1]}`);
+      const extra = rs ? characterNotes(rs, ch[1]) : "";
+      return c ? page(res, 200, characterPage(c, st ? { canDraw: true, drawing: job?.running ? (job.step ?? t("bắt đầu…")) : undefined, error: err ?? job?.error, ok, extra } : { canDraw: false, ok, error: err, extra })) : page(res, 404, notFoundPage());
+    }
+    if (path === "/inbox") {
+      return page(res, 200, inboxPage(state, { selected: q.get("c") ?? undefined, error: err, ok, canPull: Boolean(opts.inbox?.pull) ? !acc || acc.anyPage() : Boolean(opts.demo && acc), canConnect: abilities().canConnect }));
+    }
+    if (path === "/episodes") return page(res, 200, episodesPage(state));
+    if (path === "/automation") return page(res, 200, automationPage(state, Boolean(st)));
+    if (path === "/comments") {
+      return page(res, 200, commentsPage(state, { q: q.get("q") ?? undefined, platform: q.get("platform") || undefined, episode: q.get("episode") || undefined, brand: q.get("brand") || undefined, picked: q.get("picked") === "1" }, abilities(), ok, err));
+    }
+    if (path === "/api/state") {
+      const { byPost: _, comics, ...rest } = state;
+      return send(res, 200, JSON.stringify({ ...rest, comics: [...comics.values()] }), TYPES[".json"]);
+    }
+    return send(res, 404, notFoundPage());
+  };
+
+  const brandControls = (id: string): BrandControls => {
+    const job = opts.studio?.jobs.get(`art:${id}`);
+    return {
+      canConnect: Boolean(acc),
+      needsAppKeys: !opts.demo && Boolean(acc) && !acc!.settings().filter((s) => s.name === "META_APP_ID" || s.name === "META_APP_SECRET").every((s) => s.set),
+      canDrawArt: Boolean(opts.studio),
+      drawingArt: job?.running ? (job.step ?? t("bắt đầu…")) : undefined,
+      error: job?.error,
+    };
+  };
+
   return async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
     const url = new URL(req.url ?? "/", "http://localhost");
     const path = decodeURIComponent(url.pathname);
-    try {
-      if (req.method === "POST" && path === "/inbox/refresh") {
-        await opts.inbox?.pull?.();
-        return redirect(res, "/inbox");
+    const lang: Lang = pickLang(req.headers.cookie);
+    return withLang(lang, async () => {
+      try {
+        await route(req, res, url, path);
+      } catch (e) {
+        console.error(e);
+        if (!res.headersSent) send(res, 500, `<pre>${String(e instanceof Error ? e.message : e).replace(/</g, "&lt;")}</pre>`);
       }
-      const r = req.method === "POST" ? path.match(/^\/inbox\/(.+)\/reply$/) : null;
-      if (r) {
-        const id = r[1];
-        const back = `/inbox?c=${encodeURIComponent(id)}`;
-        const c = loadState(opts).inbox.find((x) => x.id === id);
-        if (!c || !opts.inbox) return redirect(res, back + "&err=" + encodeURIComponent("Không tìm thấy hội thoại."));
-        try {
-          const sent = await opts.inbox.send(c, (await readForm(req)).get("text") ?? "");
-          await appendMessage(opts.dataDir, id, sent);
-          return redirect(res, back);
-        } catch (e) {
-          return redirect(res, back + "&err=" + encodeURIComponent(e instanceof Error ? e.message : String(e)));
-        }
-      }
-      const st = opts.studio;
-      const fail = (to: string, e: unknown) => redirect(res, `${to}${to.includes("?") ? "&" : "?"}err=${encodeURIComponent(e instanceof Error ? e.message : String(e))}`);
-      if (req.method === "POST" && st) {
-        if (path === "/characters/new") {
-          const idea = (await readForm(req)).get("idea") ?? "";
-          try {
-            return redirect(res, `/characters/${await st.newCharacter(idea)}`);
-          } catch (e) {
-            return fail("/characters/new", e);
-          }
-        }
-        const sh = path.match(/^\/characters\/([a-z0-9-]+)\/sheet$/);
-        if (sh) {
-          try {
-            st.drawSheet(sh[1]);
-            return redirect(res, `/characters/${sh[1]}`);
-          } catch (e) {
-            return fail(`/characters/${sh[1]}`, e);
-          }
-        }
-        if (path === "/style/draw") {
-          try {
-            st.drawStyle();
-            return redirect(res, "/style");
-          } catch (e) {
-            return fail("/style", e);
-          }
-        }
-        const sa = path.match(/^\/style\/([a-z0-9-]+)\/approve$/);
-        if (sa) {
-          try {
-            st.chooseStyle(sa[1]);
-            return redirect(res, "/style");
-          } catch (e) {
-            return fail("/style", e);
-          }
-        }
-        const ap = path.match(/^\/characters\/([a-z0-9-]+)\/approve$/);
-        if (ap) {
-          try {
-            st.approve(ap[1]);
-            return redirect(res, `/characters/${ap[1]}`);
-          } catch (e) {
-            return fail(`/characters/${ap[1]}`, e);
-          }
-        }
-        if (path === "/studio/new") {
-          const form = await readForm(req);
-          try {
-            return redirect(res, `/studio/${st.newEpisode(form)}`);
-          } catch (e) {
-            return fail("/studio", e);
-          }
-        }
-        const run = path.match(/^\/studio\/([a-z0-9-]+)\/run$/);
-        if (run) {
-          const form = await readForm(req);
-          try {
-            st.run(run[1], { from: (form.get("from") || undefined) as EpisodeStep | undefined, to: (form.get("to") || undefined) as EpisodeStep | undefined });
-            return redirect(res, `/studio/${run[1]}`);
-          } catch (e) {
-            return fail(`/studio/${run[1]}`, e);
-          }
-        }
-      }
-      if (req.method === "POST") {
-        const m = path.match(/^\/comments\/(.+)\/pick$/);
-        if (!m) return send(res, 404, notFoundPage());
-        await toggleDirection(opts.dataDir, m[1]);
-        // Back to where the click came from, keeping its filters.
-        const back = req.headers.referer && new URL(req.headers.referer).host === req.headers.host ? req.headers.referer : "/comments";
-        res.writeHead(303, { Location: back });
-        return void res.end();
-      }
-
-      if (path.startsWith("/static/")) {
-        const name = path.slice("/static/".length);
-        if (FONTS[name]) return sendFile(res, FONTS[name]);
-        const file = inside(STATIC_DIR, name);
-        return file ? sendFile(res, file) : send(res, 404, notFoundPage());
-      }
-      if (path.startsWith("/media/")) {
-        const file = inside(opts.runsDir, path.slice("/media/".length));
-        return file ? sendFile(res, file) : send(res, 404, notFoundPage());
-      }
-
-      if (st && path.startsWith("/studio-media/")) {
-        const file = inside(st.opts.episodesDir, path.slice("/studio-media/".length));
-        return file && !file.includes(`${sep}layers${sep}`) ? sendFile(res, file, req.headers.range) : send(res, 404, notFoundPage());
-      }
-      const pm = path.match(/^\/portrait\/([a-z0-9-]+)\.svg$/);
-      if (pm) return sendFile(res, join(opts.charactersDir ?? CHARACTERS_DIR, pm[1], "portrait.svg"));
-      if (st && path.startsWith("/sheet/")) {
-        const file = inside(st.opts.charactersDir, path.slice("/sheet/".length));
-        return file && /[\\/](model|pose)-sheet\.(png|jpe?g|webp)$/.test(file) ? sendFile(res, file) : send(res, 404, notFoundPage());
-      }
-      if (st && path.startsWith("/style-media/")) {
-        const file = inside(st.styleDir, path.slice("/style-media/".length));
-        return file && /\.(png|jpe?g|webp)$/.test(file) ? sendFile(res, file) : send(res, 404, notFoundPage());
-      }
-      if (st && path.startsWith("/series-media/")) {
-        const file = inside(st.opts.seriesDir ?? SERIES_DIR, path.slice("/series-media/".length));
-        return file && /[\\/]style-ref\.(png|jpe?g|webp)$/.test(file) ? sendFile(res, file) : send(res, 404, notFoundPage());
-      }
-
-      const state = loadState(opts);
-      const err = url.searchParams.get("err") ?? undefined;
-      if (path === "/characters/new") return page(res, 200, st ? newCharacterPage(st.opts.mock, err) : notFoundPage());
-      if (path === "/studio") return page(res, 200, st ? studioPage(state, st, err) : notFoundPage());
-      if (path === "/style") return page(res, 200, st ? stylePage(st, err) : notFoundPage());
-      const sp = path.match(/^\/studio\/([a-z0-9-]+)$/);
-      if (sp && st) {
-        const html = episodeStudioPage(state, st, sp[1], err);
-        return html ? page(res, 200, html) : page(res, 404, notFoundPage());
-      }
-      if (path === "/") return page(res, 200, overviewPage(state, opts.channel()));
-      if (path === "/channels") return page(res, 200, channelsPage(state));
-      const br = path.match(/^\/channels\/([a-z0-9-]+)$/);
-      if (br) {
-        const html = brandPage(state, br[1]);
-        return html ? page(res, 200, html) : page(res, 404, notFoundPage());
-      }
-      if (path === "/characters") return page(res, 200, charactersPage(state));
-      const ch = path.match(/^\/characters\/([a-z0-9-]+)$/);
-      if (ch) {
-        const c = state.characters.find((x) => x.profile.slug === ch[1]);
-        const job = st?.jobs.get(`sheet:${ch[1]}`);
-        return c ? page(res, 200, characterPage(c, st ? { canDraw: true, drawing: job?.running ? (job.step ?? "bắt đầu…") : undefined, error: err ?? job?.error } : undefined)) : page(res, 404, notFoundPage());
-      }
-      if (path === "/inbox") {
-        const q = url.searchParams;
-        return page(res, 200, inboxPage(state, { selected: q.get("c") ?? undefined, error: q.get("err") ?? undefined, canPull: Boolean(opts.inbox?.pull) }));
-      }
-      if (path === "/episodes") return page(res, 200, episodesPage(state));
-      if (path === "/automation") return page(res, 200, automationPage(state, Boolean(st)));
-      if (path === "/comments") {
-        const q = url.searchParams;
-        return page(res, 200, commentsPage(state, { q: q.get("q") ?? undefined, platform: q.get("platform") || undefined, episode: q.get("episode") || undefined, brand: q.get("brand") || undefined, picked: q.get("picked") === "1" }));
-      }
-      if (path === "/api/state") {
-        const { byPost: _, comics, ...rest } = state;
-        return send(res, 200, JSON.stringify({ ...rest, comics: [...comics.values()] }), TYPES[".json"]);
-      }
-      return send(res, 404, notFoundPage());
-    } catch (e) {
-      console.error(e);
-      return send(res, 500, `<pre>${String(e instanceof Error ? e.message : e).replace(/</g, "&lt;")}</pre>`);
-    }
+    });
   };
+}
+
+/** Finished pages of an episode: the 4:5 page, else the lettered panels. */
+function finishedPages(st: Studio, id: string): string[] {
+  const letter = readStep<{ pages: Array<{ file: string }>; page?: string }>(id, "letter", st.opts.episodesDir);
+  if (!letter) return [];
+  const files = letter.page ? [letter.page] : letter.pages.map((p) => p.file);
+  return files.map((f) => join(st.opts.episodesDir, id, f)).filter((f) => existsSync(f));
+}
+
+function connectedNote(done: { page?: string; instagram?: string }): string {
+  return done.instagram ? t("Đã kết nối Trang {page} và Instagram @{ig}.", { page: done.page ?? "", ig: done.instagram }) : t("Đã kết nối Trang {page}. Trang này chưa liên kết Instagram.", { page: done.page ?? "" });
 }
 
 export function startDashboard(opts: DashboardOptions, port: number, host = "127.0.0.1"): Promise<Server> {

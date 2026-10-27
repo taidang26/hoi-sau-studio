@@ -16,6 +16,8 @@ Meta reviewers reject permissions an app does not visibly use, and every extra p
 | Find the Instagram account linked to the Page | `instagram_basic` |
 | Publish carousel / Reels to Instagram | `instagram_content_publish` |
 | Read Instagram comments | `instagram_manage_comments` |
+| Reply to or hide comments as the Page | `pages_manage_engagement` (requires `pages_read_user_content`) |
+| Reach and engagement numbers for posts | `read_insights` (Facebook), `instagram_manage_insights` (Instagram) |
 | Page owned through a Business Portfolio | `business_management` (only if `/me/accounts` does not return the Page) |
 | Real-time comment webhooks | `pages_manage_metadata` (only if webhooks are used, see section 4) |
 

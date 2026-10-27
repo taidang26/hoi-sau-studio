@@ -68,7 +68,8 @@ look:
   gag_scene: in the meeting room the character proudly presents a big chart to the director while holding a report with another coworker's paw print on it; the director's white cat on the table glares straight at him
   # The one item readers know this character by at thumbnail size. Every panel draws it, a little oversized.
   icon: the bold white bandit-mask face with the big gold star pin on the chest
-  character_sheet: null   # set after the Muse Image test; path under output/characters/chon-bac-ma/
+  character_sheet: model-sheet.png   # locked with `studio sheet approve`; every panel is drawn against it
+  pose_sheet: pose-sheet.png   # locked with `studio sheet approve`; reusable poses, attached with the model sheet
 
 personality:
   - Thảo mai bậc thầy, lúc nào cũng cười và nói "dạ vâng ạ"

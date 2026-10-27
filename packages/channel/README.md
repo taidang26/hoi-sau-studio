@@ -13,7 +13,7 @@ The Meta app runs in **Development mode**. The Pages and accounts belong to the 
 Facebook and Instagram:
 
 1. Create the Facebook Page and an Instagram professional account (Creator or Business) linked to it.
-2. Create a Business-type Meta app at developers.facebook.com and put `META_APP_ID` and `META_APP_SECRET` in `.env` (start from `.env.example`).
+2. Create one Meta app at developers.facebook.com with the use cases for Pages, Instagram, Messenger and Threads, and put `META_APP_ID` and `META_APP_SECRET` in `.env` (start from `.env.example`). Add every permission below to its use case before logging in; a permission the use cases do not list makes the login dialog fail with "Invalid Scopes".
 3. `npm run channel -- login` opens Facebook Login in the browser. Approve the Page (and its Instagram); a one-shot server on `localhost:8765` catches the redirect, and the same steps as `setup` run, so no token is copied by hand. Localhost redirects work without registering them while the app is in Development mode. If the app uses Facebook Login for Business, put its configuration id in `META_LOGIN_CONFIG_ID`. While the Page has no Instagram account yet, set `META_LOGIN_SCOPES` to just the `pages_*` and `read_insights` scopes so Facebook does not ask you to pick an unrelated Instagram account.
 
    Or by hand: in [Graph API Explorer](https://developers.facebook.com/tools/explorer/), choose the app, tick the permissions below and generate a user token:

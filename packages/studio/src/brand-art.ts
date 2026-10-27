@@ -80,7 +80,7 @@ const NO_TEXT = "No text, no letters, no numbers, no logos, no speech bubbles.";
 
 /** Covers are cropped to 1640x624 and Facebook's phone view trims the sides, so the action sits in a central band. */
 const COVER_FRAME =
-  "Full-length figures: every character is drawn whole from the top of the head to the feet, with the feet on the crossing and a strip of empty floor below them. Keep the characters small enough that all of them, head to feet, fit inside the middle band of the picture (between 30% and 75% of the height) and the central 80% of the width; above and below that band only simple ceiling and floor that can be cropped.";
+  "Extreme wide shot with the camera far back, like the original album photo taken from the middle of the road: the characters are small in the picture, each about one third of the picture height, drawn full length with their feet and shoes clearly visible on the crossing. The bottom quarter of the picture is empty aisle floor in front of their feet and the top quarter is ceiling and windows, so nothing important touches the top or bottom edge. Keep the whole line inside the central 80% of the width.";
 
 function describe(ctx: StudioContext, slug: string, pose: string): string {
   const p = ctx.profiles.get(slug)!;
@@ -96,7 +96,7 @@ export function coverPrompt(ctx: StudioContext, brand: BrandInfo): string {
     brand.kind === "series" || !brand.character
       ? [
           "Wide cover illustration, a playful homage to a famous album-cover shot of people crossing a zebra crossing in single file, moved inside an office.",
-          "Side view, eye level, one-point perspective down the long office aisle. A white zebra crossing is painted across the aisle carpet.",
+          "Side view, eye level, one-point perspective down the long office aisle, seen from far away. A white zebra crossing is painted across the aisle carpet.",
           `Exactly ${n} main characters walk across it in single file from left to right, evenly spaced, mid-stride, arms swinging. Each of the ${n} appears exactly once, never twice, and no other character is on the crossing. From front to back: ${cast.map((s, i) => describe(ctx, s, `${ORDINAL[i] ?? "next"} in line`)).join(" ")}`,
           "Desks with background coworkers on both sides of the aisle, some glancing up at the parade.",
         ]

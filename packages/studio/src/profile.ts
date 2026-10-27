@@ -43,6 +43,8 @@ export interface Profile {
   want?: string;
   fear?: string;
   contradiction?: string;
+  /** The rebellious or weird streak behind the good behaviour, kept for the twist. */
+  edge?: string;
   /** Concrete details of their life outside the joke. */
   life?: string[];
   /** Repeatable situations that make them funny, tied to the animal's body. */
@@ -102,7 +104,7 @@ export function validateProfile(raw: unknown, slug?: string): Profile {
   need(isStrList(p.never_says, 3), "never_says needs at least 3 rules");
 
   // Depth fields are optional for older profiles, but checked when present.
-  for (const k of ["want", "fear", "contradiction"]) need(p[k] === undefined || isStr(p[k]), `${k} must be a sentence`);
+  for (const k of ["want", "fear", "contradiction", "edge"]) need(p[k] === undefined || isStr(p[k]), `${k} must be a sentence`);
   for (const k of ["life", "comic_engine"]) need(p[k] === undefined || isStrList(p[k]), `${k} must be a list of strings`);
   need(
     p.relationships === undefined || (Array.isArray(p.relationships) && p.relationships.every((r: any) => isStr(r?.with) && isStr(r?.dynamic))),

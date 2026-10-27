@@ -259,6 +259,7 @@ function castBrief(ctx: StudioContext, slugs: string[]): string {
         want: p.want,
         fear: p.fear,
         contradiction: p.contradiction,
+        edge: p.edge,
         life: p.life,
         comic_engine: p.comic_engine,
         relationships: p.relationships?.filter((r) => slugs.includes(r.with)),

@@ -12,6 +12,7 @@ role: Designer mới vào, được công ty khoe là "kỳ lân"
 want: Được làm việc yên mà không bị ai nhìn
 fear: Bị gọi tên khen trong cuộc họp toàn công ty
 contradiction: Ghét bị chú ý, nhưng sản phẩm nào làm ra cũng khiến cả công ty chú ý
+edge: "Lén vẽ cả phòng thành quái vật trong cuốn sổ phác thảo mỗi lần bị khen sai chỗ, kể cả Giám đốc; khi tập trung vẽ thì sừng toả sáng như kỳ lân thật, đèn văn phòng chập chờn"
 life:
   - 26 tuổi, sao la được gọi là "kỳ lân châu Á", và công ty cũng gọi Uni như vậy khi tuyển
   - Đeo tai nghe to suốt ngày, nhiều khi không bật nhạc
@@ -52,6 +53,7 @@ look:
     spotted: frozen like a deer in headlights, ears up
     hiding: only the horns and eyes visible above a monitor or a plant
     happy: rare full smile while alone, coworkers in the background gasping
+    edge: drawing furiously in a sketchbook, the two horns glowing brightly, hair flowing in a sudden wind, office lights flickering
   # The core gag as a picture, for the image model.
   gag_scene: coworkers gather around a desk pointing excitedly; the character is only half visible peeking from behind a potted plant at the edge of the frame
   # The one item readers know this character by at thumbnail size. Every panel draws it, a little oversized.

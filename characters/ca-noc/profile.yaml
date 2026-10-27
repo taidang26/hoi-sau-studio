@@ -12,6 +12,7 @@ role: Kế toán, người nắm bảng lương của cả công ty
 want: Một ngày không phải nuốt giận
 fear: Hoá đơn gửi lúc 16h59 thứ Sáu
 contradiction: Người dịu dàng nhất phòng, nhưng ai cũng sợ chị một chút vì chị biết lương của tất cả mọi người
+edge: "Giữ một cuốn \"sổ đen\" ghi từng hoá đơn sai của cả công ty từ 2017; phồng tới cỡ lớn nhất thì thành \"trùm cuối\" gai nhọn, giọng trầm hẳn, cả phòng tự giác xếp hàng; cuối tuần hát karaoke nhạc rock tới mất giọng"
 life:
   - 31 tuổi, mẹ của bé Su 4 tuổi; phải đón con lúc 17h30, nên 17h00 là giờ thiêng
   - Tranh bé Su vẽ dán kín cạnh màn hình
@@ -52,6 +53,7 @@ look:
     angry: fully inflated spiky ball, tiny fins shaking, glasses still neat
     happy: floats a little higher, sparkles around
     deflated: flat and soft like a sigh, small apologetic smile
+    edge: fully inflated into a huge spiky final-boss ball, glasses glinting, eyes narrowed, a thick black notebook in one fin
   # The core gag as a picture, for the image model.
   gag_scene: the desk clock shows 16:59 and a boss hands over a thick folder; the character inflates into a round spiky ball, glasses still on
   # The one item readers know this character by at thumbnail size. Every panel draws it, a little oversized.

@@ -21,6 +21,7 @@ export const characterSchema = S.obj({
   want: S.str("Vietnamese, one concrete thing they want at work"),
   fear: S.str("Vietnamese, one concrete, funny thing they dread"),
   contradiction: S.str("Vietnamese, the trait that fights their main trait"),
+  edge: S.str("Vietnamese, a rebellious or weird secret side behind the everyday behaviour, big enough to drive a twist and draw in an exaggerated way"),
   life: S.arr(S.str("Vietnamese, a specific everyday detail outside the joke: age, home, family, habit"), 3, 5),
   comic_engine: S.arr(S.str("Vietnamese, a repeatable situation that is funny because of the animal's body or nature, readable without words"), 2, 4),
   relationships: S.arr(S.obj({ with: S.str("existing cast slug"), dynamic: S.str("Vietnamese, a conflict that can repeat") }), 0, 4),
@@ -50,6 +51,7 @@ export interface CharacterDraft {
   want: string;
   fear: string;
   contradiction: string;
+  edge: string;
   life: string[];
   comic_engine: string[];
   relationships: Array<{ with: string; dynamic: string }>;
@@ -93,6 +95,7 @@ export function characterMessages(idea: string, bible?: SeriesBible, existing: s
         [
           "Write a character people would recognise as a coworker, not a single office stereotype:",
           "- a concrete want, a concrete fear, and a contradiction that fights their main trait;",
+          "- an edge: a rebellious or weird secret side behind the good behaviour, saved for the twist and drawn big;",
           "- 3–5 specific details of their life outside the joke (age, home, family, a habit);",
           "- comedy that comes from situations and the animal's body, readable from the picture alone, and that can repeat for 30 episodes without going stale;",
           "- relationships with the existing cast that create conflict on their own;",
@@ -127,6 +130,7 @@ export function draftToProfile(d: CharacterDraft, slug = slugify(d.name)): Profi
       want: d.want,
       fear: d.fear,
       contradiction: d.contradiction,
+      edge: d.edge,
       life: d.life,
       comic_engine: d.comic_engine,
       relationships: d.relationships,

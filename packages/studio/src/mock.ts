@@ -139,6 +139,7 @@ function mockCharacter(idea: string) {
     want: "Một lần đến đúng giờ mà có người chứng kiến",
     fear: "Thang máy dừng ở từng tầng",
     contradiction: "Đến muộn nhưng luôn là người về muộn nhất",
+    edge: "Tối về là cao thủ cờ tướng vỉa hè, ván nào cũng gài bẫy",
     life: ["27 tuổi, ở trọ gần hồ", "Nuôi một con mèo tên Font", "Đi làm bằng xe buýt số 32"],
     comic_engine: ["Tay dài với tới mọi thứ trong phòng mà không cần đứng dậy", "Lý do đến muộn dài thành cả một khung truyện"],
     relationships: [],

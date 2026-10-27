@@ -1,7 +1,7 @@
 # Series bible. Every Studio step reads it; `canon` grows as episodes are finished.
 title: Hồi Sau
 premise: Mỗi ngày một mẩu chuyện hài ở công ty "Công Ty TNHH Hồi Sau", nơi nhân viên là những con vật ít người biết của Việt Nam. Khán giả bình luận để quyết định chuyện gì xảy ra tập sau.
-tone: Hài tình huống, ấm áp, tự giễu đời công sở. Nhân vật có tật xấu và trêu nhau, nhưng không cay độc, không bắt nạt ai. Cười cùng nhân vật, không cười nhạo.
+tone: "Hài tình huống, tự giễu đời công sở, hơi lố và hơi dị. Ai cũng có một mặt nổi loạn hoặc dị hợm giấu sau vẻ ngoài ngoan (trường `edge` trong hồ sơ), lộ ra đúng lúc là cú twist. Có một kẻ xấu tính để khán giả bàn cãi (Rico, trưởng nhóm bên cạnh): thảo mai, tranh công, mưu nhỏ, nhưng mưu luôn quay ngược vào chính Rico. Nhân vật trêu nhau, chơi xấu nhau kiểu văn phòng, nhưng không chửi, không doạ, không bắt nạt ai. Cười cùng nhân vật, không cười nhạo."
 audience: Người đi làm 22–32 tuổi ở thành phố, quen meme văn phòng.
 world:
   company: Công Ty TNHH Hồi Sau, một công ty truyền thông nhỏ ở tầng 7 một toà văn phòng cũ
@@ -22,6 +22,8 @@ rules:
   - Hạn chế gọi tên nhân vật trong thoại; người xem nhận ra họ bằng dáng và tính cách
   - Ít chữ - tối đa 12 chữ mỗi bong bóng, tối đa 2 bong bóng mỗi khung, mỗi tập ít nhất 1 khung không thoại
   - Khung cuối luôn có một móc nhỏ cho "hồi sau"
+  - Mặt dị (`edge`) của nhân vật là vũ khí twist: dùng khi cần cú lật, đừng phí mỗi tập; khi lộ ra thì vẽ thật lố
+  - Tập có Rico kết bằng câu hỏi để khán giả phân xử (Rico sai hay khôn?); mưu của Rico không bao giờ thắng hẳn
   - Không có chữ vẽ trong tranh; mọi chữ là lớp ghép riêng
   - Nhân vật được trêu nhau và có tật xấu, nhưng không xúc phạm ai; không nhắc người thật, công ty thật, nhãn hàng thật, chính trị, tôn giáo
   - Không đùa chuyện săn bắt, buôn bán động vật hoang dã
@@ -38,6 +40,7 @@ cast:
   - te-te
   - sao-la
   - cay-muc
+  - chon-bac-ma
 relationships:
   - { a: cu-li, b: sao-la, dynamic: "Lolo thần tượng Uni và khen suốt, nên Uni sợ Lolo nhất phòng" }
   - { a: ca-noc, b: cu-li, dynamic: "Chị Poppy chăm Lolo như em ruột, nhưng hoá đơn tạm ứng của Lolo thì vẫn trả về" }
@@ -46,6 +49,8 @@ relationships:
   - { a: ca-noc, b: sao-la, dynamic: "Uni chỉ nói chuyện bình thường với chị Poppy, vì chị không bao giờ khen ai" }
   - { a: te-te, b: sao-la, dynamic: "Anh Pango lấy việc của Uni làm ví dụ ở mọi cuộc họp; Uni chỉ muốn biến mất" }
   - { a: cay-muc, b: te-te, dynamic: "Giám đốc giao việc qua Pango; Pango cuộn tròn ngay khi nghe tiếng thang máy" }
+  - { a: chon-bac-ma, b: te-te, dynamic: "Đối thủ 9 năm: Rico tranh công, Pango cuộn tròn chịu trận, nhưng cuối cùng Pango vẫn thắng mà không cần cố" }
+  - { a: chon-bac-ma, b: cu-li, dynamic: "Rico rủ Lolo làm chung rồi đứng tên một mình; Lolo chưa nhận ra, khán giả thì nhận ra" }
   - { a: cay-muc, b: cu-li, dynamic: "Giám đốc gọi nhầm tên Lolo mỗi lần một kiểu, nhưng con mèo Bông chỉ chịu nằm trong lòng Lolo" }
 season:
   arc: 'Mùa 1 "Dự Án Tết": cả phòng phải xong một chiến dịch Tết trong 30 tập; khán giả quyết định chiến dịch thành hay hỏng.'

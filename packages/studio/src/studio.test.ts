@@ -27,7 +27,7 @@ import {
 } from "./index.js";
 
 test("every test character loads and validates", () => {
-  assert.deepEqual(listCharacters(), ["ca-noc", "cay-muc", "cu-li", "sao-la", "te-te"]);
+  assert.deepEqual(listCharacters(), ["ca-noc", "cay-muc", "chon-bac-ma", "cu-li", "sao-la", "te-te"]);
   for (const slug of listCharacters()) {
     const p = loadProfile(slug);
     assert.equal(p.slug, slug);
@@ -195,7 +195,7 @@ test("style test draws every variant; approve locks one as the reference sent wi
 test("mock images draw the staged characters from their portraits", async () => {
   const { loadMockCast, sceneFromPrompt } = await import("./mock-art.js");
   const cast = loadMockCast();
-  assert.deepEqual(cast.map((c) => c.name).sort(), ["Bino", "Lolo", "Pango", "Poppy", "Uni"]);
+  assert.deepEqual(cast.map((c) => c.name).sort(), ["Bino", "Lolo", "Pango", "Poppy", "Rico", "Uni"]);
   const scene = sceneFromPrompt("medium shot, eye level. Lolo (slow loris (cu li)) on the left, x. Poppy (pufferfish (cá nóc)) on the right, y.", cast, 1);
   assert.deepEqual(scene.places.map((p) => [p.cast.name, p.position]), [["Lolo", "left"], ["Poppy", "right"]]);
   assert.equal(sceneFromPrompt("An original character sheet for a comic series. " + cast[0].description, cast, 2).kind, "sheet");
@@ -260,7 +260,7 @@ test("the office floor plan seats every character once and reaches the prompts",
   const office = loadOffice()!;
   assert.ok(office, "series/office.yaml exists");
   const seated = office.desks.map((d) => d.character).sort();
-  assert.deepEqual(seated, ["ca-noc", "cu-li", "sao-la", "te-te"]);
+  assert.deepEqual(seated, ["ca-noc", "chon-bac-ma", "cu-li", "sao-la", "te-te"]);
   assert.match(officeBrief(office), /Lolo's desk/);
   const text = officePanelText(office, ["cu-li"]);
   assert.match(text, /pothos/);

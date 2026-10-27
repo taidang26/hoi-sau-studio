@@ -8,6 +8,7 @@
     { "path": "packages/channel" },
     { "path": "packages/dashboard" },
     { "path": "packages/motion" },
+    { "path": "packages/dance" },
     { "path": "packages/pipeline" }
   ]
 }

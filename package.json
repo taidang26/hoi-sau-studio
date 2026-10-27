@@ -21,7 +21,8 @@
     "motion": "tsc -b && node packages/motion/dist/cli.js",
     "pipeline": "tsc -b && node packages/pipeline/dist/cli.js",
     "site": "node scripts/site.mjs",
-    "cloud": "node scripts/cloud.mjs"
+    "cloud": "node scripts/cloud.mjs",
+    "dance": "tsc -b && node packages/dance/dist/cli.js"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

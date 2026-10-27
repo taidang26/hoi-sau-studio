@@ -173,6 +173,15 @@ test("bubbles sit above their speaker and inside the panel", () => {
   assert.ok(lines[0].bubble.tail!.x < 500 && lines[1].bubble.tail!.x > 500);
 });
 
+test("speakers on opposite sides each keep their bubble on their own side, whoever speaks first", () => {
+  const sp = { dialogue: [{ speaker: "b", text: "Bệnh nào cũng ghi: do công việc.", kind: "thought" }, { speaker: "a", text: "Khoẻ vậy chắc không làm gì." }] } as ScriptPanel;
+  const bp = { shot: "wide", angle: "eye level", composition: "", staging: [{ character: "a", position: "left" }, { character: "b", position: "right" }] } as BoardPanel;
+  const [right, left] = bubbleLayout(sp, bp, 1080, 1350).map((l) => l.bubble);
+  assert.ok(right.x >= 540, "first speaker's bubble stays right");
+  assert.ok(left.x + left.width <= 540, "second speaker's bubble stays left");
+  assert.ok(left.tail!.x < 540 && right.tail!.x > 540);
+});
+
 test("lettering is big enough to read on a phone, and a long line still fits", () => {
   const sp = {
     dialogue: [

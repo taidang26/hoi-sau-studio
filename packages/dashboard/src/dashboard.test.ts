@@ -127,10 +127,10 @@ test("studio: create a character, lock its sheet, build an episode end to end", 
   };
   try {
     const made = await post("/characters/new", { idea: "một con vượn hay đến muộn" });
-    assert.equal(made.headers.get("location"), "/characters/gibbo");
+    assert.match(made.headers.get("location")!, /^\/characters\/gibbo\?ok=/);
     assert.match(await (await fetch(at + "/characters/gibbo")).text(), /Gibbo/);
 
-    assert.equal((await post("/characters/cu-li/approve", {})).headers.get("location"), "/characters/cu-li");
+    assert.match((await post("/characters/cu-li/approve", {})).headers.get("location")!, /^\/characters\/cu-li\?ok=/);
     assert.ok(existsSync(join(dirs.charactersDir, "cu-li", "model-sheet.png")));
     assert.match(await (await fetch(at + "/characters/cu-li")).text(), /Model sheet đã khoá/);
     assert.equal((await fetch(at + "/sheet/cu-li/model-sheet.png")).status, 200);
@@ -138,7 +138,7 @@ test("studio: create a character, lock its sheet, build an episode end to end", 
 
     const ep = await post("/studio/new", { id: "ep-009", lead: "cu-li", with: ["ca-noc"], direction: "Cu Li quên họp", credit: "Lan::cho Cá Nóc nổ tung" });
     assert.equal(ep.headers.get("location"), "/studio/ep-009");
-    assert.match(decodeURIComponent((await post("/studio/new", { id: "ep-009", lead: "cu-li", direction: "x" })).headers.get("location")!), /already exists/);
+    assert.match(decodeURIComponent((await post("/studio/new", { id: "ep-009", lead: "cu-li", direction: "x" })).headers.get("location")!), /Tên này đã có/);
 
     await post("/studio/ep-009/run", {});
     await studio.settle("ep-009");
@@ -191,7 +191,7 @@ test("automation runs and motion comic files show up", async () => {
     assert.match(auto, /token &lt;hết hạn&gt;/);
     assert.match(auto, /href="\/studio\/cu-li-ep-001"/);
     assert.match(auto, /https:\/\/facebook.com\/p\/1/);
-    assert.match(await (await fetch(at + "/")).text(), /Lần chạy gần nhất/);
+    assert.match(await (await fetch(at + "/")).text(), /Lần chạy tự động gần nhất/);
 
     const page = await (await fetch(at + "/studio/cu-li-ep-001")).text();
     assert.match(page, /<video[^>]+src="\/studio-media\/cu-li-ep-001\/motion\/reel\.mp4"/);
@@ -231,7 +231,7 @@ test("coach lessons and episode scores show on the dashboard", async () => {
     const home = await (await fetch(at + "/")).text();
     assert.match(home, /Bài học từ khán giả/);
     assert.match(home, /class="lesson bad">Tránh/);
-    assert.match(home, /Chuỗi ngày đăng/);
+    assert.match(home, /Ngày đăng liên tiếp/);
     assert.match(await (await fetch(at + "/episodes")).text(), /<th[^>]*>Điểm<\/th>/);
   } finally {
     server.close();
@@ -252,8 +252,9 @@ test("brands: Hồi Sau plus a channel per character, with what each needs in .e
   assert.match(list, /kênh tổng/);
   for (const name of ["Lolo", "Poppy", "Pango", "Uni"]) assert.match(list, new RegExp(`<h2>${name}</h2>`));
   const page = await (await fetch(base + "/channels/lolo")).text();
-  assert.match(page, /FB_PAGE_TOKEN_LOLO/);
-  assert.match(page, /setup &lt;token&gt; --brand lolo/);
+  // No setting names or commands on screen: a status in words.
+  assert.doesNotMatch(page, /FB_PAGE_TOKEN_LOLO|npm run|\.env/);
+  assert.match(page, /Chưa kết nối/);
   assert.doesNotMatch(page, /hoi-sau-only/);
   assert.equal((await fetch(base + "/channels/nope")).status, 404);
   const filtered = await (await fetch(base + "/comments?brand=lolo")).text();
@@ -298,13 +299,13 @@ test("studio: pick a series style, draw and lock a sheet with poses, make a thre
     assert.equal((await fetch(at + "/style-media/warm-pastel.png")).status, 200);
     assert.equal((await post("/style/warm-pastel/approve")).headers.get("location"), "/style");
     assert.equal(loadStyle(dirs.seriesDir)!.chosen, "warm-pastel");
-    assert.match(await (await fetch(at + "/style")).text(), /Ảnh neo đang dùng/);
+    assert.match(await (await fetch(at + "/style")).text(), /Ảnh mẫu đang dùng/);
     assert.equal((await fetch(at + "/series-media/style-ref.png")).status, 200);
     assert.equal((await fetch(at + "/series-media/bible.yaml")).status, 404);
-    assert.match(decodeURIComponent((await post("/style/nope/approve")).headers.get("location")!), /unknown style/);
+    assert.match(decodeURIComponent((await post("/style/nope/approve")).headers.get("location")!), /Không thấy kiểu vẽ này/);
 
     // Sheet: drawn from the dashboard in the chosen style, then locked with its pose sheet.
-    assert.match(await (await fetch(at + "/characters/te-te")).text(), /Vẽ sheet/);
+    assert.match(await (await fetch(at + "/characters/te-te")).text(), /Vẽ model sheet bằng AI/);
     await post("/characters/te-te/sheet");
     await studio.settle("sheet:te-te");
     assert.equal(studio.jobs.get("sheet:te-te")!.error, undefined);
@@ -319,7 +320,7 @@ test("studio: pick a series style, draw and lock a sheet with poses, make a thre
     assert.equal((await fetch(at + "/sheet/te-te/pose-sheet.png")).status, 200);
 
     // A strip3 episode: the form offers it first, and each panel is its own post image.
-    assert.match(await (await fetch(at + "/studio")).text(), /<option value="strip3" selected>/);
+    assert.match(await (await fetch(at + "/studio")).text(), /<input type="radio" name="format" value="strip3" checked>/);
     await post("/studio/new", { id: "ep-010", lead: "te-te", with: ["cu-li"], direction: "Ở nhà thì chán, đi làm thì mệt", format: "strip3" });
     await post("/studio/ep-010/run");
     await studio.settle("ep-010");

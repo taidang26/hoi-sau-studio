@@ -16,6 +16,7 @@
     "@hoi-sau/channel": "0.0.0",
     "@hoi-sau/studio": "0.0.0",
     "@hoi-sau/svg-text": "0.0.0",
-    "@hoi-sau/story": "0.0.0"
+    "@hoi-sau/story": "0.0.0",
+    "yaml": "^2.9.1"
   }
 }

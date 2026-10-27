@@ -9,17 +9,10 @@
 import { cpSync, existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  DEFAULT_GRAPH_VERSION,
-  GraphClient,
-  fetchConversations,
-  loadInbox,
-  mergeConversations,
-  saveInbox,
-  sendReply,
-} from "@hoi-sau/channel";
+import { DEFAULT_GRAPH_VERSION, GraphClient, sendReply } from "@hoi-sau/channel";
 import { DEMO, demoGraph } from "@hoi-sau/channel/dist/demo.js";
 import { CHARACTERS_DIR, createEpisode, EPISODES_DIR, listEpisodes, mockSparkTransport, MuseSpark, openStudio, runEpisode, SERIES_DIR } from "@hoi-sau/studio";
+import { Accounts } from "./accounts.js";
 import { seedLessons, writeDemoData } from "./seed.js";
 import { Studio } from "./studio.js";
 import { defaultPaths, startDashboard } from "./server.js";
@@ -50,26 +43,11 @@ if (demo) {
 // Demo mode answers through the fake Graph API, so the 24-hour rule and errors behave like the real thing.
 const env = process.env;
 const mockGraph = demo || env.META_GRAPH_MOCK === "1";
-const pageId = demo ? DEMO.pageId : env.FB_PAGE_ID;
-const token = demo ? DEMO.pageToken : env.FB_PAGE_TOKEN;
-const page =
-  pageId && token
-    ? new GraphClient({ token, version: env.META_GRAPH_VERSION || DEFAULT_GRAPH_VERSION, fetch: mockGraph ? demoGraph().fetch : undefined })
-    : undefined;
-const inbox =
-  page && pageId
-    ? {
-        send: (c: Parameters<typeof sendReply>[2], text: string) => sendReply(page, pageId, c, text),
-        pull: demo
-          ? undefined
-          : async () => {
-              const own = [pageId, ...(env.IG_USER_ID ? [env.IG_USER_ID] : [])];
-              let fetched = await fetchConversations(page, pageId, "facebook", own);
-              if (env.IG_USER_ID) fetched = fetched.concat(await fetchConversations(page, pageId, "instagram", own));
-              await saveInbox(paths.dataDir, mergeConversations(await loadInbox(paths.dataDir), fetched).all);
-            },
-      }
-    : undefined;
+const accounts = new Accounts({ envFile: join(ROOT, ".env"), dataDir: paths.dataDir, graphVersion: env.META_GRAPH_VERSION, fetch: mockGraph ? demoGraph().fetch : undefined, demo });
+const demoPage = demo ? new GraphClient({ token: DEMO.pageToken, version: DEFAULT_GRAPH_VERSION, fetch: demoGraph().fetch }) : undefined;
+const inbox = demoPage
+  ? { send: (c: Parameters<typeof sendReply>[2], text: string) => sendReply(demoPage, DEMO.pageId, c, text) }
+  : { send: (c: Parameters<typeof sendReply>[2], text: string) => accounts.send(c, text), pull: () => accounts.pullInbox() };
 
 // Studio: the real repo folders, or copies under data-demo/studio so demo runs never touch characters/ or series/.
 const studioDirs = demo
@@ -87,7 +65,8 @@ if (demo) {
 paths.episodesDir = studioDirs.episodesDir;
 paths.charactersDir ??= studioDirs.charactersDir;
 const museMock = demo || env.MUSE_MOCK === "1";
-const studio = new Studio({ ...studioDirs, runsDir: paths.runsDir, styleDir: demo ? join(paths.dataDir, "studio", "style") : undefined, mock: museMock, open: (log) => openStudio({ mock: museMock, ...studioDirs, log }) });
+if (demo) paths.brandArtDir = join(paths.dataDir, "studio", "brand-art");
+const studio = new Studio({ ...studioDirs, runsDir: paths.runsDir, styleDir: demo ? join(paths.dataDir, "studio", "style") : undefined, brandArtDir: paths.brandArtDir, mock: museMock, open: (log) => openStudio({ mock: museMock, ...studioDirs, log }) });
 if (demo && listEpisodes(studioDirs.episodesDir).length === 0) {
   // One finished sample episode per published demo post, so pages have comics to show.
   const samples = [
@@ -109,7 +88,9 @@ await startDashboard(
     ...paths,
     inbox,
     studio,
-    banner: demo ? "Đang xem <b>dữ liệu mẫu</b> (data-demo/). Bài đăng, bình luận và tin nhắn ở đây là bịa, chỉ để thử giao diện." : undefined,
+    accounts,
+    demo,
+    banner: demo ? "Đang xem dữ liệu mẫu. Bài đăng, bình luận và tin nhắn ở đây là bịa, chỉ để thử giao diện." : undefined,
     channel: () => ({
       facebook: demo || Boolean(process.env.FB_PAGE_ID && process.env.FB_PAGE_TOKEN),
       instagram: demo || Boolean(process.env.IG_USER_ID),

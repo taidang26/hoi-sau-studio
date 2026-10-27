@@ -2,17 +2,26 @@
 
 Draft answers for the hackathon submission form, kept in the repo so they stay in sync with the code. Final numbers come from [metrics.md](metrics.md) on 3 Nov. Fields in *italics* are placeholders.
 
+Deadline: **4 Nov, 9 PM ET = 5 Nov, 09:00 Hanoi**. Late entries are not considered; our own target is 4 Nov, 18:00 Hanoi. One person submits for the team through the [submission platform](https://cerebralvalley.ai/e/meta-ai-developer-hackathon/hackathon/submit). Judges look at the video, the code **and the live product**.
+
 **Project name:** Hồi Sau
 
 **Track:** Indie Developer · theme *Build for Your World*
 
 **Tagline:** An AI comic studio that runs original characters as a daily office comedy, where the audience's comments write the next episode.
 
-**Repository:** https://github.com/taidang26/hoi-sau-studio
+**Contributors:** *full name as on the hackathon application* (GitHub [taidang26](https://github.com/taidang26)), solo. Every contributor must be an approved participant and be named here.
 
-**Demo video:** *link*
+**Repository (public):** https://github.com/taidang26/hoi-sau-studio
 
-**Live series:** https://www.facebook.com/profile.php?id=61595845893958 · *Instagram* · *Threads* · *Lolo's Page*
+**Demo video (3 min, public or unlisted):** *link*
+
+**Live product:**
+- The series, live: [Facebook](https://www.facebook.com/profile.php?id=61595845893958) · [Instagram @hoisau.comic](https://www.instagram.com/hoisau.comic/) · [Threads @hoisau.comic](https://www.threads.net/@hoisau.comic)
+- Episode site: https://hoisau.dangtrantai.com
+- *The studio dashboard, for judges: a public read-only copy running `npm run dashboard -- --demo`, or a link to the recorded walkthrough if it stays local (decide by 2 Nov)*
+
+**X post for Most Viral:** *link to the demo post on X (engagement counts through 8 Nov end of day ET)*
 
 ## Short description (about 50 words)
 
@@ -72,4 +81,23 @@ A hosted version where creators bring their own character and API key, more chan
 
 ## Built during the hackathon
 
-Every commit in the repository is from after kickoff (26 Oct 2026, 23:24 Hanoi time). Planning notes made before kickoff are declared in the README under "Pre-existing work"; no earlier product, library or codebase is used.
+Every commit in the repository is from after kickoff (26 Oct 2026, 23:24 Hanoi time). Planning notes made before kickoff are declared in the README under "Pre-existing work"; no earlier product, library or codebase is used. The video opens with the same statement in one line.
+
+## Bonus awards we qualify for
+
+| Award | Why Hồi Sau fits | What the submission must show |
+| --- | --- | --- |
+| Best Build on Meta Open Weight Models ($10k) | Comment listening runs on Muse Spark Open (`meta-models/muse-spark-open-1026` on Baseten) | A real listen run on Baseten, not the Muse Spark fallback; say so in the video |
+| Best Creative Build ($5k) | Muse Image draws an original comic against locked model sheets | Model sheets and finished episodes |
+| Best Agentic Use-Case ($5k) | The daily loop runs on its own: listen, write, draw, review, letter, publish, coach | One unattended run, with the review catching a panel |
+| Most Viral ($20k) | The series is made to be shared | The demo posted on X, link submitted; engagement counts through 8 Nov |
+| Community Vote ($10k) | Voting opens 9 Nov, one vote per verified account | Share the project page with our audience on 9 Nov |
+
+## Before pressing Submit
+
+- [ ] Repository is public and its README links work.
+- [ ] Video plays logged out, is under 3:00 and opens with the pre-existing/built-this-week line.
+- [ ] Every live link opens logged out: Facebook, Instagram, Threads, episode site, dashboard copy.
+- [ ] Contributor names filled in.
+- [ ] Results and numbers from [metrics.md](metrics.md) filled in above.
+- [ ] X post is up and its link is in the form.

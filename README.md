@@ -9,7 +9,7 @@ Meta Global AI Developer Hackathon 2026 · Indie Developer track · *Build for Y
 | | |
 | --- | --- |
 | Demo video | *link added on 4 Nov* |
-| Live series | [Hồi Sau on Facebook](https://www.facebook.com/profile.php?id=61595845893958) · Instagram, Threads and Lolo's channels added when live |
+| Live series | [Facebook](https://www.facebook.com/profile.php?id=61595845893958) · [Instagram @hoisau.comic](https://www.instagram.com/hoisau.comic/) · [Threads @hoisau.comic](https://www.threads.net/@hoisau.comic) · episodes at [hoisau.dangtrantai.com](https://hoisau.dangtrantai.com) |
 | How it is built | [docs/architecture.md](docs/architecture.md) · [docs/studio-pipeline.md](docs/studio-pipeline.md) |
 | Where each Meta tool is used | [docs/meta-tools.md](docs/meta-tools.md) |
 | Results | [docs/metrics.md](docs/metrics.md) |

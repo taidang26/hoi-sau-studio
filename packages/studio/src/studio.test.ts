@@ -236,6 +236,25 @@ test("a prompt the content filter refuses is retried once with gentler wording",
   await assert.rejects(generateSoftly(failing, { prompt: "x" }), /401/);
 });
 
+test("exaggerated poses are softened on retry, and a refused pose sheet is skipped", async () => {
+  const { MuseImageError, softenPrompt } = await import("./muse-image.js");
+  const { POSES } = await import("./prompts.js");
+  const soft = softenPrompt(POSES.join("; "));
+  for (const word of ["melting", "squashed", "despair", "tears streaming", "anger vein", "jaw dropped"]) assert.doesNotMatch(soft, new RegExp(word, "i"));
+  const ids: string[] = [];
+  const client = {
+    generate: async (t: { prompt: string }) => {
+      if (/pose sheet/.test(t.prompt)) throw new MuseImageError("filtered", 400, true);
+      ids.push(`r${ids.length + 1}`);
+      return { id: ids.at(-1)!, image: Buffer.from(""), note: "", usage: {} };
+    },
+  };
+  const out = mkdtempSync(join(tmpdir(), "hoisau-"));
+  const run = await runConsistency(client as never, loadProfile("sao-la"), out, { model: "mock", mock: true });
+  assert.deepEqual(run.images.map((i) => i.id), ["sheet", "desk", "meeting", "gag"]);
+  assert.equal(run.images[1].previousResponseId, run.images[0].responseId);
+});
+
 test("the office floor plan seats every character once and reaches the prompts", async () => {
   const { loadOffice, officeBrief, officePanelText, officePlanSvg } = await import("./office.js");
   const office = loadOffice()!;

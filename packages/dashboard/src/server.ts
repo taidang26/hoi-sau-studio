@@ -11,6 +11,7 @@ import sharp from "sharp";
 import { BOLD_FONT_PATH, DEFAULT_FONT_PATH } from "@hoi-sau/svg-text";
 import { addCharacterBrand, type Conversation, type InboxMessage, type Platform } from "@hoi-sau/channel";
 import { NeedsSetup, type Accounts } from "./accounts.js";
+import type { Backup } from "./backup.js";
 import { editCharacterPage, newCharacterPage, saveCharacter } from "./characters.js";
 import { appendMessage, brandArtDir, loadState, toggleDirection, type Paths } from "./data.js";
 import { isSignedIn, passwordMatches, sessionCookie } from "./auth.js";
@@ -54,6 +55,8 @@ const TYPES: Record<string, string> = {
 };
 
 export interface DashboardOptions extends Paths {
+  /** Copies of what lives only on this machine, shown and run from Settings. */
+  backup?: Backup;
   channel: () => ChannelStatus;
   /** When set, every page but /login and /static asks for it. Set it whenever the dashboard is online. */
   password?: string;
@@ -302,6 +305,14 @@ export function handler(opts: DashboardOptions) {
     }
 
     // Settings and accounts.
+    if (path === "/settings/backup" && req.method === "POST") {
+      if (!opts.backup) return redirect(res, "/settings");
+      try {
+        return redirect(res, withNote("/settings", "ok", t("Đã sao lưu: {name}", { name: opts.backup.run() })));
+      } catch (e) {
+        return redirect(res, withNote("/settings", "err", (e as Error).message));
+      }
+    }
     if (path === "/settings") {
       if (req.method === "POST") {
         if (!acc || opts.demo) return redirect(res, "/settings");
@@ -313,7 +324,7 @@ export function handler(opts: DashboardOptions) {
         }
       }
       const settings = acc?.settings() ?? [];
-      return page(res, 200, settingsPage(settings, { demo: Boolean(opts.demo || !acc), mock: Boolean(opts.studio?.opts.mock), ok, error: err }));
+      return page(res, 200, settingsPage(settings, { demo: Boolean(opts.demo || !acc), mock: Boolean(opts.studio?.opts.mock), ok, error: err, backup: opts.backup?.info() }));
     }
     if (path === "/connect/facebook") {
       const brand = q.get("brand") ?? "hoi-sau";

@@ -15,6 +15,7 @@ import { addCharacterBrand, BRANDS_FILE, DEFAULT_GRAPH_VERSION, GraphClient, sen
 import { DEMO, demoGraph } from "@hoi-sau/channel/dist/demo.js";
 import { CHARACTERS_DIR, createEpisode, EPISODES_DIR, listCharacters, listEpisodes, loadProfile, mockSparkTransport, MuseSpark, openStudio, runEpisode, SERIES_DIR } from "@hoi-sau/studio";
 import { Accounts } from "./accounts.js";
+import { Backup } from "./backup.js";
 import { demoAnalyst, Research, seedResearch } from "./research.js";
 import { t } from "./i18n.js";
 import { seedLessons, writeDemoData } from "./seed.js";
@@ -119,9 +120,19 @@ if (!demo && !password && !["127.0.0.1", "localhost", "::1"].includes(host)) {
   console.error(`Refusing to serve real data on ${host} without DASHBOARD_PASSWORD.`);
   process.exit(1);
 }
+// Real data only: what is not in git gets copied every 6 hours (Settings shows it and can run it now).
+const backup = demo
+  ? undefined
+  : new Backup({
+      sources: [paths.dataDir, studioDirs.episodesDir, studioDirs.charactersDir, join(studioDirs.seriesDir, "story-memory.json"), join(ROOT, "output")],
+      dir: () => process.env.BACKUP_DIR || join(ROOT, "..", "HoiSau_Backup"),
+    });
+backup?.schedule((line) => console.log(line));
+
 await startDashboard(
   {
     ...paths,
+    backup,
     password,
     inbox,
     studio,

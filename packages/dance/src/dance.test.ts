@@ -88,10 +88,13 @@ test("SAM output text decodes into full-size masks with @meta-sam/parser", async
   assert.equal(segs[0].mask.length, 320 * 334);
   assert.ok(segs[0].area > 0);
   assert.deepEqual(await decodeSegments("", 10, 10), []);
-  // SAM answers in the pixels of its own shrunk copy; the mask is scaled back to the real size.
-  const big = await decodeSegments(text, 640, 668);
-  assert.equal(big[0].mask.length, 640 * 668);
-  assert.ok(Math.abs(big[0].area / segs[0].area - 4) < 0.1, `area ratio ${big[0].area / segs[0].area}`);
+  // A big object's mask comes back smaller than its box (here 30x14 for a 60x28 box) and is stretched over it.
+  const shrunk = "<0f>0<|box;x1=10;y1=20;x2=69;y2=47;w=100;h=80|><|mask;x=0;y=0;data=14,30,!!!!!'y:OIOjO|>\n";
+  const [full] = await decodeSegments(shrunk, 100, 80);
+  assert.equal(full.area, 60 * 28);
+  assert.equal(full.mask[20 * 100 + 10], 1);
+  assert.equal(full.mask[47 * 100 + 69], 1);
+  assert.equal(full.mask[48 * 100 + 69], 0);
 });
 
 test("cut: a rest drawing becomes a rig with joints where the limbs bend", async () => {

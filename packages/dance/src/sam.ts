@@ -95,9 +95,10 @@ async function* asEvents(text: string): AsyncIterable<ResponsesEvent> {
 
 /**
  * Parses SAM's text with @meta-sam/parser and lays each mask on a full-size
- * canvas. SAM works on a shrunk copy of a large image (about 1024 px) and
- * reports boxes and masks in that copy's pixels, named by the box's w and h;
- * those are scaled back up to `width` × `height`.
+ * canvas. A large object's mask comes back shrunk (to about 1024 px) inside
+ * its box, so the raster is stretched over the box. Boxes are in the pixels
+ * of the image SAM saw (the box's w and h); if that differs from `width` ×
+ * `height`, the result is scaled too.
  */
 export async function decodeSegments(text: string, width: number, height: number): Promise<Segment[]> {
   if (!text.trim()) return [];
@@ -108,26 +109,28 @@ export async function decodeSegments(text: string, width: number, height: number
   const out: Segment[] = [];
   for (const rec of recordsOfKind(result.records, "mask")) {
     const raster = decodeMaskToRaster(rec.mask);
-    const mw = rec.mask.width;
-    const { left, top } = rec.bounds;
-    // Mask in SAM's own pixels first, then each full-size pixel looks up its source pixel.
-    const small = new Uint8Array(sw * sh);
-    for (let y = 0; y < rec.mask.height; y++)
-      for (let x = 0; x < mw; x++) {
-        const gx = left + x;
-        const gy = top + y;
-        if (gx >= 0 && gx < sw && gy >= 0 && gy < sh && raster[y * mw + x]) small[gy * sw + gx] = 1;
-      }
-    let mask = small;
-    if (sw !== width || sh !== height) {
-      mask = new Uint8Array(width * height);
-      for (let y = 0; y < height; y++) {
-        const row = Math.min(sh - 1, Math.floor((y * sh) / height)) * sw;
-        for (let x = 0; x < width; x++) mask[y * width + x] = small[row + Math.min(sw - 1, Math.floor((x * sw) / width))];
+    const { width: mw, height: mh } = rec.mask;
+    const { left, top, right, bottom } = rec.bounds;
+    const bw = right - left;
+    const bh = bottom - top;
+    const mask = new Uint8Array(width * height);
+    let area = 0;
+    // Each output pixel inside the box looks up its pixel in the (possibly smaller) raster.
+    const x0 = Math.floor((left * width) / sw);
+    const x1 = Math.ceil((right * width) / sw);
+    const y0 = Math.floor((top * height) / sh);
+    const y1 = Math.ceil((bottom * height) / sh);
+    for (let y = Math.max(0, y0); y < Math.min(height, y1); y++) {
+      const by = ((y + 0.5) * sh) / height - top;
+      if (by < 0 || by >= bh) continue;
+      const row = Math.min(mh - 1, Math.floor((by * mh) / bh)) * mw;
+      for (let x = Math.max(0, x0); x < Math.min(width, x1); x++) {
+        const bx = ((x + 0.5) * sw) / width - left;
+        if (bx < 0 || bx >= bw || !raster[row + Math.min(mw - 1, Math.floor((bx * mw) / bw))]) continue;
+        mask[y * width + x] = 1;
+        area++;
       }
     }
-    let area = 0;
-    for (let i = 0; i < mask.length; i++) area += mask[i];
     out.push({ objectId: rec.objectId, score: rec.confidence, width, height, mask, area });
   }
   return out;

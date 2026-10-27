@@ -1,0 +1,13 @@
+# What the comic is allowed to say, and how it is told to say it, needs the
+# owner's review. Turn on "Require review from Code Owners" for main in
+# Settings → Branches (see docs/safety.md).
+/series/                        @taidang26
+/characters/                    @taidang26
+/packages/story/src/safety.ts   @taidang26
+/packages/story/src/brief.ts    @taidang26
+/packages/story/src/listen.ts   @taidang26
+/packages/studio/src/episode.ts @taidang26
+/packages/studio/src/prompts.ts @taidang26
+/packages/studio/src/approve.ts @taidang26
+/packages/channel/src/approval.ts @taidang26
+/.github/                       @taidang26

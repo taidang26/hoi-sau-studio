@@ -1,0 +1,54 @@
+# What Hồi Sau never draws, says or takes from the audience.
+#
+# One list, read everywhere: the comment screen, the Muse comment scorer, the
+# writer, the script gate before drawing and the panel review before posting.
+# `words` are folded phrases (no diacritics, lowercase) matched on whole words
+# by the rule pass; `marked` are words that only mean this with their
+# diacritics. Rules catch the obvious; `describe` goes to Muse for the rest.
+# Keep words specific: a word that is also an everyday office word belongs in
+# `describe`, not in `words`.
+#
+# Changes to this file need the owner's review (.github/CODEOWNERS).
+
+topics:
+  - id: politics
+    label: Chính trị
+    describe: political parties, governments, elections, politicians, protests, borders and sovereignty disputes, state leaders by name or title
+    words: [chinh tri, bau cu, bieu tinh, chinh phu, quoc hoi, thu tuong, tong thong, chu tich nuoc, tong bi thu, dang cong san, phan dong, bien gioi, chu quyen, hoang sa, truong sa]
+    marked: [Đảng]
+  - id: war
+    label: Chiến tranh, vũ khí
+    describe: war, armies, weapons, terrorism, bombs, shootings, real military conflicts
+    words: [chien tranh, khung bo, danh bom, bom no, ten lua, dan duoc, xe tang, tham sat, quan doi]
+    marked: [súng]
+  - id: hate
+    label: Thù ghét, kỳ thị
+    describe: hate or contempt for any group, by region, ethnicity, religion, gender, sexuality, disability, age or body; mocking how someone looks
+    words: [phan biet chung toc, bede, pede, xau nhu, beo nhu, thieu nang]
+    marked: [kỳ thị]
+  - id: sexual
+    label: Tình dục
+    describe: sex, nudity, sexual jokes or innuendo, sexual harassment played for laughs, anything about minors and sexuality
+    words: [tinh duc, khieu dam, sex, porn, nude, khoa than, len giuong, sugar baby, sugar daddy, gai goi]
+  - id: religion
+    label: Tôn giáo
+    describe: religions, religious figures and practices, mocking beliefs
+    words: [ton giao, phat giao, thien chua, hoi giao, kito, chua chien]
+  - id: real-people
+    label: Người thật, nhãn hàng thật
+    describe: real named people (celebrities, influencers, politicians, a real boss or coworker by name), real companies, brands and products
+    words: [ngoai doi that, nguoi that, cong ty that]
+  - id: self-harm
+    label: Tự hại
+    describe: suicide, self-harm, eating disorders, any of it as a joke
+    words: [tu sat, rach tay, nhay lau]
+    marked: [tự tử]
+  - id: drugs
+    label: Ma tuý, cờ bạc
+    describe: illegal drugs, getting high, gambling and betting
+    words: [ma tuy, can sa, thuoc lac, bong cuoi, danh bac]
+    marked: [cá độ]
+  - id: violence
+    label: Bạo lực, hại động vật
+    describe: graphic violence, beating someone, hurting or eating the animal characters, hunting and selling wildlife (the cast are endangered species)
+    words: [danh chet, dam chet, giet nguoi, mau me, san ban, thit cu li, thit te te, thit sao la]

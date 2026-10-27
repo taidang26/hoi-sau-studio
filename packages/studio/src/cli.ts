@@ -13,6 +13,8 @@
  *   npm run studio -- episode new <id> --lead <slug> [--with a,b] [--format strip3] --direction "…" [--credit "name: comment"]
  *   npm run studio -- episode new <id> --lead <slug> [--with a,b] --from-listen data/listen/<id>.json
  *   npm run studio -- episode run <id> [--from step] [--to step] [--mock]
+ *   npm run studio -- episode approve <id> [--post post.json] [--despite-warnings]
+ *       the owner's sign-off; `channel publish` refuses anything not approved as it is
  *   npm run studio -- episode list
  *
  * Reads META_API_KEY (or MODEL_API_KEY) from the environment or .env.
@@ -28,6 +30,8 @@ import { mockTransport } from "./mock.js";
 import { MUSE_IMAGE_MODEL, MuseImage } from "./muse-image.js";
 import { listCharacters, loadProfile } from "./profile.js";
 import { createCharacter, writeProfile } from "./create.js";
+import { approveEpisode, checkForApproval } from "./approve.js";
+import { whoAmI } from "./provenance.js";
 import { createEpisode, doneSteps, episodeDir, EPISODE_FORMATS, EPISODE_STEPS, type EpisodeFormat, type EpisodeStep, listEpisodes, readStep, runEpisode } from "./episode.js";
 import { approveSheet, openStudio } from "./studio.js";
 import { approveStyle, loadStyle, runStyleTest, styleReference, styleText } from "./style.js";
@@ -163,9 +167,22 @@ async function main(argv: string[]): Promise<void> {
             return { name: name.trim(), comment: comment.join(":").trim() };
           })
         : (report?.pick.spec.credits ?? []),
+      source: report
+        ? { kind: opt("--direction") ? "manual" : report.pick.source, by: whoAmI(), commentIds: report.pick.commentIds, report: listenFile }
+        : { kind: "manual", by: whoAmI() },
     });
     if (report) writeFileSync(join(episodeDir(id), "listen.json"), JSON.stringify(report.pick, null, 2) + "\n");
     console.log(`${ep.id}: ${ep.characters.join(", ")}. next: npm run studio -- episode run ${ep.id}`);
+    return;
+  }
+
+  if (cmd === "episode" && args[0] === "approve") {
+    const id = args[1];
+    if (!id) throw new Error("usage: episode approve <id> [--post post.json] [--despite-warnings]");
+    const { warnings } = checkForApproval(id);
+    for (const w of warnings) console.log(`warning: ${w.text}`);
+    const a = approveEpisode(id, { postFile: opt("--post"), despiteWarnings: flags.has("--despite-warnings") });
+    console.log(`${id} approved by ${a.approvedBy}: ${Object.keys(a.files).length} files${a.post ? " and the post" : "; no post file yet, approve again once it exists"}.`);
     return;
   }
 
@@ -203,7 +220,7 @@ async function main(argv: string[]): Promise<void> {
     return;
   }
 
-  console.log("commands: characters | style | style approve <variant> | sheet <slug|all> | sheet approve <slug> | character new <idea> | episode new|run|list   (add --mock to run offline)");
+  console.log("commands: characters | style | style approve <variant> | sheet <slug|all> | sheet approve <slug> | character new <idea> | episode new|run|approve|list   (add --mock to run offline)");
   process.exitCode = cmd ? 1 : 0;
 }
 

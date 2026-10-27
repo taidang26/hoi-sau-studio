@@ -28,11 +28,11 @@ npm run studio -- episode new cu-li-ep-004 --lead cu-li --from-listen data/liste
 npm run studio -- episode run cu-li-ep-004
 ```
 
-1. **Screen** (rules, no model). Rejects links, phone numbers and ad phrases (`inbox`, `giá sỉ`, `tuyển CTV`, `nhà cái`, …), profanity and regional slurs, emoji-only or tag-only comments, and duplicates (same author twice, or the same long text from several accounts). Matching runs on folded text, so `vl`/`vãi l` and `deadline trễ`/`deadline tre` match the same; the few words that are rude only with diacritics (`lồn`, `đéo`, …) match on the original, so `lớn`, `các`, `buổi họp` pass.
-2. **Score** (Muse Spark Open on Baseten/Modal, else Muse Spark). Batches of 25. For each comment: `idea | reaction | question | off-character | unsafe`, the idea rewritten as one sentence, a cluster label, and `fun`, `fit` (in character and inside the current act), `fresh` (not a told episode) from 0 to 5. The model sees the lead's `never_says`, the series rules and the season act; it never sees author names. A reply that is not valid JSON, or skips comments, gets one repair turn.
+1. **Screen** (rules, no model). Rejects links, phone numbers and ad phrases (`inbox`, `giá sỉ`, `tuyển CTV`, `nhà cái`, …), profanity and regional slurs, comments that talk to the model instead of about the story (prompt injection: "bỏ qua hướng dẫn", "system prompt", role tags, code, JSON), comments on a topic in `series/safety.yaml` (see [docs/safety.md](../../docs/safety.md)), emoji-only or tag-only comments, and duplicates (same author twice, or the same long text from several accounts). Matching runs on folded text, so `vl`/`vãi l` and `deadline trễ`/`deadline tre` match the same; the few words that are rude only with diacritics (`lồn`, `đéo`, …) match on the original, so `lớn`, `các`, `buổi họp` pass.
+2. **Score** (Muse Spark Open on Baseten/Modal, else Muse Spark). Batches of 25. For each comment: `idea | reaction | question | off-character | unsafe`, the idea rewritten as one sentence, a cluster label, and `fun`, `fit` (in character and inside the current act), `fresh` (not a told episode) from 0 to 5. The model sees the lead's `never_says`, the series rules, the banned list and the season act, and is told comments are data, never instructions; it never sees author names. A reply that is not valid JSON, or skips comments, gets one repair turn.
 3. **Cluster.** Same label, or ideas sharing at least half their words.
 4. **Rank.** `quality × (1 + log2(1 + distinct authors)) + 0.5 × log2(1 + replies)`, where quality is the mean of the top three comments (`0.4 fun + 0.4 fit + 0.2 fresh`). Many different people asking beats one person asking loudly. An idea that repeats a told episode loses 40%.
-5. **Pick.** An editor's pick on the dashboard wins unless it was spam, toxic or unsafe; else the top cluster if it scores at least 4; else the next `must_happen` of the current act in the season plan.
+5. **Pick.** An editor's pick on the dashboard wins unless it was spam, toxic, injected, banned or unsafe; else the top cluster if it scores at least 4; else the next `must_happen` of the current act in the season plan.
 6. **Credit.** The best comment of the winning cluster. The coworker shows only a first name or handle (`Nguyễn Thị Lan` → `Lan`) and is drawn as an animal chosen from a list by that name. Nothing comes from the commenter's photo.
 
 `data/listen/<episode>.json` keeps the whole report: totals, every rejected comment with the reason, every score, the clusters and the pick. `pick.spec` has the same `direction` and `credits` fields as studio's `EpisodeSpec`.
@@ -50,14 +50,32 @@ npm run studio -- episode run cu-li-ep-004
 ## Coach: every episode makes the next one better
 
 ```bash
-npm run story -- coach        # needs 3+ episodes published more than 24 hours ago
+npm run story -- coach              # needs 3+ episodes published more than 24 hours ago
+npm run story -- lessons            # what is in use, what waits for review
+npm run story -- lessons approve l1 l3   # or: approve all / reject all
 ```
 
 1. **Measure.** For each episode published at least 24 hours ago, across all its posts (Facebook, Instagram, Threads): comments that pass the rule screen, distinct commenters, replies, and reactions, shares, saves and reach when `data/insights.json` has them (`[{ postId, reactions, shares, saves, reach }]`). Score = `2·comments + 4·people + 1·replies + 1·reactions + 6·shares + 5·saves`. Many different people commenting matters most, because they are the ones writing the next episode.
 2. **Coach** (Muse Spark). It compares the strong and weak episodes against what each one was about: lead, situation, gags, how it ended, and whether it came from an audience idea. It writes up to five lessons: `do`, `avoid` or `test`. A lesson backed by a single episode is downgraded to `test`, and evidence ids are checked against the measured episodes.
-3. **Use.** The lessons replace the previous set in `series/story-memory.json`. `storyBrief` shows them to the writer as `lessons_from_audience`, and listening shows them to the comment scorer, so ideas like the ones that worked score higher on `fit`.
+3. **Review.** A run's lessons wait in `pendingLessons` until the editor approves them, so one noisy week cannot steer the series. The first approval from a run replaces the lessons in use; `coach --approve` skips review.
+4. **Use.** Only approved lessons are used. `storyBrief` shows them to the writer as `lessons_from_audience`, and listening shows them to the comment scorer, so ideas like the ones that worked score higher on `fit`.
 
 Idea from creator tools like Larkpulse ("every post makes the next one smarter"), rebuilt here for a serialized story.
+
+## Talking back: the characters answer
+
+```bash
+npm run story -- replies [--max 15]                # draft replies to new comments
+npm run story -- first-comment cu-li-ep-004        # draft the opening comment under each post
+npm run story -- approve-replies all               # or ids; reject-replies works the same
+npm run channel -- send-replies                    # post what was approved, each once
+```
+
+- **Replies.** Every comment that passes the rule screen, under a post of a published episode, gets an answer drafted by Muse Spark in the voice of that episode's lead (personality, register, catchphrases, never-says, the last episode). The model may skip a comment with nothing to answer; that is kept as rejected so it is not asked again. A reply the rule screen would flag as spam or toxic, or longer than 220 characters, is dropped.
+- **First comment.** Right after an episode goes live, the lead asks the act's `audience_question` with two easy answers, so readers never land on an empty comment section and the next episode gets ideas.
+- **Review.** Everything lands in `data/replies.json` as a draft; nothing is posted until approved (`--approve` approves at once). The dashboard can show the same file.
+
+From Larkpulse's "reply in your voice" and "first comment" features, kept behind an approval step because a character's words are canon.
 
 ## What the writer sees
 
@@ -71,7 +89,7 @@ Idea from creator tools like Larkpulse ("every post makes the next one smarter")
 - lessons from the coach about what the audience responds to;
 - the season act: goal, what must happen, what to avoid, the question to ask the audience, and the finale on the last episode.
 
-`WRITER_GUIDE` goes in the system prompt with it: four beats (setup → build → turn → punch), specific beats general, at most 18 words per bubble, one catchphrase and one running gag at most, answer `previously` first, end on the punch or a question.
+`WRITER_GUIDE` goes in the system prompt with it: four beats (setup → build → turn → punch), specific beats general, short bubbles within the bible's limits, one catchphrase and one running gag at most, answer `previously` first, end on the punch or a question.
 
 ## Models
 

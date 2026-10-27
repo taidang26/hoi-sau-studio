@@ -1,7 +1,7 @@
 /**
  * @hoi-sau/channel: the series' presence on Facebook, Instagram and Threads.
  * Publishes episodes for each brand, pulls comments back for listening, and
- * keeps the inbox.
+ * keeps the inbox. Characters answer comments once a person approves.
  */
 
 export type Platform = "facebook" | "instagram" | "threads";
@@ -22,3 +22,4 @@ export * from "./comments.js";
 export * from "./inbox.js";
 export * from "./store.js";
 export * from "./brands.js";
+export * from "./engage.js";

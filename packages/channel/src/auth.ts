@@ -14,10 +14,14 @@ export const REQUIRED_SCOPES = [
   "pages_read_engagement",
   "pages_read_user_content",
   "pages_manage_posts",
+  // Comments and replies from the Page, post numbers
+  "pages_manage_engagement",
+  "read_insights",
   // Instagram publishing and comments
   "instagram_basic",
   "instagram_content_publish",
   "instagram_manage_comments",
+  "instagram_manage_insights",
   // Inbox (Messenger and Instagram direct)
   "pages_messaging",
   "instagram_manage_messages",

@@ -4,6 +4,7 @@ Gets each episode in front of people and brings their comments back.
 
 - **Publish** an episode to Facebook, Instagram and Threads, for the main Hồi Sau brand and for the brand of the character who leads it (`channels.yaml`).
 - **Comments**: pull comments and Threads replies of every published episode into `data/comments.json` for the listening step in `packages/story`.
+- **Talking back**: send the character comments a person approved, and read each post's numbers.
 - **Inbox**: Messenger and Instagram direct messages, answered within Meta's 24-hour window.
 
 The Meta app runs in **Development mode**. The Pages and accounts belong to the developer, who is an Admin of the app, so App Review is not needed. Background and pitfalls: [docs/meta-integration-notes.md](../../docs/meta-integration-notes.md).
@@ -15,7 +16,7 @@ Facebook and Instagram:
 1. Create the Facebook Page and an Instagram professional account (Creator or Business) linked to it.
 2. Create a Business-type Meta app at developers.facebook.com and put `META_APP_ID` and `META_APP_SECRET` in `.env` (start from `.env.example`).
 3. In [Graph API Explorer](https://developers.facebook.com/tools/explorer/), choose the app, tick the permissions below and generate a user token:
-   `pages_show_list pages_read_engagement pages_read_user_content pages_manage_posts instagram_basic instagram_content_publish instagram_manage_comments pages_messaging instagram_manage_messages` (plus `business_management` if the Page lives in a Business Portfolio and does not appear).
+   `pages_show_list pages_read_engagement pages_read_user_content pages_manage_posts instagram_basic instagram_content_publish instagram_manage_comments instagram_manage_insights pages_manage_engagement read_insights pages_messaging instagram_manage_messages` (plus `business_management` if the Page lives in a Business Portfolio and does not appear).
 4. `npm run channel -- setup <token>` swaps it for a long-lived token, finds the Page and its Instagram account, and writes their ids and the Page token to `.env`.
 5. `npm run channel -- check` confirms the token works and nothing is missing.
 
@@ -39,6 +40,8 @@ For a character brand add `--brand <id>` (for example `--brand lolo`); its `.env
 | `check` | Token validity, missing permissions, Threads days left |
 | `publish <episode.json> [platform...]` | Post to the episode's brands, or `--brand <id>` |
 | `comments` | Pull comments of every published episode |
+| `insights` | Reactions, shares, saves and reach of every published post into `data/insights.json`; metrics a post does not support are skipped. `story coach` uses them |
+| `send-replies` | Post the approved first comments and character replies in `data/replies.json` (drafted by `story replies` / `story first-comment`), each once, from the account that published the post |
 | `inbox` / `reply <conversation-id> <text>` | Pull conversations; answer one |
 
 An episode file looks like [examples/episode.json](examples/episode.json). Media must be public HTTPS URLs because Meta downloads them itself. Threads captions stop at 500 characters, so set `captions.threads` for a shorter one.

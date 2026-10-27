@@ -38,6 +38,12 @@ import {
   publishEpisode,
   refreshThreadsToken,
   routeEpisode,
+  fetchInsights,
+  loadReplies,
+  saveInsights,
+  saveReplies,
+  sendApproved,
+  type PostInsights,
   saveComments,
   saveInbox,
   sendReply,
@@ -303,6 +309,39 @@ async function pullComments() {
   console.log(`${added.length} new comments, ${all.length} in total.`);
 }
 
+/** Accounts per brand, looked up once; paused channels included, since their posts still get comments. */
+function accountsCache() {
+  const cache = new Map<string, Targets>();
+  return (id = MAIN_BRAND) => {
+    const brand = findBrand(brands(), id);
+    if (!cache.has(brand.id)) cache.set(brand.id, accounts(brand, true).targets);
+    return cache.get(brand.id)!;
+  };
+}
+
+async function pullInsights() {
+  const targetsOf = accountsCache();
+  const found: PostInsights[] = [];
+  for (const post of await journal().published()) {
+    try {
+      found.push(await fetchInsights(targetsOf(post.brand), post.platform, post.postId));
+    } catch (e) {
+      console.warn(`${post.platform} ${post.postId}: ${(e as Error).message}`);
+    }
+  }
+  await saveInsights(dataDir(), found);
+  console.log(`Numbers for ${found.length} posts.`);
+}
+
+async function sendReplies() {
+  const targetsOf = accountsCache();
+  // Each comment goes out from the account that published its post.
+  const brandOf = new Map((await journal().published()).map((p) => [p.postId, p.brand]));
+  const { list, sent, failed } = await sendApproved((c) => targetsOf(c.brand ?? brandOf.get(c.postId)), await loadReplies(dataDir()));
+  await saveReplies(dataDir(), list);
+  console.log(`${sent} sent, ${failed} failed.`);
+}
+
 async function pullInbox() {
   const fetched: Conversation[] = [];
   // Every brand with a Page, paused ones too: people keep writing to a paused Page.
@@ -363,6 +402,12 @@ const commands: Record<string, Command> = {
     run: ([file, ...platforms]) => publish(file, platforms as Platform[]),
   },
   comments: { usage: "comments", help: "pull comments of every published episode into data/comments.json", run: pullComments },
+  insights: { usage: "insights", help: "reactions, shares, saves and reach of every published post into data/insights.json", run: pullInsights },
+  "send-replies": {
+    usage: "send-replies",
+    help: "post the approved character comments in data/replies.json, each once",
+    run: sendReplies,
+  },
   inbox: { usage: "inbox", help: "pull Messenger and Instagram conversations into data/inbox.json", run: pullInbox },
   reply: {
     usage: "reply <conversation-id> <text>",

@@ -8,8 +8,16 @@
  *       recap a written episode (episodes/<id>/) into series/story-memory.json
  *   npm run story -- brief <lead> [--with a,b] [--direction "…"]
  *       print the canon brief the writer gets for the next episode
- *   npm run story -- coach [--mock]
- *       score published episodes and write what worked into story memory
+ *   npm run story -- coach [--approve] [--mock]
+ *       score published episodes and propose what worked; --approve uses it at once
+ *   npm run story -- lessons [approve|reject <ids|all>]
+ *       list proposed lessons, or approve/reject them for the writer
+ *   npm run story -- replies [--max N] [--approve] [--mock]
+ *       draft the characters' replies to new comments into data/replies.json
+ *   npm run story -- first-comment <episode-id> [--approve] [--mock]
+ *       draft the lead's opening comment under each published post of an episode
+ *   npm run story -- approve-replies <ids|all> | reject-replies <ids|all>
+ *       review drafts; `npm run channel -- send-replies` posts the approved ones
  *   npm run story -- memory
  *       print what the series remembers
  *   npm run story -- demo [--mock]
@@ -25,9 +33,10 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse } from "yaml";
-import type { Comment } from "@hoi-sau/channel";
+import { type Comment, type JournalEntry, loadReplies, saveReplies } from "@hoi-sau/channel";
 import { loadMemorySync, storyBrief } from "./brief.js";
-import { coach, measureEpisodes, withLessons } from "./coach.js";
+import { coach, measureEpisodes, proposeLessons, reviewLessons, withLessons } from "./coach.js";
+import { draftReplies, firstComments, setStatus } from "./engage.js";
 import { listen } from "./listen.js";
 import { type Llm, llmFromEnv, type Role } from "./llm.js";
 import { episodeNumber, loadMemory, loadSeason, nextNumber, remember, saveMemory, SERIES_DIR } from "./memory.js";
@@ -142,8 +151,84 @@ async function main(argv: string[]): Promise<void> {
     for (const s of stats) console.log(`${String(s.score).padStart(6)}  ${s.episodeId.padEnd(16)} ${s.authors} người, ${s.kept} bình luận, ${s.replies} trả lời  ${s.title ?? ""}`);
     const r = await coach(pickLlm("judge", mock), stats, memory);
     if (r.skipped) return console.log(`No lessons: ${r.skipped}.`);
-    await saveMemory(withLessons(memory, r.lessons));
-    for (const l of r.lessons) console.log(`  [${l.kind}] ${l.text}  (${l.evidence.join(", ") || "chưa có bằng chứng"})`);
+    const approve = "--approve" in opts;
+    await saveMemory(approve ? withLessons(memory, r.lessons) : proposeLessons(memory, r.lessons));
+    for (const l of r.lessons) console.log(`  ${l.id} [${l.kind}] ${l.text}  (${l.evidence.join(", ") || "chưa có bằng chứng"})`);
+    if (!approve) console.log("\nWaiting for review: story lessons approve <ids|all>");
+    return;
+  }
+
+  if (cmd === "lessons") {
+    const memory = await loadMemory();
+    const [decision, ...ids] = args;
+    if (decision === "approve" || decision === "reject") {
+      if (!ids.length) throw new Error("usage: lessons approve|reject <ids|all>");
+      const next = reviewLessons(memory, ids, decision);
+      await saveMemory(next);
+      console.log(`${decision === "approve" ? "In use" : "Rejected"}; ${next.lessons.length} lessons in use, ${next.pendingLessons?.length ?? 0} still waiting.`);
+      return;
+    }
+    console.log(`In use (${memory.lessonsAt ?? "none"}):`);
+    for (const l of memory.lessons) console.log(`  ${l.id} [${l.kind}] ${l.text}`);
+    console.log(`Waiting (${memory.pendingAt ?? "none"}):`);
+    for (const l of memory.pendingLessons ?? []) console.log(`  ${l.id} [${l.kind}] ${l.text}  (${l.evidence.join(", ") || "chưa có bằng chứng"})`);
+    return;
+  }
+
+  if (cmd === "replies") {
+    const memory = await loadMemory();
+    const existing = await loadReplies(dataDir);
+    const profiles = new Map(bible.cast.flatMap((slug) => (existsSync(join(ROOT, "characters", slug, "profile.yaml")) ? [[slug, loadProfile(slug)] as const] : [])));
+    const drafts = await draftReplies(pickLlm("listener", mock), {
+      comments: readJson<Comment[]>(join(dataDir, "comments.json"), []),
+      journal: readJson<Record<string, JournalEntry>>(join(dataDir, "publish-journal.json"), {}),
+      profiles,
+      bible,
+      memory,
+      existing,
+      ownAuthorIds: [process.env.FB_PAGE_ID, process.env.IG_USER_ID, process.env.THREADS_USER_ID].filter((x): x is string => !!x),
+      max: opts["--max"] ? Number(opts["--max"]) : undefined,
+      approve: "--approve" in opts,
+    });
+    await saveReplies(dataDir, [...existing, ...drafts]);
+    for (const d of drafts) console.log(`  ${d.id} [${d.status}] ${d.speaker}: ${d.text}`);
+    const written = drafts.filter((d) => d.status !== "rejected").length;
+    console.log(`${written} new, ${drafts.length - written} not worth answering, in data/replies.json${written && !("--approve" in opts) ? "; review with story approve-replies <ids|all>" : ""}`);
+    return;
+  }
+
+  if (cmd === "first-comment") {
+    const id = args[0];
+    if (!id) throw new Error("usage: first-comment <episode-id> [--approve] [--mock]");
+    const memory = await loadMemory();
+    const journal = readJson<Record<string, JournalEntry>>(join(dataDir, "publish-journal.json"), {});
+    const posts = Object.entries(journal).flatMap(([k, e]) => (k.split(":")[0] === id && e.state === "published" ? [{ platform: e.platform, postId: e.postId, brand: e.brand }] : []));
+    if (!posts.length) throw new Error(`${id} has no published posts in the journal`);
+    const lead = memory.episodes.find((e) => e.id === id)?.lead ?? id.replace(/-ep-\d+$/, "");
+    const premise = readJson<{ hook?: string }>(join(ROOT, "episodes", id, "premise.json"), {});
+    const existing = await loadReplies(dataDir);
+    const drafts = await firstComments(pickLlm("listener", mock), {
+      episodeId: id,
+      lead: loadProfile(lead),
+      posts,
+      plan,
+      episodeNumber: episodeNumber(id, memory),
+      hook: premise.hook,
+      existing,
+      approve: "--approve" in opts,
+    });
+    await saveReplies(dataDir, [...existing, ...drafts]);
+    for (const d of drafts) console.log(`  ${d.id} [${d.status}] ${d.text}`);
+    if (!drafts.length) console.log("Every post already has a first comment.");
+    return;
+  }
+
+  if (cmd === "approve-replies" || cmd === "reject-replies") {
+    if (!args.length) throw new Error(`usage: ${cmd} <ids|all>`);
+    const before = await loadReplies(dataDir);
+    const after = setStatus(before, args, cmd === "approve-replies" ? "approved" : "rejected");
+    await saveReplies(dataDir, after);
+    console.log(`${after.filter((c, i) => c.status !== before[i].status).length} changed; send with npm run channel -- send-replies`);
     return;
   }
 
@@ -153,12 +238,13 @@ async function main(argv: string[]): Promise<void> {
     const open = m.threads.filter((t) => t.status === "open");
     if (open.length) console.log(`\nOpen threads:\n${open.map((t) => `  ${t.id} (${t.opened}) ${t.text}`).join("\n")}`);
     if (m.lessons.length) console.log(`\nLessons (${m.lessonsAt}):\n${m.lessons.map((l) => `  [${l.kind}] ${l.text}`).join("\n")}`);
+    if (m.pendingLessons?.length) console.log(`\n${m.pendingLessons.length} lessons waiting for review: story lessons`);
     if (m.cameos.length) console.log(`\nCoworkers from the audience: ${m.cameos.map((c) => `${c.name} (${c.firstEpisode})`).join(", ")}`);
     if (!m.episodes.length) console.log("Nothing remembered yet. Run `story remember <episode-id>` after studio writes an episode.");
     return;
   }
 
-  console.log("commands: listen | remember <id> | coach | brief <lead> | memory | demo   (add --mock to run offline)");
+  console.log("commands: listen | remember <id> | coach | lessons | replies | first-comment <id> | approve-replies | reject-replies | brief <lead> | memory | demo   (add --mock to run offline)");
 }
 
 main(process.argv.slice(2)).catch((e) => {

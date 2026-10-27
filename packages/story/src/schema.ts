@@ -130,9 +130,12 @@ export interface StoryMemory {
   cameos: Cameo[];
   /** Running gag id → episode number it was last used in. */
   gagsUsed: Record<string, number>;
-  /** The latest coach run; replaced on every run, never appended. */
+  /** Lessons the editor approved; the writer and the comment scorer use only these. */
   lessons: Lesson[];
   lessonsAt?: string;
+  /** The latest coach run, waiting for the editor. Replaced on every run. */
+  pendingLessons?: Lesson[];
+  pendingAt?: string;
 }
 
 // ── coach: how each published episode did ─────────────────────────────────

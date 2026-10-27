@@ -1,8 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
   <!-- Bino, binturong director. Placeholder portrait until the Muse Image model sheet is locked. -->
   <g stroke="#1b1410" stroke-width="10" stroke-linejoin="round" stroke-linecap="round">
-    <!-- orange-red tee over a round belly -->
-    <path d="M40 512 C40 400 140 350 256 350 C372 350 472 400 472 512 Z" fill="#E8542F"/>
+    <!-- navy suit over an open orange-red shirt -->
+    <path d="M40 512 C40 400 140 350 256 350 C372 350 472 400 472 512 Z" fill="#22315C"/>
+    <path d="M196 356 L256 512 L316 356 Z" fill="#E8542F"/>
     <!-- gold chain and pendant -->
     <path d="M170 360 C190 430 322 430 342 360" fill="none" stroke="#E3B23C" stroke-width="14"/>
     <circle cx="256" cy="430" r="22" fill="#E3B23C"/>

@@ -29,7 +29,7 @@ desks:
 # and working at their own desks, smaller, simpler and never in focus.
 # Recurring extras from the bible keep their own places.
 extras:
-  - { label: Giám đốc Bino, where: lift, text: "the director, a chubby binturong with a huge white moustache holding a white cat, only when the story brings him down from the 8th floor; never sitting at a desk here" }
+  - { label: Giám đốc Bino, where: lift, text: "the director, a chubby binturong in a navy suit with a huge white moustache holding a white cat, only when the story brings him down from the 8th floor; never sitting at a desk here" }
   - { label: Sếp Cú, where: boss, text: "the owl boss with glasses, only ever glimpsed through the glass office" }
   - { label: Chị kế toán trưởng, x: 6.9, y: 3.6, desks: 1, text: "the head accountant, a calm tortoise, at a desk just outside the boss's office" }
   - { label: Nhóm bên cạnh, x: 4.4, y: 1.4, text: "a neighbouring team at the middle cluster: a gecko typing, a squirrel on a call, a heron reading papers" }

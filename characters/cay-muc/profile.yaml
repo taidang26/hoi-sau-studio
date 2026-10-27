@@ -36,22 +36,26 @@ look:
     A big, very chubby binturong (bearcat) boss standing upright, round as a
     barrel, with shaggy charcoal-black fur and a pale grey face. Long white
     whiskers grow into a huge, droopy walrus-style moustache that hides his
-    mouth. Small cheerful eyes, round ears with white tips, a long bushy black
-    tail. Wears a black snapback cap a little too small for his head, a bright
-    orange-red sports t-shirt stretched over the belly, a thick gold chain with a
-    big gold pendant, chunky gold rings and a gold bracelet. Almost always
-    cradles a fluffy white cat in one arm, the cat looking unimpressed.
+    mouth. Small cheerful eyes, small pointed ears with long white ear tufts, a
+    very long, thick bushy black tail curling at the tip. Wears a black snapback
+    cap a little too small for his head and a sharp navy-blue boss suit, the
+    jacket buttons straining over the round belly, over an orange-red shirt with
+    the collar open, a thick gold chain with a big gold pendant on the chest,
+    chunky gold rings and a big gold watch. Almost always cradles a fluffy white
+    cat in one arm, the cat looking unimpressed.
   signature:
     - very chubby barrel-shaped body with shaggy charcoal-black fur and a long bushy tail
     - huge droopy white walrus moustache made of long whiskers, hiding the mouth
-    - black snapback cap, bright orange-red sports t-shirt over a round belly
+    - small pointed ears with long white tufts, a very long thick bushy tail
+    - black snapback cap, navy-blue suit straining over the belly, orange-red open-collar shirt
     - thick gold chain with a big gold pendant, chunky gold rings
     - a fluffy white cat in his arm, looking unimpressed
   palette:
     - { name: fur, hex: "#2E2B2A" }
     - { name: face, hex: "#B9B3AC" }
     - { name: moustache, hex: "#F4F1EA" }
-    - { name: t-shirt, hex: "#E8542F" }
+    - { name: suit, hex: "#22315C" }
+    - { name: shirt, hex: "#E8542F" }
     - { name: gold, hex: "#E3B23C" }
     - { name: cap, hex: "#1E1E1E" }
   props: [fluffy white cat, bag of sticky rice for the team, big gold watch, tiny espresso cup]

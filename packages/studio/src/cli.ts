@@ -180,7 +180,7 @@ async function main(argv: string[]): Promise<void> {
     const id = args[1];
     if (!id) throw new Error("usage: episode approve <id> [--post post.json] [--despite-warnings]");
     const { warnings } = checkForApproval(id);
-    for (const w of warnings) console.log(`warning: ${w}`);
+    for (const w of warnings) console.log(`warning: ${w.text}`);
     const a = approveEpisode(id, { postFile: opt("--post"), despiteWarnings: flags.has("--despite-warnings") });
     console.log(`${id} approved by ${a.approvedBy}: ${Object.keys(a.files).length} files${a.post ? " and the post" : "; no post file yet, approve again once it exists"}.`);
     return;

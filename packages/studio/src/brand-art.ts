@@ -10,7 +10,7 @@
  *
  *   npm run studio -- brand-art [brand…] [--mock]
  *
- * Writes output/brand-art/<brand>/avatar.png (1024x1024), cover.png
+ * Writes output/brand-art/<brand>/avatar.png (square, up to 1600 px), cover.png
  * (1640x624, Facebook) and cover-title.png (the cover with the page name
  * lettered in the comic font).
  */
@@ -31,7 +31,8 @@ import { SERIES_DIR } from "./bible.js";
 export const CHANNELS_FILE = fileURLToPath(new URL("../../../channels.yaml", import.meta.url));
 
 export const COVER_SIZE = { width: 1640, height: 624 };
-export const AVATAR_SIZE = { width: 1024, height: 1024 };
+/** Largest avatar written; Muse draws about 1600 px square, which is kept without upscaling. */
+export const AVATAR_SIZE = { width: 1600, height: 1600 };
 
 export interface BrandInfo {
   id: string;
@@ -101,9 +102,9 @@ function refsFor(ctx: StudioContext, brand: BrandInfo): string[] {
   return styleRef ? [styleRef, ...refs] : refs;
 }
 
-async function fit(image: Buffer, size: { width: number; height: number }): Promise<Buffer> {
+async function fit(image: Buffer, size: { width: number; height: number }, enlarge = true): Promise<Buffer> {
   try {
-    return await sharp(image).resize(size.width, size.height, { fit: "cover", position: "centre" }).png().toBuffer();
+    return await sharp(image).resize(size.width, size.height, { fit: "cover", position: "centre", withoutEnlargement: !enlarge }).png().toBuffer();
   } catch {
     return image;
   }
@@ -157,7 +158,7 @@ export async function makeBrandArt(ctx: StudioContext, brands: BrandInfo[], outD
     log(`${b.id}: cover`);
     const c = await generateSoftly(ctx.image, { prompt: coverPrompt(ctx, b), size: "1536x1024", references }, log);
     usage.push(...[a.usage, c.usage].filter((u): u is Usage => Boolean(u)));
-    const avatar = await fit(a.image, AVATAR_SIZE);
+    const avatar = await fit(a.image, AVATAR_SIZE, false);
     const cover = await fit(c.image, COVER_SIZE);
     writeFileSync(join(dir, "avatar.png"), avatar);
     writeFileSync(join(dir, "cover.png"), cover);

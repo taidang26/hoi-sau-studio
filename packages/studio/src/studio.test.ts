@@ -73,7 +73,7 @@ test("request body follows the Responses API shape", () => {
     model: "muse-image-1.0",
     input: "a",
     previous_response_id: "resp_1",
-    tools: [{ type: "image_generation", size: "1024x1536" }],
+    tools: [{ type: "image_generation", size: "1024x1536", output_format: "png" }],
   });
   const withRef = client.requestBody({ prompt: "b", references: ["data:image/png;base64,AA"] }) as any;
   assert.equal(withRef.input[0].role, "user");
@@ -211,6 +211,10 @@ test("sizes the API refuses map to the nearest it takes, and the image comes bac
   const png = await normalizeImage(webp, "1024x1280");
   const meta = await sharp(png).metadata();
   assert.deepEqual([meta.format, meta.width, meta.height], ["png", 1024, 1280]);
+  // Muse draws at about 2.5 MP; the crop keeps that resolution instead of shrinking to the request.
+  const big = await sharp({ create: { width: 1280, height: 1920, channels: 3, background: "#f7d774" } }).webp().toBuffer();
+  const kept = await sharp(await normalizeImage(big, "1024x1280")).metadata();
+  assert.deepEqual([kept.width, kept.height], [1280, 1600]);
 });
 
 test("a prompt the content filter refuses is retried once with gentler wording", async () => {

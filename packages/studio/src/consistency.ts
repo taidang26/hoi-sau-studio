@@ -7,7 +7,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { imageSize } from "@hoi-sau/svg-text";
-import type { MuseImage, Usage } from "./muse-image.js";
+import { generateSoftly, MuseImageError, type MuseImage, type Usage } from "./muse-image.js";
 import type { Profile } from "./profile.js";
 import { characterSheetPrompt, consistencyBeats, panelPrompt, poseSheetPrompt } from "./prompts.js";
 
@@ -80,7 +80,17 @@ export async function runConsistency(
   for (const beat of consistencyBeats(profile)) {
     const prompt = panelPrompt(profile, beat.scene, opts.style);
     log(`${profile.slug}: panel ${beat.id}`);
-    const res = await client.generate({ prompt, size: beat.size, previousResponseId: previous });
+    let res;
+    try {
+      res = await generateSoftly(client, { prompt, size: beat.size, previousResponseId: previous }, log);
+    } catch (e) {
+      // A test panel the filter refuses twice is skipped; the sheet is what matters.
+      if (e instanceof MuseImageError && e.filtered) {
+        log(`${profile.slug}: panel ${beat.id} skipped (content filter)`);
+        continue;
+      }
+      throw e;
+    }
     images.push({ id: beat.id, file: save(beat.id, res.image), prompt, size: beat.size, responseId: res.id, previousResponseId: previous, usage: res.usage, note: res.note });
     previous = res.id;
   }

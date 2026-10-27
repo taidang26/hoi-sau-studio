@@ -318,16 +318,16 @@ test("studio: pick a series style, draw and lock a sheet with poses, make a thre
     assert.match(char, /Đồ nhận diện/);
     assert.equal((await fetch(at + "/sheet/te-te/pose-sheet.png")).status, 200);
 
-    // A strip3 episode: the form offers it first, and the page shows the one-image post.
+    // A strip3 episode: the form offers it first, and each panel is its own post image.
     assert.match(await (await fetch(at + "/studio")).text(), /<option value="strip3" selected>/);
     await post("/studio/new", { id: "ep-010", lead: "te-te", with: ["cu-li"], direction: "Ở nhà thì chán, đi làm thì mệt", format: "strip3" });
     await post("/studio/ep-010/run");
     await studio.settle("ep-010");
     assert.equal(studio.jobs.get("ep-010")!.error, undefined);
     const html = await (await fetch(at + "/studio/ep-010")).text();
-    assert.match(html, /Trang đăng/);
-    assert.match(html, /\/studio-media\/ep-010\/final\/page\.png/);
-    assert.ok(existsSync(join(dirs.episodesDir, "ep-010", "final", "page.png")));
+    assert.doesNotMatch(html, /Trang đăng/);
+    assert.match(html, /\/studio-media\/ep-010\/final\/03\.png/);
+    assert.ok(!existsSync(join(dirs.episodesDir, "ep-010", "final", "page.png")));
   } finally {
     server.close();
   }

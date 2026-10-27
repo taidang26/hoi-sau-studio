@@ -10,12 +10,23 @@ base: >-
   round limbs, soft chubby shapes. Clean, even, thick black outlines. Flat
   colours with at most one soft shadow tone. A soft pink blush on the cheeks.
   Simple round eyes with one white highlight, eyebrows that do the acting.
-  Big, readable poses and expressions that land at phone size. Uncluttered
-  Vietnamese office settings with a few telling props.
+  Exaggerated cartoon acting, pushed further than feels safe: squash and
+  stretch, extreme faces (jaw on the floor, eyes popping, tears streaming,
+  fur standing on end), bold dynamic poses with strong diagonal lines of
+  action, bodies bending and stretching like rubber. Drawn comic effects add
+  energy: sweat drops, speed and motion lines, shock lines, anger veins, steam
+  puffs, sparkles, little stars, dust clouds, always as pictures, never as
+  letters. Big, readable poses and expressions that land at phone size. Uncluttered
+  Vietnamese office settings with a few telling props. Lighting fits the
+  scene and stays cheerful: daytime by default, with light airy backgrounds
+  and fresh clean colours. When the story needs evening or night (overtime,
+  a party), keep it warm and lively, lit by lamps and screens, never gloomy.
 avoid:
   - photorealism, 3D render, glossy or airbrushed shading, gradients
   - anime sparkle eyes, manga screentone
   - drawn text, letters, numbers on signs, speech bubbles, captions, logos
+  - gloomy, murky or depressing lighting, heavy shadows, a mood of despair
+  - stiff, static, symmetrical poses; calm neutral faces when the beat has emotion
 variants:
   - id: warm-pastel
     label: Pastel ấm, nền một màu

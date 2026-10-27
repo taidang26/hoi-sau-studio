@@ -3,6 +3,8 @@
  * Studio CLI.
  *
  *   npm run studio -- characters                 validate and list character profiles
+ *   npm run studio -- brand-art [brand…] [--mock] profile pictures and cover photos for the pages in channels.yaml
+ *   npm run studio -- office                     draw the office floor plan to series/office-plan.png
  *   npm run studio -- style [--mock]             draw the test scene in every series style variant
  *   npm run studio -- style approve <variant>    lock that render as the series style reference
  *   npm run studio -- sheet <slug|all> [--mock]  Muse Image consistency test
@@ -29,6 +31,10 @@ import { createCharacter, writeProfile } from "./create.js";
 import { createEpisode, doneSteps, episodeDir, EPISODE_FORMATS, EPISODE_STEPS, type EpisodeFormat, type EpisodeStep, listEpisodes, readStep, runEpisode } from "./episode.js";
 import { approveSheet, openStudio } from "./studio.js";
 import { approveStyle, loadStyle, runStyleTest, styleReference, styleText } from "./style.js";
+import { loadOffice, officePlanSvg } from "./office.js";
+import { loadBrandList, makeBrandArt } from "./brand-art.js";
+import { SERIES_DIR } from "./bible.js";
+import { ALL_FONT_PATHS, svgToPng } from "@hoi-sau/svg-text";
 
 const ROOT = fileURLToPath(new URL("../../..", import.meta.url));
 
@@ -66,6 +72,32 @@ async function main(argv: string[]): Promise<void> {
   }
 
   const imageClient = () => (mock ? new MuseImage({ apiKey: "mock", transport: mockTransport().transport }) : MuseImage.fromEnv());
+
+  if (cmd === "brand-art") {
+    const ctx = openStudio({ mock, log: console.log });
+    const all = loadBrandList();
+    const brands = args.length ? all.filter((b) => args.includes(b.id)) : all;
+    if (!brands.length) throw new Error(`no such brand; known: ${all.map((b) => b.id).join(", ")}`);
+    const out = join(ROOT, "output", "brand-art");
+    const { art } = await makeBrandArt(ctx, brands, out, console.log);
+    console.log(`${art.length} brands → ${out} (avatar.png, cover.png, cover-title.png each)`);
+    return;
+  }
+
+  if (cmd === "office") {
+    const office = loadOffice();
+    if (!office) throw new Error("no series/office.yaml");
+    const profiles = listCharacters().map((slug) => loadProfile(slug));
+    const svg = officePlanSvg(
+      office,
+      Object.fromEntries(profiles.map((p) => [p.slug, p.name])),
+      Object.fromEntries(profiles.map((p) => [p.slug, p.look.palette[0]?.hex ?? "#ffd77a"])),
+    );
+    const out = join(SERIES_DIR, "office-plan.png");
+    writeFileSync(out, svgToPng(svg, { fontFiles: ALL_FONT_PATHS }));
+    console.log(`floor plan → ${out}`);
+    return;
+  }
 
   if (cmd === "style" && args[0] === "approve") {
     const id = args[1];

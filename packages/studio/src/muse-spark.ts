@@ -89,7 +89,7 @@ export const S = {
   num: (description?: string): JsonSchema => ({ type: "number", ...(description ? { description } : {}) }),
   int: (description?: string): JsonSchema => ({ type: "integer", ...(description ? { description } : {}) }),
   bool: (): JsonSchema => ({ type: "boolean" }),
-  enum: (values: string[]): JsonSchema => ({ type: "string", enum: values }),
+  enum: (values: string[], description?: string): JsonSchema => ({ type: "string", enum: values, ...(description ? { description } : {}) }),
   arr: (items: JsonSchema, minItems = 0, maxItems?: number): JsonSchema => ({ type: "array", items, minItems, ...(maxItems ? { maxItems } : {}) }),
   obj: (properties: Record<string, JsonSchema>): JsonSchema => ({
     type: "object",

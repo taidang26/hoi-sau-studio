@@ -56,7 +56,7 @@ export interface StudioOptions {
 }
 
 export const FORMAT_LABEL: Record<EpisodeFormat, string> = {
-  strip3: "Truyện 3 khung, 1 trang 4:5",
+  strip3: "Truyện 3 khung, vuốt từng khung",
   carousel: "Carousel 4–6 khung",
 };
 
@@ -282,7 +282,7 @@ ${next ? `<form class="run" method="post" action="/studio/${esc(id)}/run"><butto
 ${runBar}
 <section class="card"><h2>Hướng từ khán giả</h2><p>${esc(ep.direction)}</p>${ep.credits.length ? `<p class="muted small">Ghi công: ${ep.credits.map((c) => esc(c.name)).join(", ")}</p>` : ""}</section>
 ${motionSection(st, id)}
-${letter?.page ? `<section class="card"><h2>Trang đăng</h2><img class="strip-page" src="${media(id, letter.page)}" alt="Trang 3 khung"><p class="muted small">Một ảnh 1080x1350, đăng một lần lên Facebook, Instagram và Threads. Từng khung riêng ở bên dưới.</p></section>` : ""}
+${letter?.page ? `<section class="card"><h2>Trang đăng</h2><img class="strip-page" src="${media(id, letter.page)}" alt="Trang 3 khung"><p class="muted small">Bản ghép cũ. Từ 27/10 mỗi khung đăng thành một ảnh riêng để chữ đọc rõ trên điện thoại.</p></section>` : ""}
 ${letter ? `<section class="card"><h2>Bản hoàn chỉnh</h2><div class="pages">${letter.pages.map((p) => `<figure><img src="${media(id, p.file)}" alt="Trang ${p.n}" loading="lazy"><figcaption>${p.n}${p.overflow ? ` · <span class="tag over">${p.overflow} lời thoại tràn</span>` : ""}</figcaption></figure>`).join("")}</div></section>` : ""}
 ${section("premise", premise ? `<dl class="kv"><dt>Một câu</dt><dd>${esc(premise.logline)}</dd><dt>Mở</dt><dd>${esc(premise.setup)}</dd><dt>Bất ngờ</dt><dd>${esc(premise.twist)}</dd><dt>Móc hồi sau</dt><dd>${esc(premise.hook)}</dd>${premise.cameo ? `<dt>Khách mời</dt><dd>${esc(premise.cameo.name)}: ${esc(premise.cameo.description)}</dd>` : ""}</dl>` : "")}
 ${section("beats", beats ? `<ol class="beats">${beats.beats.map((b) => `<li><span class="tag">${esc(b.purpose)}</span> ${esc(b.what_happens)}</li>`).join("")}</ol>` : "")}

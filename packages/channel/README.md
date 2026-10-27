@@ -14,8 +14,8 @@ The Meta app runs in **Development mode**. The Pages and accounts belong to the 
 Facebook and Instagram:
 
 1. Create the Facebook Page and an Instagram professional account (Creator or Business) linked to it.
-2. Create a Business-type Meta app at developers.facebook.com and put `META_APP_ID` and `META_APP_SECRET` in `.env` (start from `.env.example`).
-3. `npm run channel -- login` opens Facebook Login in the browser. Approve the Page (and its Instagram); a one-shot server on `localhost:8765` catches the redirect, and the same steps as `setup` run, so no token is copied by hand. Localhost redirects work without registering them while the app is in Development mode. If the app uses Facebook Login for Business, put its configuration id in `META_LOGIN_CONFIG_ID`.
+2. Create one Meta app at developers.facebook.com with the use cases for Pages, Instagram, Messenger and Threads, and put `META_APP_ID` and `META_APP_SECRET` in `.env` (start from `.env.example`). Add every permission below to its use case before logging in; a permission the use cases do not list makes the login dialog fail with "Invalid Scopes".
+3. `npm run channel -- login` opens Facebook Login in the browser. Approve the Page (and its Instagram); a one-shot server on `localhost:8765` catches the redirect, and the same steps as `setup` run, so no token is copied by hand. Localhost redirects work without registering them while the app is in Development mode. If the app uses Facebook Login for Business, put its configuration id in `META_LOGIN_CONFIG_ID`. While the Page has no Instagram account yet, set `META_LOGIN_SCOPES` to just the `pages_*` and `read_insights` scopes so Facebook does not ask you to pick an unrelated Instagram account.
 
    Or by hand: in [Graph API Explorer](https://developers.facebook.com/tools/explorer/), choose the app, tick the permissions below and generate a user token:
    `pages_show_list pages_read_engagement pages_read_user_content pages_manage_posts instagram_basic instagram_content_publish instagram_manage_comments pages_manage_engagement read_insights instagram_manage_insights pages_messaging instagram_manage_messages` (plus `business_management` if the Page lives in a Business Portfolio and does not appear).
@@ -27,7 +27,7 @@ Threads (separate login, token lasts about 60 days):
 1. Open Threads with the brand's Instagram account to create the profile.
 2. In the app dashboard add the **Access the Threads API** use case with `threads_basic`, `threads_content_publish`, `threads_read_replies`; copy its app secret into `.env` as `THREADS_APP_SECRET`.
 3. Invite the profile as a Threads tester and accept in the Threads app (Settings › Account › Website permissions › Invites).
-4. Generate a token in the use case's User Token Generator and run `npm run channel -- threads-setup <token>`.
+4. Generate a token in the use case's User Token Generator and click Copy next to it, then run `npm run channel -- threads-setup` (it reads the token from the clipboard, so it is never pasted into a terminal; passing it as an argument also works).
 5. `check` shows the days left; `threads-refresh` extends it.
 
 For a character brand add `--brand <id>` (for example `--brand lolo`); its `.env` names are listed in `channels.yaml`.
@@ -39,7 +39,7 @@ For a character brand add `--brand <id>` (for example `--brand lolo`); its `.env
 | `brands` | Brands, their channels and status, and which `.env` names are still empty |
 | `login [port]` | Facebook Login in the browser, then the same as `setup` |
 | `setup <token>` | Page id, Page token and Instagram id into `.env` |
-| `threads-setup <token>` / `threads-refresh` | Threads profile and 60-day token; extend it |
+| `threads-setup [token]` / `threads-refresh` | Threads profile and 60-day token; extend it |
 | `check` | Token validity, missing permissions, Threads days left |
 | `publish <episode.json> [platform...]` | Post to the episode's brands, or `--brand <id>` |
 | `comments` | Pull comments of every published episode |

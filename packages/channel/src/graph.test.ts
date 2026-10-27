@@ -81,3 +81,23 @@ test("token check reports validity, no expiry and missing scopes", async () => {
   assert.deepEqual(missingScopes(status.scopes), []);
   assert.deepEqual(missingScopes(["pages_show_list"]).includes("instagram_content_publish"), true);
 });
+
+test("a Page owned by a business portfolio is found when /me/accounts is empty", async () => {
+  const page = { id: "42", name: "Hồi Sau", access_token: "page-token" };
+  const viaBusiness = createMockGraph({
+    "GET me/accounts": () => ({ data: [] }),
+    "GET me/businesses": () => ({ data: [{ id: "b1" }] }),
+    "GET b1/owned_pages": () => ({ data: [page] }),
+    "GET b1/client_pages": () => ({ data: [page] }),
+  });
+  const found = await listManagedPages(new GraphClient({ token: "u", fetch: viaBusiness.fetch }));
+  assert.deepEqual(found.map((p) => p.id), ["42"]);
+
+  const direct = createMockGraph({
+    "GET me/accounts": () => ({ data: [] }),
+    "GET me/businesses": () => graphError(403, 200, "needs business_management"),
+    "GET 42": () => page,
+  });
+  const [byId] = await listManagedPages(new GraphClient({ token: "u", fetch: direct.fetch }), { pageId: "42" });
+  assert.equal(byId.accessToken, "page-token");
+});

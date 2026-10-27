@@ -7,13 +7,18 @@
  * Reference: meta-models/meta-model-cookbook, 05_muse_image.
  */
 
+import sharp from "sharp";
+
 export const DEFAULT_BASE_URL = "https://api.meta.ai/v1";
 export const MUSE_IMAGE_MODEL = "muse-image-1.0";
 
 export interface ImageTurn {
   prompt: string;
   previousResponseId?: string;
-  /** "WxH". Sets the aspect ratio only, not exact pixels. */
+  /**
+   * "WxH" of the picture we want back. The API takes only three sizes, so the
+   * nearest one is requested and the result is centre-cropped to this.
+   */
   size?: string;
   /** Extra images the server does not have yet, as URLs or data URLs. */
   references?: string[];
@@ -39,10 +44,51 @@ export type Transport = (url: string, init: { method: string; headers: Record<st
 }>;
 
 export class MuseImageError extends Error {
-  constructor(message: string, public readonly status?: number) {
+  constructor(
+    message: string,
+    public readonly status?: number,
+    /** Meta's content filter refused the prompt. Rewording can help; retrying the same prompt does not. */
+    public readonly filtered = false,
+  ) {
     super(message);
   }
 }
+
+/** Sizes the image_generation tool accepts; anything else is a 400 ("unknown value 1024x1280"). */
+export const API_SIZES = ["1024x1024", "1536x1024", "1024x1536"] as const;
+
+export function apiSize(size: string): string {
+  if ((API_SIZES as readonly string[]).includes(size)) return size;
+  const [w, h] = size.split("x").map(Number);
+  return w > h * 1.1 ? "1536x1024" : h > w * 1.1 ? "1024x1536" : "1024x1024";
+}
+
+/**
+ * Every image becomes a PNG (the SVG renderer cannot embed WebP), centre-
+ * cropped to the aspect ratio asked for at the resolution Muse drew it.
+ * `size` only picks the shape: Muse renders at about 2.5 MP (1280x1920 for a
+ * tall frame), and shrinking that to the request's 1024 px would throw detail
+ * away. Final post sizes are set later, in one downscale.
+ */
+export async function normalizeImage(image: Buffer, size?: string): Promise<Buffer> {
+  try {
+    const img = sharp(image);
+    const [w, h] = (size ?? "").split("x").map(Number);
+    const meta = await img.metadata();
+    if (w && h && meta.width && meta.height) {
+      const ratio = w / h;
+      const cw = Math.min(meta.width, Math.round(meta.height * ratio));
+      const ch = Math.min(meta.height, Math.round(meta.width / ratio));
+      img.extract({ left: Math.floor((meta.width - cw) / 2), top: Math.floor((meta.height - ch) / 2), width: cw, height: ch });
+    }
+    return await img.png().toBuffer();
+  } catch {
+    // Not an image sharp can read (test stubs); pass it through untouched.
+    return image;
+  }
+}
+
+const FILTERED = /content management policy|filtered/i;
 
 export interface MuseImageOptions {
   apiKey: string;
@@ -94,7 +140,8 @@ export class MuseImage {
         ]
       : turn.prompt;
     if (turn.previousResponseId) body.previous_response_id = turn.previousResponseId;
-    if (turn.size) body.tools = [{ type: "image_generation", size: turn.size }];
+    // PNG, not the default lossy WebP: line art and flat colour show WebP artefacts.
+    if (turn.size) body.tools = [{ type: "image_generation", size: apiSize(turn.size), output_format: "png" }];
     return body;
   }
 
@@ -107,10 +154,14 @@ export class MuseImage {
         body,
       });
       const json = (await res.json().catch(() => ({}))) as any;
-      if (res.status >= 200 && res.status < 300) return parseResponse(json);
+      if (res.status >= 200 && res.status < 300) {
+        const result = parseResponse(json);
+        return { ...result, image: await normalizeImage(result.image, turn.size) };
+      }
       const retriable = res.status === 429 || res.status >= 500;
       if (!retriable || attempt >= this.retries) {
-        throw new MuseImageError(`Muse Image ${res.status}: ${json?.error?.message ?? "request failed"}`, res.status);
+        const message = json?.error?.message ?? "request failed";
+        throw new MuseImageError(`Muse Image ${res.status}: ${message}`, res.status, res.status === 400 && FILTERED.test(message));
       }
       await this.sleep(1000 * 2 ** attempt + Math.random() * 250);
     }
@@ -121,7 +172,7 @@ export function parseResponse(json: any): ImageResult {
   if (json?.status && json.status !== "completed") throw new MuseImageError(`response status ${json.status}`);
   const output: any[] = Array.isArray(json?.output) ? json.output : [];
   const call = output.find((o) => o?.type === "image_generation_call");
-  if (!call?.result) throw new MuseImageError("no image in response (filtered by safety, or text-only reply)");
+  if (!call?.result) throw new MuseImageError("no image in response (filtered by safety, or text-only reply)", undefined, true);
   const note = output
     .filter((o) => o?.type === "message")
     .flatMap((m) => (Array.isArray(m.content) ? m.content : []))
@@ -129,4 +180,30 @@ export function parseResponse(json: any): ImageResult {
     .join(" ")
     .trim();
   return { id: json.id, image: Buffer.from(call.result, "base64"), note, usage: json.usage ?? {} };
+}
+
+// Words that read as danger or distress out of context; a filtered prompt is retried without them.
+const TENSE: Array<[RegExp, string]> = [
+  [/\b(angry|furious|rage|shaking|trembling)\b/gi, "flustered"],
+  [/\b(spiky|spikes|spiked)\b/gi, "puffed-up"],
+  [/\b(defending itself|attack(ed|ing)?|fight(ing)?|threat(ening)?)\b/gi, "startled"],
+  [/\b(scream(ing)?|panic(king)?|terrified|horror)\b/gi, "surprised"],
+  [/\b(deer in headlights)\b/gi, "a surprised statue"],
+];
+
+/** A gentler wording of a prompt Meta's filter refused. */
+export function softenPrompt(prompt: string): string {
+  const calm = TENSE.reduce((p, [re, to]) => p.replace(re, to), prompt);
+  return `A gentle, wholesome, all-ages cartoon about friendly animal office workers. ${calm}`;
+}
+
+/** Generate; if the content filter refuses, try once more with the softened prompt. */
+export async function generateSoftly(client: Pick<MuseImage, "generate">, turn: ImageTurn, log?: (s: string) => void): Promise<ImageResult> {
+  try {
+    return await client.generate(turn);
+  } catch (e) {
+    if (!(e instanceof MuseImageError && e.filtered)) throw e;
+    log?.("content filter refused the prompt; retrying with gentler wording");
+    return client.generate({ ...turn, prompt: softenPrompt(turn.prompt) });
+  }
 }

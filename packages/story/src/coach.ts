@@ -6,8 +6,11 @@
  *            → one comparable score per episode
  *   coach    Muse Spark compares the strongest and weakest episodes against
  *            what each one was about, and writes up to five lessons
- *   use      lessons go into story memory; storyBrief shows them to the
- *            writer and listening shows them to the comment scorer
+ *   review   lessons wait in memory.pendingLessons until the editor approves
+ *            them (`story lessons approve`), so one bad run cannot steer
+ *            the series
+ *   use      approved lessons: storyBrief shows them to the writer and
+ *            listening shows them to the comment scorer
  */
 
 import type { Comment, JournalEntry } from "@hoi-sau/channel";
@@ -156,4 +159,23 @@ export async function coach(llm: Llm, stats: EpisodeStats[], memory: StoryMemory
   return { stats, lessons };
 }
 
-export const withLessons = (memory: StoryMemory, lessons: Lesson[], now = new Date()): StoryMemory => ({ ...memory, lessons, lessonsAt: now.toISOString() });
+/** Use lessons right away, skipping review (`story coach --approve`). */
+export const withLessons = (memory: StoryMemory, lessons: Lesson[], now = new Date()): StoryMemory => ({ ...memory, lessons, lessonsAt: now.toISOString(), pendingLessons: [], pendingAt: undefined });
+
+/** Park a coach run for review. Earlier approved lessons stay in use meanwhile. */
+export const proposeLessons = (memory: StoryMemory, lessons: Lesson[], now = new Date()): StoryMemory => ({ ...memory, pendingLessons: lessons, pendingAt: now.toISOString() });
+
+/**
+ * Approve or reject pending lessons by id ("all" = every one). The first
+ * approval from a run replaces the lessons in use, since a run looks at every
+ * episode again; later approvals from the same run add to them.
+ */
+export function reviewLessons(memory: StoryMemory, ids: string[], decision: "approve" | "reject", now = new Date()): StoryMemory {
+  const pending = memory.pendingLessons ?? [];
+  const picked = pending.filter((l) => ids.includes("all") || ids.includes(l.id));
+  const left = pending.filter((l) => !picked.includes(l));
+  const rest = { ...memory, pendingLessons: left, pendingAt: left.length ? memory.pendingAt : undefined };
+  if (decision === "reject" || !picked.length) return rest;
+  const sameRun = !!memory.pendingAt && memory.lessonsAt === memory.pendingAt;
+  return { ...rest, lessons: [...(sameRun ? memory.lessons : []), ...picked], lessonsAt: memory.pendingAt ?? now.toISOString() };
+}

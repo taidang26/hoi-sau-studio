@@ -6,6 +6,7 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "dependencies": {
+    "@hoi-sau/channel": "0.0.0",
     "@hoi-sau/story": "0.0.0",
     "@hoi-sau/svg-text": "0.0.0",
     "sharp": "^0.34.4",

@@ -116,8 +116,9 @@ npm run dashboard -- --demo              # dashboard with sample data on http://
 ### Public site and media
 
 Instagram and Threads fetch media from a public HTTPS URL, so finished episodes
-go to Firebase Hosting (`firebase.json`, `site/public/`). The dashboard stays on
-your machine: it has no login and can post and spend API credits.
+go to Firebase Hosting (`firebase.json`, `site/public/`). The dashboard runs on
+Cloud Run, as an open demo with sample data and a password-protected admin: see
+[docs/cloud.md](docs/cloud.md).
 
 ```bash
 npm run site -- add ep-001    # episodes/ep-001/final → site/public/media/ep-001/*.jpg

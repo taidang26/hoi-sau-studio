@@ -332,3 +332,23 @@ test("studio: pick a series style, draw and lock a sheet with poses, make a thre
     server.close();
   }
 });
+
+test("with a password, pages ask for it and the session cookie lets you in", async () => {
+  const server = await startDashboard({ dataDir, runsDir, password: "đúng rồi", channel: () => ({ facebook: false, instagram: false, mock: false }) }, 0);
+  const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  try {
+    const home = await fetch(url + "/", { redirect: "manual" });
+    assert.equal(home.headers.get("location"), "/login");
+    assert.equal((await fetch(url + "/api/state", { redirect: "manual" })).status, 303);
+    assert.equal((await fetch(url + "/static/app.css")).status, 200);
+    const wrong = await fetch(url + "/login", { method: "POST", body: new URLSearchParams({ password: "sai" }), redirect: "manual" });
+    assert.equal(wrong.status, 401);
+    const right = await fetch(url + "/login", { method: "POST", body: new URLSearchParams({ password: "đúng rồi" }), redirect: "manual" });
+    const cookie = right.headers.get("set-cookie")!.split(";")[0];
+    assert.match(cookie, /^__session=/);
+    assert.equal((await fetch(url + "/", { headers: { cookie } })).status, 200);
+    assert.equal((await fetch(url + "/", { headers: { cookie: "__session=forged" }, redirect: "manual" })).status, 303);
+  } finally {
+    server.close();
+  }
+});

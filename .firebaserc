@@ -5,7 +5,15 @@
   "targets": {
     "testmsbmusic-ai": {
       "hosting": {
-        "hoisau": ["hoisau"]
+        "hoisau": [
+          "hoisau"
+        ],
+        "demo": [
+          "hoisau-demo"
+        ],
+        "admin": [
+          "hoisau-admin"
+        ]
       }
     }
   }

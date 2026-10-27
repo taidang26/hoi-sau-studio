@@ -12,7 +12,8 @@ import type { Conversation, InboxMessage } from "@hoi-sau/channel";
 import { appendMessage, loadState, toggleDirection, type Paths } from "./data.js";
 import { episodeStudioPage, newCharacterPage, Studio, studioPage, stylePage } from "./studio.js";
 import { CHARACTERS_DIR, SERIES_DIR, type EpisodeStep } from "@hoi-sau/studio";
-import { automationPage, brandPage, channelsPage, characterPage, charactersPage, commentsPage, episodesPage, inboxPage, notFoundPage, overviewPage, type ChannelStatus } from "./views.js";
+import { isSignedIn, passwordMatches, sessionCookie } from "./auth.js";
+import { automationPage, brandPage, channelsPage, characterPage, charactersPage, commentsPage, episodesPage, inboxPage, loginPage, notFoundPage, overviewPage, type ChannelStatus } from "./views.js";
 
 const STATIC_DIR = fileURLToPath(new URL("../static", import.meta.url));
 const FONTS: Record<string, string> = { "BeVietnamPro-SemiBold.ttf": DEFAULT_FONT_PATH, "BeVietnamPro-Bold.ttf": BOLD_FONT_PATH };
@@ -32,6 +33,8 @@ const TYPES: Record<string, string> = {
 
 export interface DashboardOptions extends Paths {
   channel: () => ChannelStatus;
+  /** When set, every page but /login and /static asks for it. Set it whenever the dashboard is online. */
+  password?: string;
   /** Shown on top of every page, e.g. to say the data is a sample. */
   banner?: string;
   inbox?: {
@@ -97,6 +100,18 @@ export function handler(opts: DashboardOptions) {
     const url = new URL(req.url ?? "/", "http://localhost");
     const path = decodeURIComponent(url.pathname);
     try {
+      const pw = opts.password;
+      if (pw && path === "/login") {
+        if (req.method !== "POST") return send(res, 200, loginPage());
+        if (!passwordMatches(pw, (await readForm(req)).get("password") ?? "")) return send(res, 401, loginPage("Sai mật khẩu."));
+        res.writeHead(303, { Location: "/", "Set-Cookie": sessionCookie(pw) });
+        return void res.end();
+      }
+      if (pw && path === "/logout") {
+        res.writeHead(303, { Location: "/login", "Set-Cookie": sessionCookie(undefined) });
+        return void res.end();
+      }
+      if (pw && !path.startsWith("/static/") && !isSignedIn(req, pw)) return redirect(res, "/login");
       if (req.method === "POST" && path === "/inbox/refresh") {
         await opts.inbox?.pull?.();
         return redirect(res, "/inbox");

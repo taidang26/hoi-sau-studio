@@ -491,3 +491,11 @@ export function brandPage(s: State, id: string): string | undefined {
 <section class="card"><div class="card-head"><h2>Bình luận</h2>${comments.length ? `<a href="/comments?brand=${esc(b.brand.id)}">Xem tất cả →</a>` : ""}</div>${comments.length ? `<ul class="comments">${comments.slice(0, 6).map((c) => commentRow(c, s, picked)).join("")}</ul>` : empty("Chưa có bình luận.")}</section>`;
   return layout(b.brand.name, "/channels", body);
 }
+
+export function loginPage(error?: string): string {
+  return `<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Đăng nhập · Hồi Sau</title><link rel="stylesheet" href="/static/app.css"></head>
+<body><main class="login"><h1>Hồi Sau</h1><p class="muted">Studio dashboard</p>
+${error ? `<div class="warn small">${esc(error)}</div>` : ""}
+<form method="post" action="/login"><input type="password" name="password" placeholder="Mật khẩu" autocomplete="current-password" required autofocus><button class="btn on">Vào</button></form></main></body></html>`;
+}

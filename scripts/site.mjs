@@ -55,7 +55,7 @@ function urls(ids) {
 }
 
 function deploy() {
-  const res = spawnSync("firebase", ["deploy", "--only", "hosting", "--project", "default"], { cwd: ROOT, stdio: "inherit", shell: process.platform === "win32" });
+  const res = spawnSync("firebase", ["deploy", "--only", "hosting:hoisau", "--project", "default"], { cwd: ROOT, stdio: "inherit", shell: process.platform === "win32" });
   process.exit(res.status ?? 1);
 }
 

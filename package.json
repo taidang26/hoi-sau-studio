@@ -18,7 +18,8 @@
     "story": "tsc -b && node packages/story/dist/cli.js",
     "channel": "tsc -b && node packages/channel/dist/cli.js",
     "dashboard": "tsc -b && node packages/dashboard/dist/cli.js",
-    "site": "node scripts/site.mjs"
+    "site": "node scripts/site.mjs",
+    "cloud": "node scripts/cloud.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

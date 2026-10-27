@@ -395,3 +395,6 @@ details.card summary { cursor: pointer; font-weight: 600; }
 .style-card.chosen { outline: 2px solid var(--accent); outline-offset: -2px; }
 .style-card form { margin-top: 8px; }
 img.strip-page { width: 100%; max-width: 432px; border-radius: var(--r-sm); display: block; box-shadow: var(--shadow); margin-bottom: 8px; }
+.login { max-width: 340px; margin: 18vh auto 0; padding: 0 16px; text-align: center; }
+.login form { display: flex; gap: 8px; margin-top: 16px; }
+.login input { flex: 1; min-width: 0; font: inherit; padding: 8px 14px; border-radius: 99px; border: 1px solid var(--line, #ccd); background: transparent; color: inherit; }

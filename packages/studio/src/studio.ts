@@ -13,6 +13,7 @@ import { mockSparkTransport, mockTransport } from "./mock.js";
 import { MuseImage } from "./muse-image.js";
 import { MuseSpark } from "./muse-spark.js";
 import { CHARACTERS_DIR, listCharacters, loadProfile, type Profile } from "./profile.js";
+import { loadOffice } from "./office.js";
 import { loadStyle } from "./style.js";
 
 export interface OpenOptions {
@@ -38,6 +39,7 @@ export function openStudio(opts: OpenOptions = {}): StudioContext {
     image: mock ? new MuseImage({ apiKey: "mock", transport: mockTransport({ charactersDir }).transport }) : MuseImage.fromEnv(env),
     bible: loadBible(seriesDir),
     style: loadStyle(seriesDir),
+    office: loadOffice(seriesDir),
     profiles: loadProfiles(charactersDir),
     dir: opts.episodesDir,
     charactersDir,

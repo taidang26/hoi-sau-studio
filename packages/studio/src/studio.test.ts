@@ -26,8 +26,8 @@ import {
   type Transport,
 } from "./index.js";
 
-test("all four test characters load and validate", () => {
-  assert.deepEqual(listCharacters(), ["ca-noc", "cu-li", "sao-la", "te-te"]);
+test("every test character loads and validates", () => {
+  assert.deepEqual(listCharacters(), ["ca-noc", "cay-muc", "cu-li", "sao-la", "te-te"]);
   for (const slug of listCharacters()) {
     const p = loadProfile(slug);
     assert.equal(p.slug, slug);
@@ -131,7 +131,7 @@ test("consistency run chains every panel from the sheet and writes a review page
   assert.equal(calls[0].previous_response_id, undefined);
   for (let i = 1; i < calls.length; i++) assert.equal(calls[i].previous_response_id, run.images[i - 1].responseId);
   assert.equal(run.images[0].file, "sheet.png");
-  assert.match(run.images[1].prompt, /six full-body poses/);
+  assert.match(run.images[1].prompt, /12 full-body poses in a 4x3 grid/);
   assert.match(run.images[1].prompt, /fat red pen/);
   const saved = JSON.parse(readFileSync(join(out, "run.json"), "utf8"));
   assert.equal(saved.images.length, 5);
@@ -195,7 +195,7 @@ test("style test draws every variant; approve locks one as the reference sent wi
 test("mock images draw the staged characters from their portraits", async () => {
   const { loadMockCast, sceneFromPrompt } = await import("./mock-art.js");
   const cast = loadMockCast();
-  assert.deepEqual(cast.map((c) => c.name).sort(), ["Lolo", "Pango", "Poppy", "Uni"]);
+  assert.deepEqual(cast.map((c) => c.name).sort(), ["Bino", "Lolo", "Pango", "Poppy", "Uni"]);
   const scene = sceneFromPrompt("medium shot, eye level. Lolo (slow loris (cu li)) on the left, x. Poppy (pufferfish (cá nóc)) on the right, y.", cast, 1);
   assert.deepEqual(scene.places.map((p) => [p.cast.name, p.position]), [["Lolo", "left"], ["Poppy", "right"]]);
   assert.equal(sceneFromPrompt("An original character sheet for a comic series. " + cast[0].description, cast, 2).kind, "sheet");
@@ -234,6 +234,25 @@ test("a prompt the content filter refuses is retried once with gentler wording",
   // Other errors are not retried.
   const failing = { generate: async () => { throw new MuseImageError("Muse Image 401: bad key", 401); } };
   await assert.rejects(generateSoftly(failing, { prompt: "x" }), /401/);
+});
+
+test("exaggerated poses are softened on retry, and a refused pose sheet is skipped", async () => {
+  const { MuseImageError, softenPrompt } = await import("./muse-image.js");
+  const { POSES } = await import("./prompts.js");
+  const soft = softenPrompt(POSES.join("; "));
+  for (const word of ["melting", "squashed", "despair", "tears streaming", "anger vein", "jaw dropped"]) assert.doesNotMatch(soft, new RegExp(word, "i"));
+  const ids: string[] = [];
+  const client = {
+    generate: async (t: { prompt: string }) => {
+      if (/pose sheet/.test(t.prompt)) throw new MuseImageError("filtered", 400, true);
+      ids.push(`r${ids.length + 1}`);
+      return { id: ids.at(-1)!, image: Buffer.from(""), note: "", usage: {} };
+    },
+  };
+  const out = mkdtempSync(join(tmpdir(), "hoisau-"));
+  const run = await runConsistency(client as never, loadProfile("sao-la"), out, { model: "mock", mock: true });
+  assert.deepEqual(run.images.map((i) => i.id), ["sheet", "desk", "meeting", "gag"]);
+  assert.equal(run.images[1].previousResponseId, run.images[0].responseId);
 });
 
 test("the office floor plan seats every character once and reaches the prompts", async () => {

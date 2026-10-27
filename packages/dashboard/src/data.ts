@@ -22,6 +22,8 @@ export interface Paths {
   seriesDir?: string;
   /** Studio episodes folder, for the comic pages and covers. */
   episodesDir?: string;
+  /** Page profile pictures and covers: <brandArtDir>/<brand>/avatar.png, cover.png. Defaults to output/brand-art. */
+  brandArtDir?: string;
   /** channels.yaml; defaults to the one at the repo root. */
   brandsFile?: string;
   /** Where to look up the .env names in channels.yaml. Only whether each is set is shown. */
@@ -120,6 +122,8 @@ export interface BrandView {
   comments: number;
   lastPostAt?: string;
   character?: CharacterView;
+  /** Dashboard URLs of the page's profile picture and cover, when drawn. */
+  art?: { avatar?: string; cover?: string };
 }
 
 export interface State {
@@ -143,6 +147,8 @@ export interface State {
   /** Days in a row, ending today or yesterday (Hanoi), with at least one published post. */
   streak: number;
 }
+
+export const brandArtDir = (paths: Paths) => paths.brandArtDir ?? join(paths.runsDir, "..", "brand-art");
 
 const HANOI = 7 * 3600_000;
 const day = (iso: string) => new Date(Date.parse(iso) + HANOI).toISOString().slice(0, 10);
@@ -211,6 +217,11 @@ export function loadState(paths: Paths): State {
   const insights = readJson<PostInsights[]>(join(paths.dataDir, "insights.json"), []);
   const stats = measureEpisodes({ journal, comments, insights, memory });
   const env = paths.env ?? process.env;
+  const artDir = brandArtDir(paths);
+  const artOf = (id: string) => {
+    const has = (f: string) => existsSync(join(artDir, id, f));
+    return has("avatar.png") || has("cover.png") ? { avatar: has("avatar.png") ? `/brand-art/${id}/avatar.png` : undefined, cover: has("cover.png") ? `/brand-art/${id}/cover.png` : undefined } : undefined;
+  };
   const brands = brandList.map((brand): BrandView => {
     const own = episodes.filter((e) => e.brand === brand.id && e.state === "published");
     return {
@@ -221,6 +232,7 @@ export function loadState(paths: Paths): State {
       comments: comments.filter((c) => byPost.get(c.postId)?.brand === brand.id).length,
       lastPostAt: own[0]?.at,
       character: characters.find((c) => c.profile.slug === brand.character),
+      art: artOf(brand.id),
     };
   });
   return { brands, comics: loadComics(paths.episodesDir), characters, episodes, comments, directions, inbox, byPost, runs, stats, lessons: memory.lessons, lessonsAt: memory.lessonsAt, streak: postingStreak(episodes) };

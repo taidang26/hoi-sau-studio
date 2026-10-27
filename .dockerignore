@@ -1,0 +1,13 @@
+**/node_modules
+**/dist
+**/*.tsbuildinfo
+.git
+.env
+.env.*
+data
+data-demo
+output
+episodes
+site
+docs
+*.log

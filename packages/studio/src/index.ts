@@ -13,6 +13,8 @@ export * from "./muse-spark.js";
 export * from "./muse-image.js";
 export { runConsistency, type ConsistencyRun, type RunImage } from "./consistency.js";
 export * from "./episode.js";
+export * from "./provenance.js";
+export * from "./approve.js";
 export * from "./studio.js";
 export { mockTransport, mockSparkTransport } from "./mock.js";
 export * from "./office.js";

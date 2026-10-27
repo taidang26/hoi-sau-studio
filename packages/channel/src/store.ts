@@ -8,6 +8,7 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { Comment } from "./comments.js";
+import type { OutgoingComment } from "./engage.js";
 import type { Conversation } from "./inbox.js";
 import type { PostMetrics } from "./insights.js";
 import type { JournalEntry, PublishJournal } from "./publish.js";
@@ -96,3 +97,8 @@ export const saveInbox = (dataDir: string, conversations: Conversation[]) =>
 
 export const loadInsights = (dataDir: string) => list<PostMetrics>(insightsPath(dataDir)).read();
 export const saveInsights = (dataDir: string, rows: PostMetrics[]) => list<PostMetrics>(insightsPath(dataDir)).write(rows);
+
+/** Drafted and sent character comments (written by @hoi-sau/story, sent by `send-replies`). */
+export const repliesPath = (dataDir: string) => join(dataDir, "replies.json");
+export const loadReplies = (dataDir: string) => list<OutgoingComment>(repliesPath(dataDir)).read();
+export const saveReplies = (dataDir: string, replies: OutgoingComment[]) => list<OutgoingComment>(repliesPath(dataDir)).write(replies);

@@ -5,6 +5,7 @@ Gets each episode in front of people and brings their comments back.
 - **Publish** an episode to Facebook, Instagram and Threads, for the main Hồi Sau brand and for the brand of the character who leads it (`channels.yaml`).
 - **Comments**: pull comments and Threads replies of every published episode into `data/comments.json` for the listening step in `packages/story`.
 - **Insights**: reach, reactions, shares, saves and views of every published post into `data/insights.json`, which the coach in `packages/story` and the dashboard read.
+- **Talking back**: send the character comments a person approved.
 - **Inbox**: Messenger and Instagram direct messages, answered within Meta's 24-hour window.
 
 The Meta app runs in **Development mode**. The Pages and accounts belong to the developer, who is an Admin of the app, so App Review is not needed. Background and pitfalls: [docs/meta-integration-notes.md](../../docs/meta-integration-notes.md).
@@ -41,9 +42,10 @@ For a character brand add `--brand <id>` (for example `--brand lolo`); its `.env
 | `setup <token>` | Page id, Page token and Instagram id into `.env` |
 | `threads-setup [token]` / `threads-refresh` | Threads profile and 60-day token; extend it |
 | `check` | Token validity, missing permissions, Threads days left |
-| `publish <episode.json> [platform...]` | Post to the episode's brands, or `--brand <id>` |
+| `publish <episode.json> [platform...]` | Post to the episode's brands, or `--brand <id>`. Refuses an episode the owner has not approved, or one changed since (`episodes/<id>/approval.json`, [docs/safety.md](../../docs/safety.md)); `EPISODES_DIR` overrides the folder |
 | `comments` | Pull comments of every published episode |
 | `insights` | Pull per-post numbers of every published episode into `data/insights.json` |
+| `send-replies` | Post the approved first comments and character replies in `data/replies.json` (drafted by `story replies` / `story first-comment`), each once, from the account that published the post |
 | `inbox` / `reply <conversation-id> <text>` | Pull conversations; answer one |
 
 Insights are best effort. A number Meta does not give for that kind of post, or a permission the token lacks, is left out and listed under `missing` for that post; the command prints which gaps it saw. Facebook has been renaming its reach metrics, so `insights` tries `post_total_media_view_unique`, then `post_impressions_unique`; set `FB_REACH_METRIC` to force one. Threads gives views, not reach. Facebook and Instagram need `read_insights` and `instagram_manage_insights` (`check` lists what the Page token lacks). Threads needs `threads_manage_insights` on the Threads use case: a Threads token generated without it gives no Threads numbers until a new token is generated and saved with `threads-setup`.

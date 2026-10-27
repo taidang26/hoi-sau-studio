@@ -72,11 +72,18 @@ export async function runConsistency(
 
   const posePrompt = poseSheetPrompt(profile, opts.style);
   log(`${profile.slug}: pose sheet`);
-  const poses = await client.generate({ prompt: posePrompt, size: "1536x1024", previousResponseId: sheet.id });
-  images.push({ id: "poses", file: save("poses", poses.image), prompt: posePrompt, size: "1536x1024", responseId: poses.id, previousResponseId: sheet.id, usage: poses.usage, note: poses.note });
-
   // Each panel chains from the previous turn, so the sheet and poses stay in context.
-  let previous = poses.id;
+  let previous = sheet.id;
+  try {
+    const poses = await generateSoftly(client, { prompt: posePrompt, size: "1536x1024", previousResponseId: sheet.id }, log);
+    images.push({ id: "poses", file: save("poses", poses.image), prompt: posePrompt, size: "1536x1024", responseId: poses.id, previousResponseId: sheet.id, usage: poses.usage, note: poses.note });
+    previous = poses.id;
+  } catch (e) {
+    // A pose sheet refused twice is skipped like a test panel, so one character never stops `sheet all`.
+    if (!(e instanceof MuseImageError && e.filtered)) throw e;
+    log(`${profile.slug}: pose sheet skipped (content filter)`);
+  }
+
   for (const beat of consistencyBeats(profile)) {
     const prompt = panelPrompt(profile, beat.scene, opts.style);
     log(`${profile.slug}: panel ${beat.id}`);

@@ -42,6 +42,8 @@ Writing and review use Muse Spark through the Meta Model API with strict JSON sc
 
 ## Safety rules that cut across packages
 
+Full detail in [safety.md](safety.md): one banned list (`series/safety.yaml`), prompt-injection rules, a safety gate before anything is drawn, the owner's approval checked by `channel publish`, and a provenance log per episode.
+
 - Commenters are credited by name only and drawn from a text description, never from a real photo.
 - Comments written by our own accounts never count as votes.
 - Tokens stay in `.env` (git-ignored) and in request headers, never in URLs or logs.

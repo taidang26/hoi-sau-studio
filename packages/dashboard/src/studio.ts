@@ -491,6 +491,6 @@ export function stylePage(st: Studio, error?: string): string {
 ${bar}
 <div class="styles">${cards}</div>
 ${locked}
-<section class="card"><h2>${esc(t("Phần chung"))}</h2><p>${esc(style.base)}</p>${style.avoid.length ? `<h3>${esc(t("Tránh"))}</h3><ul>${style.avoid.map((a) => `<li>${esc(a)}</li>`).join("")}</ul>` : ""}</section>`;
+<section class="card"><details><summary><b>${esc(t("Phần chung"))}</b> <span class="muted small">${esc(t("Mô tả gửi AI"))}</span></summary><p>${esc(style.base)}</p>${style.avoid.length ? `<h3>${esc(t("Tránh"))}</h3><ul>${style.avoid.map((a) => `<li>${esc(a)}</li>`).join("")}</ul>` : ""}</details></section>`;
   return layout(t("Phong cách"), "/style", body);
 }

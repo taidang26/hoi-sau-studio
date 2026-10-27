@@ -99,6 +99,12 @@ export function layout(title: string, path: string, body: string): string {
 <main>${body}</main></div></body></html>`;
 }
 
+/** "pufferfish (cá nóc)" reads "cá nóc" in Vietnamese and "pufferfish" in English. */
+const species = (s: string) => {
+  const m = s.match(/^(.*?)\s*\(([^)]+)\)\s*$/);
+  return m ? (lang() === "vi" ? m[2] : m[1]) : s;
+};
+
 const swatches = (c: CharacterView) =>
   `<span class="swatches">${c.profile.look.palette.map((s) => `<i style="background:${esc(s.hex)}" title="${esc(s.name)} ${esc(s.hex)}"></i>`).join("")}</span>`;
 
@@ -296,7 +302,7 @@ export function empty(text: string, action = ""): string {
 export function charactersPage(s: State, ok?: string): string {
   const cards = s.characters
     .map(
-      (c) => `<a class="card char" href="/characters/${esc(c.profile.slug)}">${sheetImg(c)}<div class="char-body"><h2>${esc(c.profile.name)} <span class="muted">${esc(c.profile.species)}</span></h2>
+      (c) => `<a class="card char" href="/characters/${esc(c.profile.slug)}">${sheetImg(c)}<div class="char-body"><h2>${esc(c.profile.name)} <span class="muted">${esc(species(c.profile.species))}</span></h2>
 <p class="type">${esc(c.profile.office_type)}</p><p>${esc(c.profile.core_gag)}</p>${swatches(c)}<p class="muted small">${esc(t("{e} tập · {c} bình luận", { e: c.episodes, c: c.comments }))}${c.profile.look.character_sheet ? ` · <span class="ok-text">✓ ${esc(t("đã chốt bản chuẩn"))}</span>` : ""}</p></div></a>`,
     )
     .join("");
@@ -337,7 +343,7 @@ export function characterPage(c: CharacterView, draw?: SheetControls): string {
       : c.run
         ? drawBtn(false)
         : "";
-  const body = `<p><a href="/characters">← ${esc(t("Nhân vật"))}</a></p><header class="page-head"><div class="b-top"><img class="b-ava big" src="${charSrc(c)}" alt="" style="background:${esc(p.look.palette[0].hex)}44"><div><h1>${esc(p.name)}</h1><p class="muted">${esc(p.species)} · ${esc(p.role)}</p>${swatches(c)}</div></div><a class="btn on" href="/characters/${esc(p.slug)}/edit">✎ ${esc(t("Sửa hồ sơ"))}</a></header>
+  const body = `<p><a href="/characters">← ${esc(t("Nhân vật"))}</a></p><header class="page-head"><div class="b-top"><img class="b-ava big" src="${charSrc(c)}" alt="" style="background:${esc(p.look.palette[0].hex)}44"><div><h1>${esc(p.name)}</h1><p class="muted">${esc(species(p.species))} · ${esc(p.role)}</p>${swatches(c)}</div></div><a class="btn on" href="/characters/${esc(p.slug)}/edit">✎ ${esc(t("Sửa hồ sơ"))}</a></header>
 ${flash(draw?.ok, draw?.error)}
 ${modelSheet(c)}
 <section class="card"><div class="card-head"><h2>${esc(t("Thử độ nhất quán"))}</h2>${drawBar}</div>${images}</section>

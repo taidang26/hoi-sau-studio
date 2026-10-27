@@ -588,7 +588,11 @@ img.sheet { max-width: 100%; }
 .research-add { margin-bottom: 16px; }
 .dropzone { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; min-height: 130px; padding: 18px; border: 2px dashed rgba(108, 92, 255, 0.35); border-radius: var(--r); background: rgba(108, 92, 255, 0.05); text-align: center; cursor: pointer; }
 .dropzone:hover, .dropzone:focus-within { border-color: var(--accent-2); background: rgba(108, 92, 255, 0.09); }
-.dropzone input[type=file] { max-width: 100%; font-size: 13px; }
+/* The real file input covers the whole zone, invisible: a click or a drop anywhere picks images,
+   and no browser-language "Choose Files" button shows. */
+.dropzone { position: relative; }
+.dropzone input[type=file] { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+.dropzone .drop-say { font-weight: 600; color: var(--accent-2); }
 .read-new { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .ideas { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; margin-bottom: 20px; }
 .idea { display: flex; flex-direction: column; gap: 8px; border-top: 5px solid var(--accent-2); }

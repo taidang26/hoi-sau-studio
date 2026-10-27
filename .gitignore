@@ -16,3 +16,4 @@ output/
 # Noise
 *.log
 .DS_Store
+logs/

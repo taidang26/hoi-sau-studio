@@ -6,6 +6,8 @@
     { "path": "packages/story" },
     { "path": "packages/studio" },
     { "path": "packages/channel" },
-    { "path": "packages/dashboard" }
+    { "path": "packages/dashboard" },
+    { "path": "packages/motion" },
+    { "path": "packages/pipeline" }
   ]
 }

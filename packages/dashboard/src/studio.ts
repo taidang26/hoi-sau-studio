@@ -47,7 +47,7 @@ import {
 } from "@hoi-sau/studio";
 import type { State } from "./data.js";
 import { locale, t } from "./i18n.js";
-import { button, esc, flash, layout } from "./views.js";
+import { button, charSrc, esc, flash, layout } from "./views.js";
 
 export interface StudioOptions {
   /** Opened on each action, so a missing API key shows as an error, not a crash. */
@@ -354,7 +354,7 @@ export function studioPage(s: State, st: Studio, error?: string, inspiration = "
       const faces = ep.characters
         .map((slug) => s.characters.find((c) => c.profile.slug === slug))
         .filter(Boolean)
-        .map((c) => `<img class="face" src="${c!.run?.images.find((i) => i.id === "sheet") ? `/media/${esc(c!.profile.slug)}/${esc(c!.run!.images.find((i) => i.id === "sheet")!.file)}` : `/portrait/${esc(c!.profile.slug)}.svg`}" alt="${esc(c!.profile.name)}" title="${esc(c!.profile.name)}" style="background:${esc(c!.profile.look.palette[0].hex)}44">`)
+        .map((c) => `<img class="face" src="${charSrc(c!)}" alt="${esc(c!.profile.name)}" title="${esc(c!.profile.name)}" style="background:${esc(c!.profile.look.palette[0].hex)}44">`)
         .join("");
       return `<a class="card ep-row" href="/studio/${esc(id)}">${pages.length ? `<div class="mini-strip">${pages.map((p) => `<img src="${esc(p)}" alt="" loading="lazy">`).join("")}</div>` : `<div class="mini-strip empty-strip">✎</div>`}<div class="ep-row-body"><b>${esc(premise?.title ?? ep.direction.slice(0, 60))}</b><div class="faces">${faces}</div>${job?.running ? `<span class="tag due"><span class="spinner"></span>${esc(t("đang chạy…"))}</span>` : ""}</div>${steps(id, dir)}</a>`;
     })
@@ -363,11 +363,7 @@ export function studioPage(s: State, st: Studio, error?: string, inspiration = "
   const picked = new Set(s.directions.map((d) => d.commentId));
   const ideas = s.comments.filter((c) => picked.has(c.id));
   const cast = s.characters.map((c) => c);
-  const pic = (slug: string) => {
-    const c = s.characters.find((x) => x.profile.slug === slug)!;
-    const sheet = c.run?.images.find((i) => i.id === "sheet");
-    return sheet ? `/media/${esc(slug)}/${esc(sheet.file)}` : `/portrait/${esc(slug)}.svg`;
-  };
+  const pic = (slug: string) => charSrc(s.characters.find((x) => x.profile.slug === slug)!);
   const form = `<form class="card form new-ep" method="post" action="/studio/new"><h2>${esc(t("Tập mới"))}</h2>
 <fieldset class="pick-cast"><legend>${esc(t("Nhân vật chính"))}</legend>${cast.map((c, i) => `<label class="cast-pick"><input type="radio" name="lead" value="${esc(c.profile.slug)}"${i === 0 ? " checked" : ""}><img src="${pic(c.profile.slug)}" alt="" style="background:${esc(c.profile.look.palette[0].hex)}44"><span>${esc(c.profile.name)}</span></label>`).join("")}</fieldset>
 <fieldset class="pick-cast small-pick"><legend>${esc(t("Cùng xuất hiện"))}</legend>${cast.map((c) => `<label class="cast-pick"><input type="checkbox" name="with" value="${esc(c.profile.slug)}"><img src="${pic(c.profile.slug)}" alt="" style="background:${esc(c.profile.look.palette[0].hex)}44"><span>${esc(c.profile.name)}</span></label>`).join("")}</fieldset>

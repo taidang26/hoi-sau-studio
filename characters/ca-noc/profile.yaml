@@ -1,0 +1,89 @@
+# One of four characters in the same team. The slug is the species and never changes; the name can.
+# Fields under `look` are English because they go into Muse Image prompts.
+# Names are rarely said in dialogue: the situation and the drawing carry the joke.
+slug: ca-noc
+name: Poppy
+species: pufferfish (cá nóc)
+status: candidate
+office_type: Hiền nhất phòng, đáng sợ nhất phòng
+core_gag: Mỗi lần nuốt giận là người to thêm một cỡ
+role: Kế toán, người nắm bảng lương của cả công ty
+
+want: Một ngày không phải nuốt giận
+fear: Hoá đơn gửi lúc 16h59 thứ Sáu
+contradiction: Người dịu dàng nhất phòng, nhưng ai cũng sợ chị một chút vì chị biết lương của tất cả mọi người
+life:
+  - 31 tuổi, mẹ của bé Su 4 tuổi; phải đón con lúc 17h30, nên 17h00 là giờ thiêng
+  - Tranh bé Su vẽ dán kín cạnh màn hình
+  - Nhớ sinh nhật cả phòng, ngăn kéo lúc nào cũng có kẹo
+  - Đi xe máy, áo mưa luôn để sẵn trong cốp từ tháng Ba tới tháng Mười
+comic_engine:
+  - 'Cỡ người là đồng hồ đo stress của cả phòng: S, M, L, XL; "hôm nay chị cỡ L, đừng xin duyệt chi"'
+  - Càng giận càng lịch sự, càng thêm nhiều "ạ"
+  - Xẹp rất nhanh, rồi lặng lẽ ở lại làm cho xong và xin lỗi cả phòng
+relationships:
+  - { with: cu-li, dynamic: 'Chăm Lolo như em ruột, mang cơm cho Lolo, nhưng hoá đơn của Lolo thì vẫn trả về' }
+  - { with: te-te, dynamic: 'Hai người lâu năm nhất phòng, cãi nhau như vợ chồng già về cái điều hoà' }
+  - { with: sao-la, dynamic: 'Người duy nhất Uni nói chuyện bình thường được, vì chị không bao giờ khen ai' }
+
+look:
+  style: flat 2D comic, thick black outline, flat colors, minimal shading, simple shapes
+  description: >-
+    A small, oval, pastel-yellow pufferfish office worker who floats upright and
+    moves with two tiny fins as hands. Pale cream belly, a few soft orange spots on
+    the back, big round black eyes with a single white highlight, small pouty mouth.
+    Wears thin round glasses and a wide teal necktie. When stressed it inflates in
+    clear steps; at its biggest it is a perfect round ball covered in short soft
+    spikes, glasses still on.
+  signature:
+    - pastel-yellow oval body with orange spots, cream belly
+    - thin round glasses
+    - wide teal necktie
+    - inflated form is a round spiky ball, same colors, glasses still on
+  palette:
+    - { name: body, hex: "#F7D774" }
+    - { name: belly, hex: "#FFF4D6" }
+    - { name: spots, hex: "#F08A4B" }
+    - { name: necktie, hex: "#2A9D8F" }
+  props: [desk clock showing 16:59, a child's crayon drawing taped to the monitor, packed bag ready by the chair, candy jar]
+  expressions:
+    default: calm, polite little smile
+    stressed: body one size bigger, cheeks puffed, polite smile frozen
+    angry: fully inflated spiky ball, tiny fins shaking, glasses still neat
+    happy: floats a little higher, sparkles around
+    deflated: flat and soft like a sigh, small apologetic smile
+  # The core gag as a picture, for the image model.
+  gag_scene: the desk clock shows 16:59 and a boss hands over a thick folder; the character inflates into a round spiky ball, glasses still on
+  # The one item readers know this character by at thumbnail size. Every panel draws it, a little oversized.
+  icon: a wide teal necktie, still knotted even when the body inflates into a spiky ball
+  character_sheet: null   # set after the Muse Image test; path under output/characters/ca-noc/
+
+personality:
+  - Hiền, chu đáo, chăm cả phòng như chăm con
+  - 'Đúng giờ tuyệt đối: 8h00 có mặt, 17h00 tắt máy, có lý do chính đáng'
+  - Không bao giờ to tiếng; giận thì lịch sự tới mức nghe rợn người
+  - Bùng nhanh, xẹp nhanh, và luôn là người dọn hậu quả
+  - Sắc sảo về số, không ai lách được một hoá đơn
+
+voice:
+  register: Tiếng Việt văn phòng, xưng "chị" với đàn em và "em" với sếp, lịch sự, gọn
+  speech_pattern: Câu ngắn, rõ; càng căng càng thêm "dạ" và "ạ", lặp lại ý với giọng đều đều
+  catchphrases:
+    - "Dạ, em ghi nhận ạ."
+    - "Chị không giận. Chị chỉ đang… to ra một chút."
+  sample_lines:
+    - "Dạ em hiểu ạ. Dạ em rất hiểu ạ. Dạ em hiểu lắm luôn ạ."
+    - "Hoá đơn này anh gửi lúc 16h59. Em ghi nhận cả giây ạ."
+  do: [lịch sự đều đều, nhắc giờ chính xác tới phút, quan tâm người khác bằng hành động]
+  dont: [quát, đe doạ, nói xấu sau lưng]
+
+never_says:
+  - Chửi thề, nói tục, xúc phạm người khác
+  - Đe doạ hay làm đau ai khi bùng nổ (gai chỉ để doạ, không làm ai bị thương)
+  - Chê ngoại hình, vùng miền, giới tính của bất kỳ ai
+  - Nhắc tên công ty, nhãn hàng, người thật có thật
+  - Nói chuyện chính trị, tôn giáo
+  - Tiết lộ lương cụ thể của bất kỳ ai
+
+memory:
+  episodes: []

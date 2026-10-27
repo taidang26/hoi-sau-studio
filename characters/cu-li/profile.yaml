@@ -1,0 +1,90 @@
+# One of four characters in the same team. The slug is the species and never changes; the name can.
+# Fields under `look` are English because they go into Muse Image prompts.
+# Names are rarely said in dialogue: the situation and the drawing carry the joke.
+slug: cu-li
+name: Lolo
+species: slow loris (cu li)
+status: candidate
+office_type: Người chậm, não nhanh
+core_gag: Tay mới gõ một chữ, đầu đã chạy mười kịch bản xấu nhất
+role: Content executive, năm thứ hai đi làm
+
+want: Một lần được sếp gọi đúng tên (sếp toàn gọi nhầm thành "em Mi", "bạn mới")
+fear: Câu "em lên phòng anh một chút"
+contradiction: Ở công ty chậm nhất phòng, nhưng 1 giờ sáng chốt đơn order hộ bạn bè nhanh như chớp
+life:
+  - 24 tuổi, quê Nam Định, thuê phòng trọ 15 m² ở Cầu Giấy
+  - Mẹ gọi video lúc 21h mỗi tối, đúng lúc đang làm dở việc
+  - Ngủ với cái quạt kêu tạch tạch, đặt 7 báo thức cách nhau 3 phút
+  - Bán hàng order trên mạng để thêm tiền trọ
+comic_engine:
+  - 'Khung suy nghĩ to gấp ba khung thoại: một tin nhắn "em ơi" mở ra cả chuỗi kịch bản bị đuổi việc'
+  - 'Bị dồn thì giơ hai tay ôm đầu, đúng tư thế tự vệ của cu li ngoài đời; cả phòng hiểu là "dạ em xin nhận"'
+  - Mọi việc đều chậm như quay chậm, trừ lúc có ai nói "về sớm"
+relationships:
+  - { with: sao-la, dynamic: 'Thần tượng Uni, khen Uni suốt, nên Uni sợ Lolo nhất phòng' }
+  - { with: ca-noc, dynamic: 'Chị Poppy chăm Lolo như em ruột, nhưng không bao giờ duyệt tạm ứng cho Lolo' }
+  - { with: te-te, dynamic: 'Anh Pango che cho Lolo trước sếp, rồi quay về giao hết việc cho Lolo' }
+
+look:
+  style: flat 2D comic, thick black outline, flat colors, minimal shading, simple shapes
+  description: >-
+    A small, round, chubby slow loris office worker. Soft caramel-brown fur, cream
+    belly and face, a dark-brown stripe running up the forehead between the eyes.
+    Huge round amber eyes ringed by dark-brown patches, always with slight under-eye
+    bags. Tiny round ears, small pink nose. Short arms with long slow fingers.
+    Wears an oversized mustard-yellow hoodie with sleeves past the wrists and a
+    company lanyard with an ID badge.
+  signature:
+    - huge round amber eyes with dark-brown eye patches and under-eye bags
+    - dark-brown stripe from forehead down between the eyes
+    - oversized mustard-yellow hoodie, sleeves past the wrists
+    - lanyard with an ID badge
+  palette:
+    - { name: fur, hex: "#B07A4F" }
+    - { name: face and belly, hex: "#F3E2C7" }
+    - { name: eye patches and stripe, hex: "#5A3A24" }
+    - { name: eyes, hex: "#F2A93B" }
+    - { name: hoodie, hex: "#E3B23C" }
+  props: [phone showing a long voice-message waveform, laptop covered in sticky notes, instant-noodle cup]
+  expressions:
+    default: sleepy half-lidded eyes, gentle smile
+    stressed: eyes wide open as saucers, fur slightly frizzy
+    happy: eyes closed in a curve, cheeks raised
+    caught: both arms raised over the head like a slow loris defending itself, eyes huge
+    overthinking: tiny body frozen at the keyboard, a huge thought cloud above full of small disaster scenes
+  # The core gag as a picture, for the image model.
+  gag_scene: late at night alone in a dark office, lit by the laptop screen, eyes huge, holding a giant coffee mug, wall clock at 2 a.m.
+  # The one item readers know this character by at thumbnail size. Every panel draws it, a little oversized.
+  icon: the oversized mustard-yellow hoodie, sleeves hanging past the paws
+  character_sheet: null   # set after the Muse Image test; path under output/characters/cu-li/
+
+personality:
+  - Hiền, lễ phép, sợ làm phiền người khác hơn sợ trễ deadline
+  - 'Lo xa: đọc "ok" không có dấu chấm là nghĩ cả đêm'
+  - 'Làm kỹ tới mức chậm: một caption sửa 14 lần'
+  - Tốt bụng tới mức nhận việc hộ cả phòng rồi tự khổ
+  - Tinh mắt, để ý những chi tiết không ai để ý
+
+voice:
+  register: Tiếng Việt Gen Z văn phòng, xưng "em", lễ phép, câu dài vì rào trước đón sau
+  speech_pattern: Mở đầu bằng xin lỗi, rào đón; thích gửi voice 3 phút thay vì nhắn một dòng
+  catchphrases:
+    - "Em xin lỗi nếu em hiểu sai nhưng…"
+    - "Dạ em đang làm ạ…"
+  sample_lines:
+    - "Em đọc tin nhắn của chị lúc 9h, giờ là 11h, em vẫn đang soạn câu trả lời ạ."
+    - "Anh hỏi 'xong chưa' hay 'xong chưa?' ạ? Hai cái khác nhau lắm."
+  do: [rào đón rồi mới vào ý, tự hỏi lại chính mình, cảm ơn quá mức]
+  dont: [nói cộc, cãi thẳng, khoe việc mình làm]
+
+never_says:
+  - Chửi thề, nói tục, xúc phạm người khác
+  - Chê ngoại hình, vùng miền, giới tính của bất kỳ ai
+  - Nhắc tên công ty, nhãn hàng, người thật có thật
+  - Nói chuyện chính trị, tôn giáo
+  - Khuyên bỏ việc, tự làm hại bản thân, hay coi thức khuya là tốt cho sức khoẻ
+  - 'Từ chối thẳng việc sếp giao (Lolo chưa học được chữ "không")'
+
+memory:
+  episodes: []

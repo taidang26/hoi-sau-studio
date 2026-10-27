@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Poppy, pufferfish. Placeholder portrait until the Muse Image model sheet is locked. -->
+  <g stroke="#1b1410" stroke-width="10" stroke-linejoin="round" stroke-linecap="round">
+    <!-- tail fin -->
+    <path d="M430 250 L494 200 L494 320 Z" fill="#F7D774"/>
+    <!-- side fins -->
+    <path d="M70 330 C30 320 26 280 52 266 C70 290 84 300 96 304 Z" fill="#F7D774"/>
+    <!-- body -->
+    <ellipse cx="250" cy="262" rx="190" ry="176" fill="#F7D774"/>
+    <path d="M96 330 C130 420 370 420 404 330 C380 380 320 410 250 410 C180 410 120 380 96 330 Z" fill="#FFF4D6"/>
+    <!-- top fin -->
+    <path d="M220 90 C236 54 276 50 294 88" fill="#F7D774"/>
+  </g>
+  <!-- spots -->
+  <g fill="#F08A4B">
+    <circle cx="170" cy="140" r="16"/><circle cx="330" cy="130" r="13"/><circle cx="380" cy="190" r="16"/><circle cx="120" cy="200" r="12"/><circle cx="260" cy="112" r="11"/>
+  </g>
+  <!-- eyes -->
+  <circle cx="190" cy="236" r="44" fill="#1b1410"/>
+  <circle cx="318" cy="236" r="44" fill="#1b1410"/>
+  <circle cx="206" cy="218" r="14" fill="#fff"/>
+  <circle cx="334" cy="218" r="14" fill="#fff"/>
+  <!-- glasses -->
+  <g fill="none" stroke="#1b1410" stroke-width="7">
+    <circle cx="190" cy="236" r="62"/><circle cx="318" cy="236" r="62"/>
+    <path d="M252 230 Q254 222 256 230"/>
+    <path d="M128 228 L84 214 M380 228 L424 214"/>
+  </g>
+  <!-- cheeks -->
+  <ellipse cx="140" cy="318" rx="22" ry="12" fill="#F08A4B" opacity=".45"/>
+  <ellipse cx="368" cy="318" rx="22" ry="12" fill="#F08A4B" opacity=".45"/>
+  <!-- pouty mouth -->
+  <ellipse cx="254" cy="326" rx="18" ry="14" fill="#E88A8A" stroke="#1b1410" stroke-width="7"/>
+  <!-- tiny teal tie -->
+  <g stroke="#1b1410" stroke-width="7" stroke-linejoin="round">
+    <path d="M236 384 L272 384 L264 398 L244 398 Z" fill="#2A9D8F"/>
+    <path d="M244 398 L264 398 L274 450 L254 470 L234 450 Z" fill="#2A9D8F"/>
+  </g>
+</svg>

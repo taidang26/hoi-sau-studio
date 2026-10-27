@@ -1,0 +1,89 @@
+# One of four characters in the same team. The slug is the species and never changes; the name can.
+# Fields under `look` are English because they go into Muse Image prompts.
+# Names are rarely said in dialogue: the situation and the drawing carry the joke.
+slug: sao-la
+name: Uni
+species: saola (sao la)
+status: candidate
+office_type: Nhân sự "kỳ lân" nhút nhát
+core_gag: Có cảm biến lời khen; nghe chữ "đỉnh" là đã biến sau cây trầu bà
+role: Designer mới vào, được công ty khoe là "kỳ lân"
+
+want: Được làm việc yên mà không bị ai nhìn
+fear: Bị gọi tên khen trong cuộc họp toàn công ty
+contradiction: Ghét bị chú ý, nhưng sản phẩm nào làm ra cũng khiến cả công ty chú ý
+life:
+  - 26 tuổi, sao la được gọi là "kỳ lân châu Á", và công ty cũng gọi Uni như vậy khi tuyển
+  - Đeo tai nghe to suốt ngày, nhiều khi không bật nhạc
+  - Nhắn tin thì dài, hài và sắc sảo; nói ngoài đời tối đa ba chữ
+  - Ăn trưa một mình ở cầu thang thoát hiểm, cạnh chậu cây
+comic_engine:
+  - Một lời khen là một lần biến mất; khen càng to thì trốn càng xa
+  - 'Khung thoại ngoài đời chỉ một hai chữ, khung tin nhắn ngay sau dài cả trang'
+  - 'Chỉ thấy một nửa: cặp sừng thò lên sau màn hình, sau cây, sau cánh cửa'
+relationships:
+  - { with: cu-li, dynamic: 'Sợ Lolo nhất phòng, vì Lolo khen Uni suốt' }
+  - { with: ca-noc, dynamic: 'Chỉ nói chuyện bình thường với chị Poppy, vì chị không bao giờ khen' }
+  - { with: te-te, dynamic: 'Anh Pango lấy việc của Uni làm ví dụ ở mọi cuộc họp; Uni chui xuống gầm bàn' }
+
+look:
+  style: flat 2D comic, thick black outline, flat colors, minimal shading, simple shapes
+  description: >-
+    A slender, elegant saola office worker standing upright. Dark chocolate-brown
+    coat, two long straight thin horns that sweep back almost parallel, striking
+    white markings on the face: white patches above the eyes, on the cheeks and
+    a white chin. Large dark gentle eyes. Wears a neat dark-green blazer over a
+    white shirt and big round over-ear headphones. Often peeking from behind a
+    monitor, a potted plant or a door, with only the horns and eyes showing.
+  signature:
+    - two long straight thin horns sweeping back, almost parallel
+    - white face markings above the eyes, on the cheeks and chin
+    - dark-green blazer over a white shirt
+    - big round over-ear headphones
+  palette:
+    - { name: coat, hex: "#5B3A29" }
+    - { name: face markings, hex: "#F5F1E8" }
+    - { name: horns, hex: "#2B2320" }
+    - { name: blazer, hex: "#2F5D50" }
+    - { name: headphones, hex: "#E8E4DA" }
+  props: [drawing tablet, potted plant to hide behind, phone with a very long typed message]
+  expressions:
+    default: calm, focused, a small private smile
+    spotted: frozen like a deer in headlights, ears up
+    hiding: only the horns and eyes visible above a monitor or a plant
+    happy: rare full smile while alone, coworkers in the background gasping
+  # The core gag as a picture, for the image model.
+  gag_scene: coworkers gather around a desk pointing excitedly; the character is only half visible peeking from behind a potted plant at the edge of the frame
+  # The one item readers know this character by at thumbnail size. Every panel draws it, a little oversized.
+  icon: big round cream over-ear headphones, almost as wide as the head
+  character_sheet: null   # set after the Muse Image test; path under output/characters/sao-la/
+
+personality:
+  - Giỏi thật, nhưng chưa bao giờ tự nhận
+  - Rất ngại bị chú ý, thích được góp ý hơn được khen
+  - 'Hài ngầm: nói ít nhưng câu nào cũng trúng'
+  - Quan sát kỹ, nhớ hết thói quen của cả phòng
+  - Lặng lẽ giúp người khác rồi biến mất trước khi họ kịp cảm ơn
+
+voice:
+  register: Tiếng Việt văn phòng, xưng "em", nói cực ít; nhắn tin thì dài và có duyên
+  speech_pattern: Ngoài đời một hai chữ rồi rời khỏi khung; trong tin nhắn thì gạch đầu dòng cẩn thận
+  catchphrases:
+    - "Ủa. Vâng. Em đi."
+    - "Em gửi mail rồi ạ."
+  sample_lines:
+    - "(tin nhắn 1 giờ sau) Em xin phép giải thích lại ý tưởng bằng 14 slide ạ."
+    - "Dạ… không phải em. Là cái máy."
+  do: [nói rất ngắn, rời khỏi khung, trả lời dài qua tin nhắn]
+  dont: [khoe, nhận công, nói dài khi bị nhìn]
+
+never_says:
+  - Chửi thề, nói tục, xúc phạm người khác
+  - Khoe khoang hay tự nhận công
+  - Chê ngoại hình, vùng miền, giới tính của bất kỳ ai
+  - Nhắc tên công ty, nhãn hàng, người thật có thật
+  - Nói chuyện chính trị, tôn giáo
+  - Đùa chuyện săn bắt sao la (loài cực kỳ nguy cấp)
+
+memory:
+  episodes: []

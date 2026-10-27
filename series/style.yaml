@@ -1,0 +1,38 @@
+# Series art style: one look for every character and every panel.
+# `base` and the chosen variant go into every Muse Image prompt (English).
+# Pick a variant with `studio style` (draws the test scene in each variant),
+# then `studio style approve <id>`: that render becomes series/style-ref.* and is
+# attached as a reference image to every model sheet and episode.
+chosen: null
+reference: null
+base: >-
+  Cute chibi comic style: big round heads about a third of the body, short
+  round limbs, soft chubby shapes. Clean, even, thick black outlines. Flat
+  colours with at most one soft shadow tone. A soft pink blush on the cheeks.
+  Simple round eyes with one white highlight, eyebrows that do the acting.
+  Big, readable poses and expressions that land at phone size. Uncluttered
+  Vietnamese office settings with a few telling props.
+avoid:
+  - photorealism, 3D render, glossy or airbrushed shading, gradients
+  - anime sparkle eyes, manga screentone
+  - drawn text, letters, numbers on signs, speech bubbles, captions, logos
+variants:
+  - id: warm-pastel
+    label: Pastel ấm, nền một màu
+    prompt: Warm pastel palette (cream, peach, butter yellow, sage, dusty blue). Each panel background is one soft flat colour with only the props that matter.
+  - id: hanoi-detail
+    label: Nền phố/văn phòng Hà Nội chi tiết
+    prompt: Characters stay bold and flat, while backgrounds show real Hanoi office and street details (tangled power lines, motorbikes, plastic stools, old tiled floors) drawn with thinner, lighter lines and muted colours so the characters pop.
+  - id: sticker-bold
+    label: Kiểu sticker, nét rất đậm
+    prompt: Bold sticker look. Extra thick outlines, saturated flat colours, plain one-colour backgrounds, characters filling most of the panel.
+  - id: soft-pencil
+    label: Giấy mềm, nét chì màu
+    prompt: Soft paper texture, slightly wobbly hand-drawn outlines, muted colours like coloured pencil on cream paper.
+# The scene every variant draws, so the four renders compare like for like.
+test_scene: >-
+  Two small animal office workers at a cluttered desk at 4:59 p.m. A chubby
+  slow loris in an oversized mustard-yellow hoodie is slumped over the keyboard
+  with huge tired amber eyes; a pangolin in a light-blue short-sleeve shirt
+  stands behind with a thick folder, smiling politely. A wall clock, a coffee
+  mug, a stack of papers.

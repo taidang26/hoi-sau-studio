@@ -1,0 +1,91 @@
+# One of four characters in the same team. The slug is the species and never changes; the name can.
+# Fields under `look` are English because they go into Muse Image prompts.
+# Names are rarely said in dialogue: the situation and the drawing carry the joke.
+slug: te-te
+name: Pango
+species: pangolin (tê tê)
+status: candidate
+office_type: Giáp dày, tim mềm
+core_gag: Lời phê bình trượt qua lớp vảy; gặp sếp lớn là cuộn tròn
+role: Trưởng nhóm, 11 năm ở công ty, sống sót qua 4 đời sếp
+
+want: Yên ổn tới lúc về hưu, không có bất ngờ nào
+fear: Cuộc họp không có agenda
+contradiction: Né mọi cuộc đối đầu, nhưng là người duy nhất dám cuộn tròn chắn trước Sếp Cú để cả team không bị mắng
+life:
+  - 38 tuổi, tối về xem video sửa nhà, cuối tuần chăm bể cá cảnh
+  - Bình trà nóng trên bàn quanh năm, kể cả tháng Sáu
+  - Vẫn giữ cuốn sổ tay từ ngày đầu đi làm, chưa ai thấy anh viết gì vào đó
+  - Nhớ hết chuyện công ty 11 năm qua, hay kể "hồi trước anh cũng thế"
+comic_engine:
+  - 'Lời phê bình vẽ thành mũi tên, trượt qua vảy rồi rơi xuống đất'
+  - 'Câu "để anh check lại" có bộ đếm trên tờ giấy nhớ, tăng qua từng tập'
+  - 'Cuộn tròn thành quả bóng vảy, chỉ thò ra đuôi và cây bút; cả team núp sau quả bóng'
+relationships:
+  - { with: cu-li, dynamic: 'Che cho Lolo trước sếp, rồi quay về giao hết việc cho Lolo' }
+  - { with: ca-noc, dynamic: 'Cãi nhau với chị Poppy về điều hoà từ năm 2017 tới giờ' }
+  - { with: sao-la, dynamic: 'Lấy việc của Uni ra làm ví dụ trong mọi cuộc họp, Uni chỉ muốn biến mất' }
+
+look:
+  style: flat 2D comic, thick black outline, flat colors, minimal shading, simple shapes
+  description: >-
+    A medium-sized pangolin office worker standing upright on short hind legs.
+    Body covered in large overlapping warm-brown scales drawn as simple rounded
+    shapes; soft pinkish-beige face, belly and paws. Long narrow snout, small calm
+    half-closed eyes, long thick tail. Wears a light-blue short-sleeve office shirt
+    with a fat red pen in the breast pocket, sleeves straining over the scales. When
+    criticised it curls into a perfect tight scaly ball with only the tail tip and
+    the pen showing.
+  signature:
+    - large overlapping warm-brown rounded scales
+    - long narrow snout, calm half-closed eyes
+    - light-blue short-sleeve shirt with a fat red pen in the pocket
+    - curled form is a tight scaly ball, tail tip and red pen visible
+  palette:
+    - { name: scales, hex: "#8B5E3C" }
+    - { name: scale edges, hex: "#5C3B22" }
+    - { name: face and belly, hex: "#E9C6A8" }
+    - { name: shirt, hex: "#A8D0E6" }
+    - { name: red pen, hex: "#D64545" }
+  props: [thermos of hot tea, sticky note tallying "để anh check lại", old notebook with nothing written]
+  expressions:
+    default: unbothered, half-closed eyes
+    stressed: scales slightly raised, eyes darting to the door
+    curled: a ball with no face visible
+    happy: lazy satisfied smile, tail wagging slowly
+    shielding: curled ball in front of the team, teammates peeking out from behind it
+  # The core gag as a picture, for the image model.
+  gag_scene: during a meeting the boss points at a chart; the character has curled into a tight scaly ball on the chair, tail tip and pen sticking out
+  # The one item readers know this character by at thumbnail size. Every panel draws it, a little oversized.
+  icon: a fat red pen clipped in the shirt pocket, still sticking out when curled into a ball
+  character_sheet: null   # set after the Muse Image test; path under output/characters/te-te/
+
+personality:
+  - Bình tĩnh tuyệt đối, không gì làm anh vội được
+  - 'Né việc thành nghệ thuật: chuyển việc, lên lịch họp tiếp, "để anh check lại"'
+  - Thật ra rất được việc khi bị dồn vào góc, nhưng lúc đó không ai nhìn thấy
+  - Bảo vệ cấp dưới, không bao giờ đổ lỗi cho người trong nhóm
+  - Hoài niệm, hay so sánh với "hồi trước"
+
+voice:
+  register: Tiếng Việt văn phòng, xưng "anh", chậm rãi, giọng ông anh lâu năm
+  speech_pattern: Trả lời bằng câu hỏi ngược lại, đẩy sang cuộc họp khác, hoặc kể chuyện ngày xưa
+  catchphrases:
+    - "Để anh check lại nhé."
+    - "Hồi trước anh cũng thế."
+  sample_lines:
+    - "Anh không né, anh đang bảo toàn lực lượng."
+    - "Mail này anh để ngấm qua đêm cho nó chín."
+  do: [nói chậm, kéo về chuyện cũ, nhận lỗi thay team]
+  dont: [vội, đổ lỗi, hứa mốc thời gian cụ thể]
+
+never_says:
+  - Chửi thề, nói tục, xúc phạm người khác
+  - Đổ lỗi cho một người cụ thể trong nhóm
+  - Chê ngoại hình, vùng miền, giới tính của bất kỳ ai
+  - Nhắc tên công ty, nhãn hàng, người thật có thật
+  - Nói chuyện chính trị, tôn giáo
+  - Nhắc chuyện buôn bán hay ăn thịt tê tê (loài nguy cấp, không đùa chuyện này)
+
+memory:
+  episodes: []

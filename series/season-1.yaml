@@ -1,0 +1,127 @@
+# Season plan, read by @hoi-sau/story. Expands `season` in bible.yaml into
+# acts the writer and the comment ranking both use. Episode numbers are inclusive.
+season: 1
+title: Dự Án Tết
+theme: >-
+  Cả phòng phải xong một chiến dịch Tết trong 30 tập. Mỗi người cứu dự án bằng
+  chính cái tật của mình; khán giả quyết định chiến dịch thành hay hỏng.
+episodes: 30
+
+acts:
+  - id: a1
+    title: Ngày thường ở tầng 7
+    episodes: [1, 5]
+    goal: Giới thiệu từng nhân vật qua một việc nhỏ, để người mới xem nhớ ngay cái tật của mỗi người.
+    must_happen:
+      - Lolo bị hỏi "xong chưa em?" và đóng băng
+      - Poppy nhận việc lúc 16h45 và phồng lên
+      - Pango biến một việc nhỏ thành ba cuộc họp
+      - Cả phòng tranh cãi Uni có thật sự đi làm không
+      - Sếp nhắn tin lúc 22h, cả phòng giả vờ chưa đọc
+    avoid:
+      - Nhắc dự án Tết trước tập 6
+      - Cho Uni lộ mặt rõ ràng
+    audience_question: Bạn giống ai nhất trong phòng? Kể một lần bạn y hệt vậy.
+
+  - id: a2
+    title: Trước cơn bão
+    episodes: [6, 10]
+    goal: Tin đồn về một dự án lớn cuối năm lan khắp phòng; mỗi người chuẩn bị theo kiểu của mình. Tập 10 sếp chính thức giao Dự Án Tết.
+    must_happen:
+      - Tin đồn "cuối năm có dự án to" bắt đầu từ pantry
+      - Pango đặt sẵn phòng họp Sáng Tạo cho cả tháng
+      - Poppy lập bảng tính giờ về của cả phòng
+      - Tập 10 sếp giao Dự Án Tết trong cuộc họp lúc 16h59
+    avoid:
+      - Giải quyết xong dự án quá sớm
+    audience_question: Nếu sếp giao dự án Tết lúc 16h59, bạn sẽ làm gì đầu tiên?
+
+  - id: a3
+    title: Chạy Dự Án Tết
+    episodes: [11, 19]
+    goal: Cả phòng làm dự án; mỗi tập một tật làm dự án rối hơn rồi lại vô tình cứu nó. Khán giả bình chọn ý tưởng chiến dịch.
+    must_happen:
+      - Khán giả chọn chủ đề chiến dịch Tết (đăng câu hỏi bình chọn)
+      - Lolo thức trắng làm bản nháp đẹp nhất nhưng gửi nhầm file
+      - Uni lặng lẽ làm xong phần khó nhất, không ai biết là ai làm
+      - Một đồng nghiệp từ khán giả gia nhập nhóm dự án
+    avoid:
+      - Để một nhân vật bị cả phòng ghét thật sự
+    audience_question: Chiến dịch Tết nên kể về điều gì? Bình luận, ý nhiều người thích nhất sẽ được làm.
+
+  - id: a4
+    title: Sự cố
+    episodes: [20, 25]
+    goal: Tập 20 dự án gặp sự cố lớn ngay trước hạn; cả phòng phải sửa trong vài ngày, ai cũng phải bỏ cái tật một chút.
+    must_happen:
+      - Tập 20 file chiến dịch biến mất hoặc khách đổi brief vào phút chót
+      - Poppy lần đầu tự nguyện ở lại sau 17h
+      - Pango không cuộn tròn mà đứng ra nhận trách nhiệm trước sếp
+      - Lolo làm xong một việc đúng hạn, cả phòng sốc
+    avoid:
+      - Kết thúc buồn, đổ lỗi cho một người
+    audience_question: Cứu dự án kiểu gì đây? Bạn chọn cách cho cả phòng.
+
+  - id: a5
+    title: Đêm trước ra mắt
+    episodes: [26, 30]
+    goal: Chạy nước rút tới ngày ra mắt; trả hết các tuyến còn mở; tập 30 chiến dịch ra mắt và khán giả quyết định nó thành hay hỏng.
+    must_happen:
+      - Cả phòng ở lại muộn, pantry thành phòng chỉ huy
+      - Bí ẩn Uni được hé lộ một nửa
+      - Tập 30 chiến dịch ra mắt; kết quả theo bình chọn khán giả
+    avoid:
+      - Mở tuyến mới không kịp trả
+    audience_question: Chiến dịch thành hay hỏng? Bình chọn để quyết định tập cuối.
+
+running_gags:
+  - id: cay-trau-ba
+    characters: []
+    text: Cây trầu bà sắp chết ở góc phòng, ai cũng tưởng người khác tưới
+    cues: [trầu bà]
+    cooldown: 4
+  - id: may-ca-phe
+    characters: []
+    text: Máy pha cà phê ở pantry hỏng đúng lúc cần nhất
+    cues: [máy pha cà phê, máy cà phê]
+    cooldown: 3
+  - id: thang-may
+    characters: []
+    text: Thang máy chậm tới mức có người họp xong trong thang máy
+    cues: [thang máy]
+    cooldown: 5
+  - id: sep-22h
+    characters: []
+    text: Sếp nhắn tin công việc lúc 22h kèm "không gấp đâu em"
+    cues: [22h, không gấp đâu]
+    cooldown: 4
+  - id: final-v2
+    characters: [cu-li]
+    text: 'Tên file của Lolo dài dần: final, final_v2, final_v2_xong_that'
+    cues: [final_v2, final v2]
+    cooldown: 5
+  - id: phong-16h45
+    characters: [ca-noc]
+    text: Poppy phồng lên khi bị giao việc sau 16h45
+    cues: [16h45, phồng lên]
+    cooldown: 2
+  - id: check-lai
+    characters: [te-te]
+    text: Pango "để anh check lại" và không bao giờ check
+    cues: [check lại]
+    cooldown: 3
+  - id: anh-dai-dien
+    characters: [sao-la]
+    text: Ảnh đại diện của Uni sáng lên một giây rồi tắt
+    cues: [ảnh đại diện]
+    cooldown: 4
+  - id: may-chieu
+    characters: []
+    text: Máy chiếu phòng họp Sáng Tạo chỉ chạy khi không ai cần
+    cues: [máy chiếu]
+    cooldown: 4
+
+finale: >-
+  Chiến dịch Tết ra mắt. Theo bình chọn của khán giả, nó thành công rực rỡ hoặc
+  hỏng một cách đáng yêu; dù kiểu nào, cả phòng nhận ra mỗi cái tật đã cứu dự án
+  một lần, và Uni gửi email cảm ơn cả phòng lúc 3 giờ sáng.

@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Uni, saola. Placeholder portrait until the Muse Image model sheet is locked. -->
+<g transform="translate(20.5 40) scale(0.92)">
+  <g stroke="#1b1410" stroke-width="10" stroke-linejoin="round" stroke-linecap="round">
+    <!-- blazer + shirt -->
+    <path d="M90 512 C98 420 166 380 256 380 C346 380 414 420 422 512 Z" fill="#2F5D50"/>
+    <path d="M216 384 L256 512 L296 384 Z" fill="#ffffff"/>
+    <path d="M216 384 L196 440 L240 470 M296 384 L316 440 L272 470" fill="#2F5D50"/>
+    <!-- horns: long, straight, thin, sweeping back -->
+    <path d="M206 120 L130 8 L148 2 L230 110 Z" fill="#2B2320"/>
+    <path d="M306 120 L382 8 L364 2 L282 110 Z" fill="#2B2320"/>
+    <!-- ears -->
+    <path d="M126 176 C76 156 54 176 60 196 C96 206 120 202 140 196 Z" fill="#5B3A29"/>
+    <path d="M386 176 C436 156 458 176 452 196 C416 206 392 202 372 196 Z" fill="#5B3A29"/>
+    <!-- head -->
+    <path d="M140 160 C150 100 362 100 372 160 C384 240 344 360 256 380 C168 360 128 240 140 160 Z" fill="#5B3A29"/>
+  </g>
+  <!-- white markings -->
+  <g fill="#F5F1E8">
+    <ellipse cx="196" cy="182" rx="34" ry="16" transform="rotate(-10 196 182)"/>
+    <ellipse cx="316" cy="182" rx="34" ry="16" transform="rotate(10 316 182)"/>
+    <ellipse cx="168" cy="262" rx="24" ry="34"/>
+    <ellipse cx="344" cy="262" rx="24" ry="34"/>
+    <path d="M220 340 Q256 370 292 340 Q290 366 256 376 Q222 366 220 340 Z"/>
+  </g>
+  <!-- large dark gentle eyes -->
+  <ellipse cx="204" cy="228" rx="26" ry="30" fill="#1b1410"/>
+  <ellipse cx="308" cy="228" rx="26" ry="30" fill="#1b1410"/>
+  <circle cx="214" cy="216" r="9" fill="#fff"/>
+  <circle cx="318" cy="216" r="9" fill="#fff"/>
+  <!-- nose + small private smile -->
+  <ellipse cx="256" cy="312" rx="24" ry="14" fill="#2B2320"/>
+  <path d="M244 338 Q256 344 268 338" fill="none" stroke="#1b1410" stroke-width="6" stroke-linecap="round"/>
+  <!-- big round over-ear headphones -->
+  <g stroke="#1b1410" stroke-width="10" stroke-linejoin="round">
+    <path d="M118 200 C110 70 402 70 394 200" fill="none" stroke="#E8E4DA" stroke-width="22"/>
+    <path d="M118 200 C110 70 402 70 394 200" fill="none" stroke-width="4"/>
+    <rect x="92" y="196" width="56" height="96" rx="26" fill="#E8E4DA"/>
+    <rect x="364" y="196" width="56" height="96" rx="26" fill="#E8E4DA"/>
+  </g>
+</g>
+</svg>

@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Pango, pangolin. Placeholder portrait until the Muse Image model sheet is locked. -->
+  <g stroke="#1b1410" stroke-width="10" stroke-linejoin="round" stroke-linecap="round">
+    <!-- shirt -->
+    <path d="M76 512 C84 412 160 370 256 370 C352 370 428 412 436 512 Z" fill="#A8D0E6"/>
+    <path d="M216 372 L256 420 L296 372" fill="#ffffff"/>
+    <rect x="330" y="430" width="56" height="10" rx="3" fill="#ffffff" stroke-width="6"/>
+    <path d="M346 404 L346 444" stroke="#2A5CAA" stroke-width="10"/>
+    <!-- scaly head/back -->
+    <path d="M90 300 C70 170 160 70 270 78 C380 86 440 180 420 300 C400 360 330 384 256 384 C180 384 104 360 90 300 Z" fill="#8B5E3C"/>
+  </g>
+  <!-- scales rows -->
+  <g fill="#8B5E3C" stroke="#5C3B22" stroke-width="7">
+    <path d="M150 120 q30 -40 60 0 q30 -40 60 0 q30 -40 60 0 q30 -40 60 0" fill="none"/>
+    <path d="M110 170 q30 -40 60 0 q30 -40 60 0 q30 -40 60 0 q30 -40 60 0 q30 -40 60 0" fill="none"/>
+    <path d="M100 222 q30 -40 60 0 M352 222 q30 -40 60 0" fill="none"/>
+  </g>
+  <!-- face + long snout -->
+  <g stroke="#1b1410" stroke-width="10" stroke-linejoin="round">
+    <path d="M150 232 C170 200 230 190 262 206 C300 222 390 250 452 270 C470 278 470 300 450 306 C390 318 300 336 250 350 C190 366 140 330 140 290 C140 266 142 248 150 232 Z" fill="#E9C6A8"/>
+  </g>
+  <ellipse cx="454" cy="288" rx="12" ry="10" fill="#1b1410"/>
+  <!-- calm half-closed eyes -->
+  <g stroke="#1b1410" stroke-width="8" stroke-linecap="round" fill="none">
+    <path d="M182 262 Q204 250 226 262"/>
+    <path d="M182 262 Q204 276 226 262" fill="#1b1410"/>
+    <path d="M176 248 L232 248" stroke-width="7"/>
+  </g>
+  <path d="M300 318 Q330 326 356 314" fill="none" stroke="#1b1410" stroke-width="7" stroke-linecap="round"/>
+  <ellipse cx="210" cy="306" rx="20" ry="11" fill="#E88A8A" opacity=".5"/>
+</svg>

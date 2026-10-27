@@ -1,0 +1,53 @@
+# Series bible. Every Studio step reads it; `canon` grows as episodes are finished.
+title: Hồi Sau
+premise: Mỗi ngày một mẩu chuyện hài ở công ty "Công Ty TNHH Hồi Sau", nơi nhân viên là những con vật ít người biết của Việt Nam. Khán giả bình luận để quyết định chuyện gì xảy ra tập sau.
+tone: Hài tình huống, ấm áp, tự giễu đời công sở. Nhân vật có tật xấu và trêu nhau, nhưng không cay độc, không bắt nạt ai. Cười cùng nhân vật, không cười nhạo.
+audience: Người đi làm 22–32 tuổi ở thành phố, quen meme văn phòng.
+world:
+  company: Công Ty TNHH Hồi Sau, một công ty truyền thông nhỏ ở tầng 7 một toà văn phòng cũ
+  places:
+    - Phòng làm việc mở, có cây trầu bà sắp chết
+    - Phòng họp "Sáng Tạo" duy nhất, máy chiếu chập chờn
+    - Pantry có máy pha cà phê hay hỏng
+    - Thang máy chậm
+  recurring_extras:
+    - Sếp (một con cú mèo đeo kính, không bao giờ nêu tên)
+    - Chị kế toán trưởng (một con rùa, luôn đúng)
+    - Đồng nghiệp do khán giả đề xuất (vẽ theo mô tả bằng chữ)
+rules:
+  - Mỗi tập đứng riêng được; người mới xem vẫn hiểu
+  - Mỗi tập xoay quanh một khoảnh khắc "trigger" mà người đi làm thấy chính mình trong đó (tin nhắn "em ơi" lúc 22h, họp không agenda, file gửi lúc 16h59)
+  - Truyện chạy bằng tình huống và hình; punchline phải đọc được từ tranh, không cần chữ
+  - Hạn chế gọi tên nhân vật trong thoại; người xem nhận ra họ bằng dáng và tính cách
+  - Ít chữ - tối đa 12 chữ mỗi bong bóng, tối đa 2 bong bóng mỗi khung, mỗi tập ít nhất 1 khung không thoại
+  - Khung cuối luôn có một móc nhỏ cho "hồi sau"
+  - Không có chữ vẽ trong tranh; mọi chữ là lớp ghép riêng
+  - Nhân vật được trêu nhau và có tật xấu, nhưng không xúc phạm ai; không nhắc người thật, công ty thật, nhãn hàng thật, chính trị, tôn giáo
+  - Không đùa chuyện săn bắt, buôn bán động vật hoang dã
+  - Đồng nghiệp do khán giả gợi ý chỉ vẽ theo mô tả bằng chữ, không theo ảnh thật
+format:
+  panels:
+    min: 4
+    max: 6
+  aspect: 4:5 (1080x1350)
+  ending: Khung cuối là punchline hoặc một câu hỏi để khán giả bình luận
+cast:
+  - cu-li
+  - ca-noc
+  - te-te
+  - sao-la
+relationships:
+  - { a: cu-li, b: sao-la, dynamic: "Lolo thần tượng Uni và khen suốt, nên Uni sợ Lolo nhất phòng" }
+  - { a: ca-noc, b: cu-li, dynamic: "Chị Poppy chăm Lolo như em ruột, nhưng hoá đơn tạm ứng của Lolo thì vẫn trả về" }
+  - { a: te-te, b: cu-li, dynamic: "Anh Pango che cho Lolo trước sếp, rồi quay về giao hết việc cho Lolo" }
+  - { a: ca-noc, b: te-te, dynamic: "Hai người lâu năm nhất phòng, cãi nhau như vợ chồng già về cái điều hoà" }
+  - { a: ca-noc, b: sao-la, dynamic: "Uni chỉ nói chuyện bình thường với chị Poppy, vì chị không bao giờ khen ai" }
+  - { a: te-te, b: sao-la, dynamic: "Anh Pango lấy việc của Uni làm ví dụ ở mọi cuộc họp; Uni chỉ muốn biến mất" }
+season:
+  arc: 'Mùa 1 "Dự Án Tết": cả phòng phải xong một chiến dịch Tết trong 30 tập; khán giả quyết định chiến dịch thành hay hỏng.'
+  milestones:
+    - Tập 1–5 giới thiệu từng nhân vật qua một việc nhỏ
+    - Tập 10 sếp giao dự án Tết
+    - Tập 20 dự án gặp sự cố lớn
+    - Tập 30 ra mắt chiến dịch
+canon: []

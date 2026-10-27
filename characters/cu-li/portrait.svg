@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Lolo, slow loris. Placeholder portrait until the Muse Image model sheet is locked. -->
+  <g stroke="#1b1410" stroke-width="10" stroke-linejoin="round" stroke-linecap="round">
+    <!-- hoodie body -->
+    <path d="M86 512 C92 410 160 360 256 360 C352 360 420 410 426 512 Z" fill="#E3B23C"/>
+    <path d="M196 372 C214 398 298 398 316 372" fill="none"/>
+    <!-- lanyard + badge -->
+    <path d="M222 384 L250 452 M290 384 L262 452" fill="none" stroke-width="7"/>
+    <rect x="232" y="448" width="48" height="58" rx="8" fill="#ffffff"/>
+    <rect x="242" y="462" width="28" height="18" rx="4" fill="#F2A93B" stroke-width="5"/>
+    <!-- ears -->
+    <circle cx="132" cy="150" r="34" fill="#B07A4F"/>
+    <circle cx="380" cy="150" r="34" fill="#B07A4F"/>
+    <circle cx="132" cy="150" r="14" fill="#F3E2C7" stroke-width="6"/>
+    <circle cx="380" cy="150" r="14" fill="#F3E2C7" stroke-width="6"/>
+    <!-- head -->
+    <ellipse cx="256" cy="232" rx="160" ry="146" fill="#B07A4F"/>
+    <!-- face mask -->
+    <path d="M118 262 C120 178 186 140 256 140 C326 140 392 178 394 262 C394 330 330 372 256 372 C182 372 118 330 118 262 Z" fill="#F3E2C7"/>
+  </g>
+  <g stroke="#1b1410" stroke-width="8" stroke-linejoin="round">
+    <!-- forehead stripe -->
+    <path d="M238 92 C240 130 236 190 246 240 L266 240 C276 190 272 130 274 92 Z" fill="#5A3A24"/>
+    <!-- eye patches -->
+    <ellipse cx="186" cy="236" rx="70" ry="64" fill="#5A3A24" transform="rotate(-12 186 236)"/>
+    <ellipse cx="326" cy="236" rx="70" ry="64" fill="#5A3A24" transform="rotate(12 326 236)"/>
+    <!-- eyes -->
+    <circle cx="190" cy="236" r="50" fill="#F2A93B"/>
+    <circle cx="322" cy="236" r="50" fill="#F2A93B"/>
+  </g>
+  <circle cx="194" cy="240" r="27" fill="#1b1410"/>
+  <circle cx="318" cy="240" r="27" fill="#1b1410"/>
+  <circle cx="206" cy="226" r="10" fill="#fff"/>
+  <circle cx="330" cy="226" r="10" fill="#fff"/>
+  <!-- under-eye bags -->
+  <path d="M152 300 Q190 318 228 300 M284 300 Q322 318 360 300" fill="none" stroke="#5A3A24" stroke-width="6" stroke-linecap="round"/>
+  <!-- nose, mouth -->
+  <path d="M244 300 Q256 290 268 300 Q264 314 256 316 Q248 314 244 300 Z" fill="#E88A8A" stroke="#1b1410" stroke-width="6" stroke-linejoin="round"/>
+  <path d="M236 336 Q256 350 276 336" fill="none" stroke="#1b1410" stroke-width="7" stroke-linecap="round"/>
+</svg>

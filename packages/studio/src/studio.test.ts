@@ -280,6 +280,9 @@ test("brand art: an avatar and a Facebook-size cover for every brand, offline", 
   const series = coverPrompt(ctx, brands.find((b) => b.id === "hoi-sau")!);
   assert.match(series, /zebra crossing/);
   assert.match(series, /Pango[\s\S]*Poppy[\s\S]*Lolo[\s\S]*Uni/, "walk order front to back");
+  // Characters added later join the parade: the cover follows the cast, not a fixed four.
+  assert.match(series, new RegExp(`Exactly ${["", "one", "two", "three", "four", "five", "six", "seven"][ctx.profiles.size]} main characters`));
+  for (const p of ctx.profiles.values()) assert.ok(series.includes(`${p.name} (`), p.name);
   assert.match(coverPrompt(ctx, brands.find((b) => b.id === "lolo")!), /Lolo \(.*\) walks across it alone/);
   const out = mkdtempSync(join(tmpdir(), "brand-art-"));
   const { art } = await makeBrandArt(ctx, brands.filter((b) => ["hoi-sau", "lolo"].includes(b.id)), out);

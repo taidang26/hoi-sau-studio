@@ -113,7 +113,7 @@ const swatches = (c: CharacterView) =>
 export const charSrc = (c: CharacterView) => {
   if (c.profile.look.character_sheet) return `/face/${esc(c.profile.slug)}.webp`;
   const sheet = c.run?.images.find((i) => i.id === "sheet");
-  return sheet ? `/media/${esc(c.profile.slug)}/${esc(sheet.file)}` : `/portrait/${esc(c.profile.slug)}.svg`;
+  return sheet ? `/media/${esc(c.profile.slug)}/${esc(sheet.file)}?face` : `/portrait/${esc(c.profile.slug)}.svg`;
 };
 
 const sheetImg = (c: CharacterView) =>

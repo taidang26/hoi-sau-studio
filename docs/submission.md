@@ -101,3 +101,4 @@ Every commit in the repository is from after kickoff (26 Oct 2026, 23:24 Hanoi t
 - [ ] Contributor names filled in.
 - [ ] Results and numbers from [metrics.md](metrics.md) filled in above.
 - [ ] X post is up and its link is in the form.
+- [ ] The bonus awards above are ticked in the form (they are only considered when chosen).

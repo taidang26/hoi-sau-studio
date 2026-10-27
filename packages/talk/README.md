@@ -28,3 +28,16 @@ Output goes to `data/talk/<slug>-<time>/`: `script.json`, `safety.json`,
 `<slug>.mp4`, `post.txt` (the caption). Nothing is posted; publish through the
 channel package after you approve it. `TALK_PYTHON` (or `DANCE_PYTHON`) picks
 the Python that has torch.
+
+## Lip-sync to a sound
+
+```bash
+npm run talk -- sync cu-li my-sound.m4a                  # or a video; --start/--duration to cut a clip
+npm run talk -- sync cu-li my-sound.m4a --lyrics words.txt   # when transcription is off: one line of words per line
+```
+
+Muse Voice Transcribe gives each word's time, Muse Spark picks a gesture per
+line and writes the title and caption, the safety gate reads the words, and
+the mouth moves only inside spoken words. Besides `<slug>.mp4` it writes
+`<slug>.silent.mp4`: post that one and pick the same sound in the app's sound
+library, so a sound you don't own is not muted.

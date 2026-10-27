@@ -10,5 +10,7 @@ export * from "./gestures.js";
 export * from "./patch.js";
 export * from "./render.js";
 export * from "./script.js";
+export * from "./sync.js";
+export * from "./transcribe.js";
 export * from "./timeline.js";
 export * from "./voice.js";

@@ -3,6 +3,8 @@
  *   npm run talk -- art <slug> [--mock] [--only explain,shock] [--force]   draw the talk pictures once (Muse Image + SAM 3.1)
  *   npm run talk -- make <slug> [--topic "..."] [--seconds 30] [--script file.json] [--voice dir] [--music file] [--mock]
  *                    Muse Spark writes, safety gate, MMS-TTS speaks (or --voice recordings 01.wav...), render 1080x1920
+ *   npm run talk -- sync <slug> <sound|video> [--lyrics file.txt] [--start s] [--duration s] [--mock]
+ *                    lip-sync to an existing sound: Muse Voice Transcribe times the words, Muse Spark picks gestures
  *   npm run talk -- demo                                                   offline: mock pictures, hummed voice
  */
 
@@ -14,7 +16,9 @@ import { openStudio } from "@hoi-sau/studio";
 import { Sam } from "@hoi-sau/dance";
 import { drawTalkArt, loadArt, talkDir } from "./art.js";
 import { GESTURES } from "./gestures.js";
-import { renderTalk } from "./render.js";
+import { renderTalk, silentCopy } from "./render.js";
+import { gateMouth, linesFromWords, readSound, soundVoice, stageLines, timeLyrics, toWords, voicedRegions } from "./sync.js";
+import { MuseTranscribe, type TimedWord } from "./transcribe.js";
 import { checkScript, writeScript, type TalkScript } from "./script.js";
 import { buildTimeline, CANVAS, FPS } from "./timeline.js";
 import { mouthTrack, voiceFor } from "./voice.js";
@@ -62,11 +66,7 @@ interface MakeOptions {
 async function make(slug: string, o: MakeOptions) {
   const ctx = openStudio({ mock: o.mock, log: o.log });
   mkdirSync(o.out, { recursive: true });
-  let art = loadArt(o.artDir);
-  if (!art || GESTURES.some((g) => !art!.gestures[g.id])) {
-    o.log("drawing the talk pictures first (once per character)");
-    art = await drawTalkArt(ctx, slug, o.artDir, { sam: o.mock ? undefined : Sam.fromEnv(), log: o.log });
-  }
+  const art = await ensureArt(slug, o);
   const script: TalkScript = o.script ? JSON.parse(readFileSync(o.script, "utf8")) : await writeScript(ctx, slug, { topic: o.topic, seconds: o.seconds, mock: o.mock });
   writeFileSync(join(o.out, "script.json"), JSON.stringify(script, null, 2) + "\n");
   const verdict = await checkScript(ctx, slug, script);
@@ -81,10 +81,10 @@ async function make(slug: string, o: MakeOptions) {
     lines: script.lines,
     voice,
     mouth: mouthTrack(voice, FPS, frames),
-    canMouth: (g) => !!art!.gestures[g]?.mouth,
-    canBlink: (g) => !!art!.gestures[g]?.blink,
+    canMouth: (g) => !!art.gestures[g]?.mouth,
+    canBlink: (g) => !!art.gestures[g]?.blink,
     face: (g) => {
-      const b = art!.gestures[g]?.mouth?.box;
+      const b = art.gestures[g]?.mouth?.box;
       return b ? { x: (b.x + b.w / 2) * scale, y: (b.y + b.h / 2) * scale - 70 } : undefined;
     },
     frames,
@@ -95,6 +95,77 @@ async function make(slug: string, o: MakeOptions) {
   const info = await probeVideo(r.video);
   const problems = reelsProblems(info);
   console.log(`${r.video} (${info.duration.toFixed(1)} s, ${info.width}x${info.height})`);
+  console.log(problems.length ? `Reels check: ${problems.join("; ")}` : "Reels check: ok for Facebook/Instagram Reels and TikTok");
+}
+
+async function ensureArt(slug: string, o: { mock: boolean; artDir: string; log: (s: string) => void }) {
+  let art = loadArt(o.artDir);
+  if (!art || GESTURES.some((g) => !art!.gestures[g.id])) {
+    o.log("drawing the talk pictures first (once per character)");
+    art = await drawTalkArt(openStudio({ mock: o.mock, log: o.log }), slug, o.artDir, { sam: o.mock ? undefined : Sam.fromEnv(), log: o.log });
+  }
+  return art;
+}
+
+interface SyncOptions {
+  mock: boolean;
+  lyrics?: string;
+  start?: number;
+  duration?: number;
+  out: string;
+  artDir: string;
+  log: (s: string) => void;
+}
+
+async function sync(slug: string, media: string, o: SyncOptions) {
+  const ctx = openStudio({ mock: o.mock, log: o.log });
+  mkdirSync(o.out, { recursive: true });
+  const art = await ensureArt(slug, o);
+  const sound = join(o.out, "sound.m4a");
+  const pcm = await readSound(media, sound, { start: o.start, duration: o.duration });
+  let lines: TimedWord[][];
+  if (o.lyrics) {
+    lines = timeLyrics(readFileSync(o.lyrics, "utf8").split(/\r?\n/).map((l) => l.trim()).filter(Boolean), voicedRegions(pcm));
+  } else if (o.mock) {
+    lines = timeLyrics(["Mọi người ơi nghe em kể", "Hôm nay sếp gọi em lên phòng", "Em run quá trời luôn"], voicedRegions(pcm));
+  } else {
+    const t = await MuseTranscribe.fromEnv().transcribe(sound);
+    writeFileSync(join(o.out, "transcript.json"), JSON.stringify(t, null, 2) + "\n");
+    if (!t.words.length) throw new Error("Muse Voice Transcribe heard no words. Pass the words with --lyrics file.txt (one line each).");
+    lines = t.segments.length && !t.words.some((w, i) => i && w.start !== t.words[i - 1].end) ? t.segments.map((s) => t.words.filter((w) => w.start >= s.start - 0.01 && w.end <= s.end + 0.01)).filter((l) => l.length) : linesFromWords(t.words);
+  }
+  const texts = lines.map((l) => l.map((w) => w.word).join(" "));
+  const script = await stageLines(ctx, slug, texts, o.mock);
+  writeFileSync(join(o.out, "script.json"), JSON.stringify({ ...script, timing: lines }, null, 2) + "\n");
+  const verdict = await checkScript(ctx, slug, script);
+  writeFileSync(join(o.out, "safety.json"), JSON.stringify(verdict, null, 2) + "\n");
+  if (!verdict.pass) throw new Error(`Safety gate failed: ${verdict.issues.map((i) => `${i.where}: ${i.topic}`).join("; ")}. See ${join(o.out, "safety.json")}.`);
+  o.log(`${lines.length} lines, gestures ${script.lines.map((l) => l.gesture).join(" ")}`);
+
+  const voice = soundVoice(pcm, lines);
+  const frames = Math.ceil((pcm.length / voice.rate) * FPS);
+  const scale = CANVAS.h / 1536;
+  const { frames: timeline, chunks } = buildTimeline({
+    lines: script.lines,
+    voice,
+    mouth: gateMouth(mouthTrack(voice, FPS, frames), lines, FPS),
+    canMouth: (g) => !!art.gestures[g]?.mouth,
+    canBlink: (g) => !!art.gestures[g]?.blink,
+    face: (g) => {
+      const b = art.gestures[g]?.mouth?.box;
+      return b ? { x: (b.x + b.w / 2) * scale, y: (b.y + b.h / 2) * scale - 70 } : undefined;
+    },
+    frames,
+    words: lines.map(toWords),
+  });
+  const out = join(o.out, `${slug}.mp4`);
+  const r = await renderTalk({ art, artDir: o.artDir, frames: timeline, chunks, title: script.title, voice, audio: sound, out, log: o.log });
+  const silent = await silentCopy(r.video);
+  writeFileSync(join(o.out, "post.txt"), `${script.caption}\n`);
+  const info = await probeVideo(r.video);
+  const problems = reelsProblems(info);
+  console.log(`${r.video} (${info.duration.toFixed(1)} s, ${info.width}x${info.height})`);
+  console.log(`${silent} (no sound: pick the same sound in the app when posting)`);
   console.log(problems.length ? `Reels check: ${problems.join("; ")}` : "Reels check: ok for Facebook/Instagram Reels and TikTok");
 }
 
@@ -111,6 +182,21 @@ async function main() {
       const dir = mock ? join(ROOT, "data-demo", "talk", "art", slug) : talkDir(CHARACTERS, slug);
       await drawTalkArt(openStudio({ mock, log }), slug, dir, { sam: mock ? undefined : Sam.fromEnv(), only: opt.only ? String(opt.only).split(",") : undefined, force: !!opt.force, log });
       console.log(dir);
+      return;
+    }
+    case "sync": {
+      const [slug, media] = pos;
+      if (!slug || !media) throw new Error("Usage: talk sync <slug> <sound|video> [--lyrics file.txt] [--start s] [--duration s]");
+      const mock = !!opt.mock;
+      await sync(slug, fromCwd(media), {
+        mock,
+        lyrics: opt.lyrics ? fromCwd(opt.lyrics as string) : undefined,
+        start: opt.start ? Number(opt.start) : undefined,
+        duration: opt.duration ? Number(opt.duration) : undefined,
+        out: opt.out ? fromCwd(opt.out as string) : join(ROOT, mock ? "data-demo" : "data", "talk", `${slug}-sync-${stamp()}`),
+        artDir: mock ? join(ROOT, "data-demo", "talk", "art", slug) : talkDir(CHARACTERS, slug),
+        log,
+      });
       return;
     }
     case "make":
@@ -132,7 +218,7 @@ async function main() {
       return;
     }
     default:
-      console.log(readFileSync(fileURLToPath(import.meta.url), "utf8").split("\n").slice(2, 7).join("\n").replace(/^ \*/gm, ""));
+      console.log(readFileSync(fileURLToPath(import.meta.url), "utf8").split("\n").slice(2, 9).join("\n").replace(/^ \*/gm, ""));
   }
 }
 

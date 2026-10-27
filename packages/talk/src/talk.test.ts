@@ -77,3 +77,23 @@ test("the stand-in script is a usable length with varied gestures", () => {
   assert.deepEqual(scriptProblems(s, 25), []);
   assert.match(scriptProblems({ ...s, lines: s.lines.slice(0, 2) }, 30).join(), /only/);
 });
+
+test("a transcript with only segments still gets word times", async () => {
+  const { parseTranscript, linesFromWords } = await import("./transcribe.js");
+  const t = parseTranscript({ text: "a b c d", segments: [{ text: "Em chào anh.", start: 1, end: 2.5 }, { text: "Sếp gọi", start: 3.5, end: 4 }] });
+  assert.equal(t.words.length, 5);
+  assert.equal(t.words[0].start, 1);
+  assert.deepEqual(linesFromWords(t.words).map((l) => l.length), [3, 2]);
+});
+
+test("typed lyrics land on the voiced parts of the sound", async () => {
+  const { voicedRegions, timeLyrics, gateMouth } = await import("./sync.js");
+  const v = joinLines([hummedLine("một hai ba"), hummedLine("bốn năm")], { gap: 1, lead: 0.5 });
+  const regions = voicedRegions(v.pcm);
+  assert.equal(regions.length, 2);
+  const lines = timeLyrics(["một hai ba", "bốn năm"], regions);
+  assert.ok(Math.abs(lines[1][0].start - regions[1].start) < 0.15);
+  const gated = gateMouth(new Array(150).fill(true), lines, 30);
+  assert.equal(gated[3], false, "shut before the first word");
+  assert.equal(gated[30], true);
+});

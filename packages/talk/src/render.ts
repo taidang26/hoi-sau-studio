@@ -8,6 +8,7 @@ import { spawn } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import sharp from "sharp";
+import { ffmpeg } from "@hoi-sau/motion";
 import type { TalkArt } from "./art.js";
 import { CaptionCache, titleOverlay, type Overlay } from "./captions.js";
 import { pasteOval, readRgb, type Raster } from "./patch.js";
@@ -83,6 +84,8 @@ export interface RenderInput {
   title?: string;
   voice: Voice;
   out: string;
+  /** The finished soundtrack (a lip-synced sound) instead of the voice track. */
+  audio?: string;
   /** Background music, looped under the voice. */
   music?: string;
   musicVolume?: number;
@@ -90,14 +93,18 @@ export interface RenderInput {
 }
 
 export async function renderTalk(r: RenderInput): Promise<{ video: string; seconds: number }> {
-  const wav = r.out.replace(/\.mp4$/, "") + ".voice.wav";
-  writeFileSync(wav, wavBytes(r.voice.pcm, r.voice.rate));
+  let wav = r.audio;
+  if (!wav) {
+    wav = r.out.replace(/\.mp4$/, "") + ".voice.wav";
+    writeFileSync(wav, wavBytes(r.voice.pcm, r.voice.rate));
+  }
   const pics = new Pictures(r.art, r.artDir);
   const captions = new CaptionCache(r.chunks);
   const title = r.title ? await titleOverlay(r.title) : undefined;
 
   const args = ["-hide_banner", "-loglevel", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", `${OUT.w}x${OUT.h}`, "-r", String(FPS), "-i", "pipe:0", "-i", wav];
   let audio = "1:a";
+  // A lip-synced sound is used as it is.
   if (r.music && existsSync(r.music)) {
     args.push("-stream_loop", "-1", "-i", r.music);
     args.push("-filter_complex", `[2:a]volume=${r.musicVolume ?? 0.12}[m];[1:a][m]amix=inputs=2:duration=first:dropout_transition=0,aresample=48000[a]`);
@@ -135,4 +142,11 @@ export async function renderTalk(r: RenderInput): Promise<{ video: string; secon
   ff.stdin.end();
   await done;
   return { video: r.out, seconds: r.frames.length / FPS };
+}
+
+/** A copy without sound, for posting with the same sound picked from the app's library. */
+export async function silentCopy(video: string): Promise<string> {
+  const out = video.replace(/\.mp4$/, "") + ".silent.mp4";
+  await ffmpeg(["-i", video, "-an", "-c:v", "copy", "-movflags", "+faststart", out]);
+  return out;
 }

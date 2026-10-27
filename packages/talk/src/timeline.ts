@@ -105,11 +105,13 @@ export interface TimelineInput {
   /** Face centre on the canvas per gesture, for close framings. */
   face: (g: string) => { x: number; y: number } | undefined;
   frames: number;
+  /** Real word times per line (from a transcript); estimated from the line's span when missing. */
+  words?: Word[][];
 }
 
 export function buildTimeline(t: TimelineInput): { frames: Frame[]; chunks: Chunk[] } {
   const { lines, voice } = t;
-  const chunks = lines.flatMap((l, i) => chunkWords(wordTimes(l.text, voice.spans[i].start, voice.spans[i].end)));
+  const chunks = lines.flatMap((l, i) => chunkWords(t.words?.[i] ?? wordTimes(l.text, voice.spans[i].start, voice.spans[i].end)));
   const blinks = blinkTrack(t.frames);
   // A line runs from its first word to the start of the next line.
   const lineAt = (s: number) => {

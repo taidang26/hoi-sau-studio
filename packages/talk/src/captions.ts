@@ -44,8 +44,8 @@ export function captionSvg(chunk: Chunk, current: number, scale = 1): string {
     x += measure(font, w, size) + space();
     return t;
   });
-  // A slight tilt and the pop-in scale, around the band's centre.
-  const tf = `translate(${OUT.w / 2} ${cy}) rotate(-3) scale(${scale}) translate(${-OUT.w / 2} ${-cy})`;
+  // Level text; only the pop-in scale, around the band's centre.
+  const tf = `translate(${OUT.w / 2} ${cy}) scale(${scale}) translate(${-OUT.w / 2} ${-cy})`;
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${OUT.w}" height="${CAPTION_BAND.h}"><g transform="${tf}">${spans.join("")}</g></svg>`;
 }
 

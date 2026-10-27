@@ -97,7 +97,7 @@ export function coverPrompt(ctx: StudioContext, brand: BrandInfo): string {
       ? [
           "Wide cover illustration, a playful homage to a famous album-cover shot of people crossing a zebra crossing in single file, moved inside an office.",
           "Side view, eye level, one-point perspective down the long office aisle, seen from far away. A white zebra crossing is painted across the aisle carpet.",
-          `Exactly ${n} main characters walk across it in single file from left to right, evenly spaced, mid-stride, arms swinging. Each of the ${n} appears exactly once, never twice, and no other character is on the crossing. From front to back: ${cast.map((s, i) => describe(ctx, s, `${ORDINAL[i] ?? "next"} in line`)).join(" ")}`,
+          `Exactly ${n} main characters walk across it in single file from left to right, evenly spaced, mid-stride, arms swinging. All ${n} are standing and walking in the line, none sitting at a desk or left in the background; each appears exactly once, never twice, and no other character is on the crossing. From front to back: ${cast.map((s, i) => describe(ctx, s, `${ORDINAL[i] ?? "next"} in line`)).join(" ")}`,
           "Desks with background coworkers on both sides of the aisle, some glancing up at the parade.",
         ]
       : [
@@ -131,10 +131,11 @@ function refsFor(ctx: StudioContext, brand: BrandInfo): string[] {
 
 /**
  * Crops a drawing to the wide cover. Muse rarely keeps the cast in the band it
- * is asked for, so instead of the centre the crop keeps the most colourful
- * band: the characters are saturated, the office behind them is muted.
+ * is asked for, so the crop is anchored on the cast's feet: the lowest rows
+ * with strongly coloured pixels (the cast is saturated; the floor and its
+ * zebra stripes are not), plus a strip of floor, with the band above them.
  */
-export async function coverCrop(image: Buffer, size = COVER_SIZE): Promise<Buffer> {
+export async function coverCrop(image: Buffer, size: { width: number; height: number } = COVER_SIZE): Promise<Buffer> {
   try {
     const meta = await sharp(image).metadata();
     const scaledH = Math.round((meta.height! * size.width) / meta.width!);
@@ -142,25 +143,21 @@ export async function coverCrop(image: Buffer, size = COVER_SIZE): Promise<Buffe
     const W = 160;
     const H = Math.round((meta.height! * W) / meta.width!);
     const { data, info } = await sharp(image).resize(W, H, { fit: "fill" }).removeAlpha().raw().toBuffer({ resolveWithObject: true });
-    const rows: number[] = [];
+    const strong: number[] = [];
     for (let y = 0; y < H; y++) {
-      let sum = 0;
+      let n = 0;
       for (let x = 0; x < W; x++) {
         const i = (y * W + x) * info.channels;
-        sum += Math.max(data[i], data[i + 1], data[i + 2]) - Math.min(data[i], data[i + 1], data[i + 2]);
+        if (Math.max(data[i], data[i + 1], data[i + 2]) - Math.min(data[i], data[i + 1], data[i + 2]) > 60) n++;
       }
-      rows.push(sum);
+      strong.push(n);
     }
-    const win = Math.round((H * size.height) / scaledH);
-    let best = 0;
-    let bestScore = -1;
-    let score = rows.slice(0, win).reduce((a, b) => a + b, 0);
-    for (let top = 0; top + win <= H; top++) {
-      if (top > 0) score += rows[top + win - 1] - rows[top - 1];
-      // Ties go to the lower band: the cast stands on the floor.
-      if (score >= bestScore) [best, bestScore] = [top, score];
-    }
-    const top = Math.min(scaledH - size.height, Math.round((best * scaledH) / H));
+    // Two coloured rows in a row, so a stray pixel on the floor does not count.
+    let feet = -1;
+    for (let y = H - 1; y > 0 && feet < 0; y--) if (strong[y] >= W * 0.04 && strong[y - 1] >= W * 0.04) feet = y;
+    const win = (H * size.height) / scaledH;
+    const bottom = feet < 0 ? (H + win) / 2 : Math.min(H, feet + 1 + H * 0.04);
+    const top = Math.max(0, Math.min(scaledH - size.height, Math.round(((bottom - win) * scaledH) / H)));
     return await sharp(image).resize(size.width, scaledH).extract({ left: 0, top, width: size.width, height: size.height }).png().toBuffer();
   } catch {
     return fit(image, size);

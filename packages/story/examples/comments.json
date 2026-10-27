@@ -1,0 +1,247 @@
+[
+  {
+    "id": "c01",
+    "platform": "facebook",
+    "postId": "demo-post-cu-li-001",
+    "text": "Tập sau cho sếp bắt gặp Lolo ngủ gật trên bàn phím đi ad 😂😂",
+    "author": {
+      "id": "u-nguyễn-thị-lan",
+      "name": "Nguyễn Thị Lan"
+    },
+    "createdAt": "2026-11-02T08:00:00+07:00"
+  },
+  {
+    "id": "c02",
+    "platform": "facebook",
+    "postId": "demo-post-cu-li-001",
+    "text": "cho Lolo ngủ gật lúc họp rồi bị sếp gọi tên haha",
+    "author": {
+      "id": "u-trần-minh-đức",
+      "name": "Trần Minh Đức"
+    },
+    "createdAt": "2026-11-02T08:07:00+07:00"
+  },
+  {
+    "id": "c03",
+    "platform": "instagram",
+    "postId": "demo-post-cu-li-001",
+    "text": "cho lolo ngủ quên trong phòng họp, tỉnh dậy thì cả phòng về hết rồi!",
+    "author": {
+      "id": "u-hoang.anh.99",
+      "name": "hoang.anh.99"
+    },
+    "createdAt": "2026-11-02T08:14:00+07:00"
+  },
+  {
+    "id": "c04",
+    "platform": "facebook",
+    "postId": "demo-post-cu-li-001",
+    "text": "+1 muốn xem vụ ngủ gật",
+    "author": {
+      "id": "u-lê-văn-hùng",
+      "name": "Lê Văn Hùng"
+    },
+    "createdAt": "2026-11-02T08:21:00+07:00",
+    "parentId": "c01"
+  },
+  {
+    "id": "c05",
+    "platform": "facebook",
+    "postId": "demo-post-cu-li-001",
+    "text": "đúng rồi ngủ gật đi ad",
+    "author": {
+      "id": "u-phạm-thu-hà",
+      "name": "Phạm Thu Hà"
+    },
+    "createdAt": "2026-11-02T08:28:00+07:00",
+    "parentId": "c01"
+  },
+  {
+    "id": "c06",
+    "platform": "threads",
+    "postId": "demo-post-cu-li-001",
+    "text": "Tập sau cho máy in kẹt giấy đúng lúc Lolo in bản final nhé",
+    "author": {
+      "id": "u-mai.ngoc",
+      "name": "mai.ngoc"
+    },
+    "createdAt": "2026-11-02T08:35:00+07:00"
+  },
+  {
+    "id": "c07",
+    "platform": "facebook",
+    "postId": "demo-post-cu-li-001",
+    "text": "nên cho Lolo bị đòi deadline lúc 4h59 chiều thứ 6",
+    "author": {
+      "id": "u-vũ-quang-huy",
+      "name": "Vũ Quang Huy"
+    },
+    "createdAt": "2026-11-02T09:42:00+07:00"
+  },
+  {
+    "id": "c08",
+    "platform": "instagram",
+    "postId": "demo-post-cu-li-001",
+    "text": "cho deadline dời lên sớm 1 ngày mà Lolo không biết",
+    "author": {
+      "id": "u-ti.ti.tun",
+      "name": "ti.ti.tun"
+    },
+    "createdAt": "2026-11-02T09:49:00+07:00"
+  },
+  {
+    "id": "c09",
+    "platform": "facebook",
+    "postId": "demo-post-cu-li-001",
+    "text": "Hàng order giá sỉ, inbox shop nhé 0912 345 678",
+    "author": {
+      "id": "u-shop-order-quảng-châu",
+      "name": "Shop Order Quảng Châu"
+    },
+    "createdAt": "2026-11-02T09:56:00+07:00"
+  },
+  {
+    "id": "c10",
+    "platform": "facebook",
+    "postId": "demo-post-cu-li-001",
+    "text": "Việc nhẹ lương cao tại nhà, xem tại bit.ly/abcxyz",
+    "author": {
+      "id": "u-kiếm-tiền-online",
+      "name": "Kiếm Tiền Online"
+    },
+    "createdAt": "2026-11-02T09:03:00+07:00"
+  },
+  {
+    "id": "c11",
+    "platform": "facebook",
+    "postId": "demo-post-cu-li-001",
+    "text": "truyện như cc, nhạt vl",
+    "author": {
+      "id": "u-đỗ-văn-nam",
+      "name": "Đỗ Văn Nam"
+    },
+    "createdAt": "2026-11-02T09:10:00+07:00"
+  },
+  {
+    "id": "c12",
+    "platform": "facebook",
+    "postId": "demo-post-cu-li-001",
+    "text": "bọn bắc kỳ văn phòng toàn thế",
+    "author": {
+      "id": "u-ngô-bảo-châu",
+      "name": "Ngô Bảo Châu"
+    },
+    "createdAt": "2026-11-02T09:17:00+07:00"
+  },
+  {
+    "id": "c13",
+    "platform": "instagram",
+    "postId": "demo-post-cu-li-001",
+    "text": "😂😂😂",
+    "author": {
+      "id": "u-linh.dang",
+      "name": "linh.dang"
+    },
+    "createdAt": "2026-11-02T10:24:00+07:00"
+  },
+  {
+    "id": "c14",
+    "platform": "instagram",
+    "postId": "demo-post-cu-li-001",
+    "text": "@bestie.ne xem nè",
+    "author": {
+      "id": "u-linh.dang",
+      "name": "linh.dang"
+    },
+    "createdAt": "2026-11-02T10:31:00+07:00"
+  },
+  {
+    "id": "c15",
+    "platform": "facebook",
+    "postId": "demo-post-cu-li-001",
+    "text": "Tập sau cho sếp bắt gặp Lolo ngủ gật trên bàn phím đi ad 😂😂",
+    "author": {
+      "id": "u-nguyễn-thị-lan",
+      "name": "Nguyễn Thị Lan"
+    },
+    "createdAt": "2026-11-02T10:38:00+07:00"
+  },
+  {
+    "id": "c16",
+    "platform": "facebook",
+    "postId": "demo-post-cu-li-001",
+    "text": "Lolo giống tui y chang, đọc mà thấy nhột",
+    "author": {
+      "id": "u-bùi-thanh-tâm",
+      "name": "Bùi Thanh Tâm"
+    },
+    "createdAt": "2026-11-02T10:45:00+07:00"
+  },
+  {
+    "id": "c17",
+    "platform": "facebook",
+    "postId": "demo-post-cu-li-001",
+    "text": "Lolo có người yêu chưa ạ?",
+    "author": {
+      "id": "u-hà-phương",
+      "name": "Hà Phương"
+    },
+    "createdAt": "2026-11-02T10:52:00+07:00"
+  },
+  {
+    "id": "c18",
+    "platform": "instagram",
+    "postId": "demo-post-cu-li-001",
+    "text": "cho lolo chửi sếp rồi bỏ việc luôn cho máu",
+    "author": {
+      "id": "u-quan.le",
+      "name": "quan.le"
+    },
+    "createdAt": "2026-11-02T10:59:00+07:00"
+  },
+  {
+    "id": "c19",
+    "platform": "facebook",
+    "postId": "demo-post-cu-li-001",
+    "text": "cho Lolo đi săn tê tê về làm quà Tết",
+    "author": {
+      "id": "u-trịnh-gia-bảo",
+      "name": "Trịnh Gia Bảo"
+    },
+    "createdAt": "2026-11-02T11:06:00+07:00"
+  },
+  {
+    "id": "c20",
+    "platform": "threads",
+    "postId": "demo-post-cu-li-001",
+    "text": "muốn xem Lolo tranh máy pha cà phê với cả phòng lúc 8h sáng",
+    "author": {
+      "id": "u-an.nhien",
+      "name": "an.nhien"
+    },
+    "createdAt": "2026-11-02T11:13:00+07:00"
+  },
+  {
+    "id": "c21",
+    "platform": "facebook",
+    "postId": "demo-post-cu-li-001",
+    "text": "để Lolo thử đi làm đúng giờ 1 ngày xem cả công ty phản ứng sao",
+    "author": {
+      "id": "u-đặng-hải-yến",
+      "name": "Đặng Hải Yến"
+    },
+    "createdAt": "2026-11-02T11:20:00+07:00"
+  },
+  {
+    "id": "c22",
+    "platform": "facebook",
+    "postId": "demo-post-cu-li-001",
+    "text": "haha thử đi làm đúng giờ thì sếp tưởng có biến",
+    "author": {
+      "id": "u-lý-mỹ-duyên",
+      "name": "Lý Mỹ Duyên"
+    },
+    "createdAt": "2026-11-02T11:27:00+07:00",
+    "parentId": "c21"
+  }
+]

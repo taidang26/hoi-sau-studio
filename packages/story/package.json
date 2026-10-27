@@ -1,0 +1,18 @@
+{
+  "name": "@hoi-sau/story",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "dependencies": {
+    "@hoi-sau/channel": "0.0.0",
+    "yaml": "^2.9.1"
+  },
+  "bin": { "hoisau-story": "dist/cli.js" },
+  "scripts": {
+    "build": "tsc -b",
+    "test": "tsc -b && node --test dist/*.test.js",
+    "cli": "node dist/cli.js"
+  }
+}

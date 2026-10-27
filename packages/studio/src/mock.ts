@@ -90,7 +90,17 @@ export function mockSparkTransport(opts: { failReview?: number[] } = {}): { tran
             action: `Khung ${i + 1}: ${who.join(" và ")} ở bàn làm việc`,
             expressions: [{ character: lead.slug, expression: lead.expressions[i % lead.expressions.length] ?? "default" }],
             // Lines from the speakers' own catchphrases; the last panel stays silent.
-            dialogue: i === n - 1 ? [] : [{ speaker: who[i % who.length], text: (i % 2 ? other : lead).voice.catchphrases[i === 2 ? 1 : 0] ?? lead.voice.catchphrases[0] }],
+            // The opening line is a thought and the second a shout, so offline runs show every balloon.
+            dialogue:
+              i === n - 1
+                ? []
+                : [
+                    {
+                      speaker: who[i % who.length],
+                      text: (i % 2 ? other : lead).voice.catchphrases[i === 2 ? 1 : 0] ?? lead.voice.catchphrases[0],
+                      kind: i === 0 ? "thought" : i === 1 ? "shout" : "speech",
+                    },
+                  ],
           };
         }),
       };

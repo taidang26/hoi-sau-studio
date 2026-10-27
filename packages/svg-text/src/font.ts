@@ -16,9 +16,14 @@ export interface LoadedFont {
   path: string;
 }
 
-/** Be Vietnam Pro (SIL OFL 1.1), shipped in ../fonts with its licence. */
+/** Be Vietnam Pro (SIL OFL 1.1), shipped in ../fonts with its licence. Used for the dashboard and captions. */
 export const DEFAULT_FONT_PATH = fileURLToPath(new URL("../fonts/BeVietnamPro-SemiBold.ttf", import.meta.url));
 export const BOLD_FONT_PATH = fileURLToPath(new URL("../fonts/BeVietnamPro-Bold.ttf", import.meta.url));
+/** Mali Bold (SIL OFL 1.1): a rounded hand-lettered face with full Vietnamese, for dialogue. */
+export const COMIC_FONT_PATH = fileURLToPath(new URL("../fonts/Mali-Bold.ttf", import.meta.url));
+/** Bangers (SIL OFL 1.1): condensed comic capitals with full Vietnamese, for shouts. */
+export const SHOUT_FONT_PATH = fileURLToPath(new URL("../fonts/Bangers-Regular.ttf", import.meta.url));
+export const ALL_FONT_PATHS = [DEFAULT_FONT_PATH, BOLD_FONT_PATH, COMIC_FONT_PATH, SHOUT_FONT_PATH];
 
 const cache = new Map<string, LoadedFont>();
 

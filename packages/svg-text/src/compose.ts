@@ -4,8 +4,8 @@
  */
 
 import { Resvg } from "@resvg/resvg-js";
-import { BOLD_FONT_PATH, DEFAULT_FONT_PATH, loadFont } from "./font.js";
-import { type Bubble, escapeXml, fontFace, renderSpeech, type SpeechOptions } from "./render.js";
+import { ALL_FONT_PATHS, loadFont } from "./font.js";
+import { type Bubble, bubbleFont, escapeXml, fontFace, renderSpeech, type SpeechOptions } from "./render.js";
 
 export interface PanelImage {
   data: Buffer;
@@ -36,7 +36,7 @@ export function composePanel(panel: PanelImage, lines: DialogueLine[], defaults:
     const opts = { ...defaults, ...line.options };
     const { svg, fit } = renderSpeech(line.text, line.bubble, opts);
     if (!fit.fits) overflow.push(line);
-    if (opts.mode === "text") textFonts.add(opts.fontPath ?? DEFAULT_FONT_PATH);
+    if (opts.mode === "text") textFonts.add(opts.fontPath ?? bubbleFont(line.bubble));
     return svg;
   });
 
@@ -56,7 +56,7 @@ export function composePanel(panel: PanelImage, lines: DialogueLine[], defaults:
 export function svgToPng(svg: string, opts: { width?: number; fontFiles?: string[] } = {}): Buffer {
   const resvg = new Resvg(svg, {
     fitTo: opts.width ? { mode: "width", value: opts.width } : { mode: "original" },
-    font: { loadSystemFonts: false, fontFiles: opts.fontFiles ?? [DEFAULT_FONT_PATH, BOLD_FONT_PATH] },
+    font: { loadSystemFonts: false, fontFiles: opts.fontFiles ?? ALL_FONT_PATHS },
   });
   return resvg.render().asPng();
 }

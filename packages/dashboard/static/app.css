@@ -657,3 +657,5 @@ img.sheet { max-width: 100%; }
 .side { view-transition-name: side; }
 ::view-transition-old(root), ::view-transition-new(root) { animation-duration: .16s; }
 @media (prefers-reduced-motion: reduce) { @view-transition { navigation: none; } }
+
+.settings-side { display: grid; gap: 18px; align-content: start; }

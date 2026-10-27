@@ -12,6 +12,7 @@ import { readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { canReply, windowClosesAt, type Comment, type Conversation } from "@hoi-sau/channel";
+import type { BackupInfo } from "./backup.js";
 import type { BrandView, CharacterView, Episode, Run, State } from "./data.js";
 import { lang, locale, t } from "./i18n.js";
 
@@ -357,9 +358,9 @@ ${draw?.extra ?? ""}
 /** Want, fear, contradiction, life, comic engine and relationships, when the profile has them. */
 function depth(c: CharacterView): string {
   const p = c.profile;
-  if (!p.want && !p.contradiction && !p.comic_engine?.length) return "";
+  if (!p.want && !p.contradiction && !p.edge && !p.comic_engine?.length) return "";
   const list = (items: string[]) => `<ul>${items.map((i) => `<li>${esc(i)}</li>`).join("")}</ul>`;
-  const kv = [["Muốn", p.want], ["Sợ", p.fear], ["Mâu thuẫn", p.contradiction]].filter(([, v]) => v).map(([k, v]) => `<dt>${esc(t(k!))}</dt><dd>${esc(v)}</dd>`).join("");
+  const kv = [["Muốn", p.want], ["Sợ", p.fear], ["Mâu thuẫn", p.contradiction], ["Mặt khuất", p.edge]].filter(([, v]) => v).map(([k, v]) => `<dt>${esc(t(k!))}</dt><dd>${esc(v)}</dd>`).join("");
   return `<div class="grid2"><section class="card"><h2>${esc(t("Con người"))}</h2>${kv ? `<dl class="kv">${kv}</dl>` : ""}${p.life?.length ? `<h3>${esc(t("Đời sống"))}</h3>${list(p.life)}` : ""}</section>
 <section class="card"><h2>${esc(t("Tình huống gây cười"))}</h2>${list(p.comic_engine ?? [])}${p.relationships?.length ? `<h3>${esc(t("Quan hệ"))}</h3>${list(p.relationships.map((r) => r.dynamic))}` : ""}</section></div>`;
 }
@@ -653,7 +654,17 @@ export interface SettingView {
   set: boolean;
 }
 
-export function settingsPage(settings: SettingView[], opts: { demo: boolean; mock: boolean; ok?: string; error?: string }): string {
+/** Last backup, where backups go, and a button to back up now. */
+function backupCard(b?: BackupInfo): string {
+  if (!b) return "";
+  const last = b.last ? t("Lần gần nhất: {at}", { at: b.last.at.toLocaleString(locale()) }) : t("Chưa sao lưu lần nào.");
+  return `<section class="card"><h2>${esc(t("Sao lưu"))}</h2><p>${esc(last)}${b.count ? ` · ${esc(t("{n} bản", { n: b.count }))}` : ""}</p>
+<p class="muted small">${esc(t("Tự sao lưu bình luận, tin nhắn, tập đã vẽ, tư liệu và nhân vật mỗi 6 giờ. Khoá bí mật không được chép."))}</p>
+<p class="small"><span class="muted">${esc(t("Thư mục"))}:</span> <code>${esc(b.dir)}</code></p>
+${b.error ? `<div class="warn small">${esc(b.error)}</div>` : ""}${button("/settings/backup", esc(t(b.running ? "Đang sao lưu…" : "Sao lưu ngay")), "btn on")}</section>`;
+}
+
+export function settingsPage(settings: SettingView[], opts: { demo: boolean; mock: boolean; ok?: string; error?: string; backup?: BackupInfo }): string {
   const rows = settings
     .map(
       (s) => `<label class="setting"><span class="s-head"><b>${esc(t(s.label))}</b><span class="pill ${s.set ? "ok" : "off"}">${esc(t(s.set ? "Đã có" : "Chưa có"))}</span></span><small class="muted">${esc(t(s.help))}</small>
@@ -664,8 +675,8 @@ export function settingsPage(settings: SettingView[], opts: { demo: boolean; moc
 ${flash(opts.ok, opts.error)}
 ${opts.demo ? `<div class="notice">${esc(t("Đang xem dữ liệu mẫu nên không lưu cài đặt."))}</div>` : ""}
 <div class="settings-grid"><form class="card form" method="post" action="/settings"><h2>${esc(t("Khoá kết nối"))}</h2>${rows}<button class="btn on"${opts.demo ? " disabled" : ""}>${esc(t("Lưu"))}</button></form>
-<section class="card"><h2>${esc(t("Thứ tự thiết lập"))}</h2><ol class="flow vertical"><li><b>1</b><span>${esc(t("Nhập Mã ứng dụng Meta và Khoá bí mật"))}</span></li><li><b>2</b><span>${t('Vào <a href="/channels">Kênh</a>, bấm Kết nối Facebook, chọn Trang')}</span></li><li><b>3</b><span>${esc(t("Nhập khoá AI Muse để AI viết và vẽ"))}</span></li><li><b>4</b><span>${t('Vào <a href="/style">Phong cách</a> chọn kiểu vẽ, rồi vẽ bản chuẩn cho nhân vật')}</span></li></ol>
-${opts.mock ? `<p class="muted small">${esc(t("AI đang ở chế độ vẽ thử: ảnh là mẫu, không tốn lượt."))}</p>` : ""}</section></div>`;
+<div class="settings-side"><section class="card"><h2>${esc(t("Thứ tự thiết lập"))}</h2><ol class="flow vertical"><li><b>1</b><span>${esc(t("Nhập Mã ứng dụng Meta và Khoá bí mật"))}</span></li><li><b>2</b><span>${t('Vào <a href="/channels">Kênh</a>, bấm Kết nối Facebook, chọn Trang')}</span></li><li><b>3</b><span>${esc(t("Nhập khoá AI Muse để AI viết và vẽ"))}</span></li><li><b>4</b><span>${t('Vào <a href="/style">Phong cách</a> chọn kiểu vẽ, rồi vẽ bản chuẩn cho nhân vật')}</span></li></ol>
+${opts.mock ? `<p class="muted small">${esc(t("AI đang ở chế độ vẽ thử: ảnh là mẫu, không tốn lượt."))}</p>` : ""}</section>${backupCard(opts.backup)}</div></div>`;
   return layout(t("Cài đặt"), "/settings", body);
 }
 

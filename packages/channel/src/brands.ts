@@ -7,7 +7,7 @@
  * names of the .env variables that hold each account's ids and tokens.
  */
 
-import { readFileSync } from "node:fs";
+import { appendFileSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { parse } from "yaml";
 import type { GraphClient } from "./graph.js";
@@ -93,6 +93,54 @@ export function findBrand(brands: Brand[], id: string): Brand {
 
 /** The brand of a character, if it has one. */
 export const brandOfCharacter = (brands: Brand[], slug: string) => brands.find((b) => b.kind === "character" && b.character === slug);
+
+/**
+ * Give a character its own brand, so it shows on the Kênh page as soon as it exists.
+ * Every channel starts as "planned" (no account yet); nothing is posted until someone
+ * connects a Page and turns it on. The block is appended, so the file's comments stay.
+ * Returns the new brand id, or null when the character already has a brand.
+ */
+export function addCharacterBrand(c: { slug: string; name: string; tagline?: string }, file = BRANDS_FILE): string | null {
+  const text = readFileSync(file, "utf8");
+  const brands = parseBrands(text);
+  if (brandOfCharacter(brands, c.slug)) return null;
+  const base =
+    c.name
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/đ/gi, "d")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "") || c.slug;
+  let id = base;
+  for (let n = 2; brands.some((b) => b.id === id); n++) id = `${base}-${n}`;
+  const suffix = id.toUpperCase().replace(/-/g, "_");
+  const q = (v: string) => JSON.stringify(v);
+  const block = [
+    "",
+    `  - id: ${id}`,
+    `    name: ${q(c.name)}`,
+    "    kind: character",
+    `    character: ${c.slug}`,
+    ...(c.tagline ? [`    tagline: ${q(c.tagline)}`] : []),
+    "    posts: lead",
+    "    channels:",
+    "      - platform: facebook",
+    "        status: planned",
+    `        env: { pageId: FB_PAGE_ID_${suffix}, token: FB_PAGE_TOKEN_${suffix} }`,
+    "      - platform: instagram",
+    "        status: planned",
+    `        env: { userId: IG_USER_ID_${suffix} }`,
+    "      - platform: threads",
+    "        status: planned",
+    `        env: { userId: THREADS_USER_ID_${suffix}, token: THREADS_TOKEN_${suffix}, username: THREADS_USERNAME_${suffix} }`,
+    "",
+  ].join("\n");
+  // Check the result parses before writing it.
+  parseBrands(text.replace(/\s*$/, "\n") + block);
+  appendFileSync(file, (text.endsWith("\n") ? "" : "\n") + block);
+  return id;
+}
 
 /** Every .env name a channel needs. Instagram also needs its brand's Page token. */
 export function requiredEnv(brand: Brand, channel: Channel): string[] {

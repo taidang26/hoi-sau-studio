@@ -9,8 +9,9 @@ import { extname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import sharp from "sharp";
 import { BOLD_FONT_PATH, DEFAULT_FONT_PATH } from "@hoi-sau/svg-text";
-import type { Conversation, InboxMessage, Platform } from "@hoi-sau/channel";
+import { addCharacterBrand, type Conversation, type InboxMessage, type Platform } from "@hoi-sau/channel";
 import { NeedsSetup, type Accounts } from "./accounts.js";
+import type { Backup } from "./backup.js";
 import { editCharacterPage, newCharacterPage, saveCharacter } from "./characters.js";
 import { appendMessage, brandArtDir, loadState, toggleDirection, type Paths } from "./data.js";
 import { isSignedIn, passwordMatches, sessionCookie } from "./auth.js";
@@ -54,6 +55,8 @@ const TYPES: Record<string, string> = {
 };
 
 export interface DashboardOptions extends Paths {
+  /** Copies of what lives only on this machine, shown and run from Settings. */
+  backup?: Backup;
   channel: () => ChannelStatus;
   /** When set, every page but /login and /static asks for it. Set it whenever the dashboard is online. */
   password?: string;
@@ -225,6 +228,14 @@ const errText = (e: unknown) => friendly(e instanceof Error ? e.message : String
 export function handler(opts: DashboardOptions) {
   const page = (res: ServerResponse, status: number, html: string) =>
     send(res, status, sizedImages(opts.banner ? html.replace("<main>", `<main><div class="notice demo-note">${t(opts.banner)}</div>`) : html));
+  /** A new character gets its own channel on the Kênh page right away (every account still to connect). */
+  const withBrand = (slug: string) => {
+    if (opts.brandsFile) {
+      const p = loadProfile(slug, charactersDir());
+      addCharacterBrand({ slug, name: p.name, tagline: p.office_type }, opts.brandsFile);
+    }
+    return slug;
+  };
   const loadProfileSafe = (slug: string) => {
     try {
       return loadProfile(slug, charactersDir());
@@ -294,6 +305,14 @@ export function handler(opts: DashboardOptions) {
     }
 
     // Settings and accounts.
+    if (path === "/settings/backup" && req.method === "POST") {
+      if (!opts.backup) return redirect(res, "/settings");
+      try {
+        return redirect(res, withNote("/settings", "ok", t("Đã sao lưu: {name}", { name: opts.backup.run() })));
+      } catch (e) {
+        return redirect(res, withNote("/settings", "err", (e as Error).message));
+      }
+    }
     if (path === "/settings") {
       if (req.method === "POST") {
         if (!acc || opts.demo) return redirect(res, "/settings");
@@ -305,7 +324,7 @@ export function handler(opts: DashboardOptions) {
         }
       }
       const settings = acc?.settings() ?? [];
-      return page(res, 200, settingsPage(settings, { demo: Boolean(opts.demo || !acc), mock: Boolean(opts.studio?.opts.mock), ok, error: err }));
+      return page(res, 200, settingsPage(settings, { demo: Boolean(opts.demo || !acc), mock: Boolean(opts.studio?.opts.mock), ok, error: err, backup: opts.backup?.info() }));
     }
     if (path === "/connect/facebook") {
       const brand = q.get("brand") ?? "hoi-sau";
@@ -374,7 +393,13 @@ export function handler(opts: DashboardOptions) {
           if (!files.length) throw new Error(t("Chưa chọn ảnh."));
           let added = 0;
           for (const f of files) if (rs.add(brand, Buffer.from(await f.arrayBuffer()), { from: "upload", link: link || undefined }).added) added++;
-          return redirect(res, withNote(to, "ok", added ? t("Đã thêm {n} ảnh. Bấm “AI đọc tất cả” để rút công thức.", { n: added }) : t("Ảnh này đã có trong tư liệu.")));
+          if (!added) return redirect(res, withNote(to, "ok", t("Ảnh này đã có trong tư liệu.")));
+          // With the AI ready, reading starts at once: one drop, and the recipes follow.
+          if (!opts.studio || opts.studio.ready) {
+            rs.readNew(brand);
+            return redirect(res, withNote(to, "ok", t("Đã thêm {n} ảnh. AI đang đọc để rút công thức.", { n: added })));
+          }
+          return redirect(res, withNote(to, "ok", t("Đã thêm {n} ảnh. Thêm khoá AI Muse ở Cài đặt để AI đọc.", { n: added })));
         }
         const form = await readForm(req);
         if (path === "/research/instagram") {
@@ -416,7 +441,7 @@ export function handler(opts: DashboardOptions) {
     // Characters: the form works without Muse; drawing and the AI writer need Studio.
     if (path === "/characters/new/manual" && req.method === "POST") {
       try {
-        return redirect(res, withNote(`/characters/${saveCharacter(await readForm(req), charactersDir())}`, "ok", t("Đã tạo nhân vật. Bước tiếp: vẽ bản chuẩn.")));
+        return redirect(res, withNote(`/characters/${withBrand(saveCharacter(await readForm(req), charactersDir()))}`, "ok", t("Đã tạo nhân vật. Bước tiếp: vẽ bản chuẩn.")));
       } catch (e) {
         return fail("/characters/new?manual=1", e);
       }
@@ -440,7 +465,7 @@ export function handler(opts: DashboardOptions) {
       if (path === "/characters/new") {
         const idea = (await readForm(req)).get("idea") ?? "";
         try {
-          return redirect(res, withNote(`/characters/${await st.newCharacter(idea)}`, "ok", t("Đã tạo nhân vật. Bước tiếp: vẽ bản chuẩn.")));
+          return redirect(res, withNote(`/characters/${withBrand(await st.newCharacter(idea))}`, "ok", t("Đã tạo nhân vật. Bước tiếp: vẽ bản chuẩn.")));
         } catch (e) {
           return fail("/characters/new", e);
         }

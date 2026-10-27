@@ -11,10 +11,11 @@
 import { cpSync, existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { DEFAULT_GRAPH_VERSION, GraphClient, sendReply } from "@hoi-sau/channel";
+import { addCharacterBrand, BRANDS_FILE, DEFAULT_GRAPH_VERSION, GraphClient, sendReply } from "@hoi-sau/channel";
 import { DEMO, demoGraph } from "@hoi-sau/channel/dist/demo.js";
 import { CHARACTERS_DIR, createEpisode, EPISODES_DIR, listCharacters, listEpisodes, loadProfile, mockSparkTransport, MuseSpark, openStudio, runEpisode, SERIES_DIR } from "@hoi-sau/studio";
 import { Accounts } from "./accounts.js";
+import { Backup } from "./backup.js";
 import { demoAnalyst, Research, seedResearch } from "./research.js";
 import { t } from "./i18n.js";
 import { seedLessons, writeDemoData } from "./seed.js";
@@ -42,6 +43,16 @@ if (demo) {
   paths.env = Object.fromEntries(
     ["FB_PAGE_ID", "FB_PAGE_TOKEN", "IG_USER_ID", "THREADS_USER_ID", "THREADS_TOKEN", "THREADS_USERNAME", "FB_PAGE_ID_LOLO", "FB_PAGE_TOKEN_LOLO", "IG_USER_ID_LOLO", "FB_PAGE_ID_POPPY", "FB_PAGE_TOKEN_POPPY"].map((k) => [k, "demo"]),
   );
+}
+
+if (!demo) {
+  // Every character has a channel on the Kênh page, including ones made from the command line.
+  paths.brandsFile = BRANDS_FILE;
+  for (const slug of listCharacters(CHARACTERS_DIR)) {
+    const p = loadProfile(slug, CHARACTERS_DIR);
+    const id = addCharacterBrand({ slug, name: p.name, tagline: p.office_type }, BRANDS_FILE);
+    if (id) console.log(t("Đã thêm kênh {id} cho nhân vật {name}.", { id, name: p.name }));
+  }
 }
 
 // Demo mode answers through the fake Graph API, so the 24-hour rule and errors behave like the real thing.
@@ -109,9 +120,19 @@ if (!demo && !password && !["127.0.0.1", "localhost", "::1"].includes(host)) {
   console.error(`Refusing to serve real data on ${host} without DASHBOARD_PASSWORD.`);
   process.exit(1);
 }
+// Real data only: what is not in git gets copied every 6 hours (Settings shows it and can run it now).
+const backup = demo
+  ? undefined
+  : new Backup({
+      sources: [paths.dataDir, studioDirs.episodesDir, studioDirs.charactersDir, join(studioDirs.seriesDir, "story-memory.json"), join(ROOT, "output")],
+      dir: () => process.env.BACKUP_DIR || join(ROOT, "..", "HoiSau_Backup"),
+    });
+backup?.schedule((line) => console.log(line));
+
 await startDashboard(
   {
     ...paths,
+    backup,
     password,
     inbox,
     studio,

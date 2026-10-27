@@ -581,7 +581,8 @@ export function handler(opts: DashboardOptions) {
     }
     if (path.startsWith("/media/")) {
       const file = inside(opts.runsDir, path.slice("/media/".length));
-      return file ? sendFile(req, res, file) : send(res, 404, notFoundPage());
+      // ?face cuts the front view from a sheet that is drawn but not locked yet.
+      return file ? sendFile(req, res, file, url.searchParams.has("face") ? "face" : undefined) : send(res, 404, notFoundPage());
     }
     if (path.startsWith("/brand-art/")) {
       const file = inside(st?.brandArtDir ?? brandArtDir(opts), path.slice("/brand-art/".length));

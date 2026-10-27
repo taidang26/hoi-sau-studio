@@ -1,7 +1,7 @@
 /**
  * Puts the talk video together: every frame is the right gesture picture
- * (mouth and eyes patched in), cropped by the moving camera, with the caption
- * and title laid on top, streamed into ffmpeg with the voice track.
+ * (mouth and eyes patched in), shown whole on a soft blurred fill of itself,
+ * with the caption and title laid on top, streamed into ffmpeg with the sound.
  */
 
 import { spawn } from "node:child_process";
@@ -12,12 +12,17 @@ import { ffmpeg } from "@hoi-sau/motion";
 import type { TalkArt } from "./art.js";
 import { CaptionCache, titleOverlay, type Overlay } from "./captions.js";
 import { pasteOval, readRgb, type Raster } from "./patch.js";
-import { CANVAS, cropWindow, FPS, OUT, type Chunk, type Frame } from "./timeline.js";
+import { FPS, OUT, PICTURE, type Chunk, type Frame } from "./timeline.js";
 import { wavBytes, type Voice } from "./voice.js";
 
-/** A picture scaled and centre-cropped to the canvas. */
-async function toCanvas(png: Buffer): Promise<Raster> {
-  const { data, info } = await sharp(png).removeAlpha().resize(CANVAS.w, CANVAS.h, { fit: "cover" }).raw().toBuffer({ resolveWithObject: true });
+/**
+ * A talk picture laid out in the 9:16 frame: whole and full width, on a
+ * blurred, darkened copy of itself filling the bands above and below.
+ */
+async function toFrame(png: Buffer): Promise<Raster> {
+  const fill = await sharp(png).removeAlpha().resize(OUT.w, OUT.h, { fit: "cover" }).blur(40).modulate({ brightness: 0.7 }).png().toBuffer();
+  const pic = await sharp(png).removeAlpha().resize(PICTURE.w, PICTURE.h, { fit: "cover" }).png().toBuffer();
+  const { data, info } = await sharp(fill).composite([{ input: pic, left: PICTURE.x, top: PICTURE.y }]).removeAlpha().raw().toBuffer({ resolveWithObject: true });
   return { data, width: info.width, height: info.height };
 }
 
@@ -41,30 +46,11 @@ export class Pictures {
     if (mouth && blink && g.mouth && g.blink) {
       // Mouth and blink pictures are both lined up with the gesture, so the mouth oval drops straight onto the blink frame.
       const both = pasteOval(await readRgb(read(g.blink.file)), await readRgb(read(g.mouth.file)), g.mouth.box);
-      return toCanvas(await sharp(both.data, { raw: { width: both.width, height: both.height, channels: 3 } }).png().toBuffer());
+      return toFrame(await sharp(both.data, { raw: { width: both.width, height: both.height, channels: 3 } }).png().toBuffer());
     }
     const f = mouth && g.mouth ? g.mouth.file : blink && g.blink ? g.blink.file : g.file;
-    return toCanvas(read(f));
+    return toFrame(read(f));
   }
-}
-
-/** The camera's crop of the canvas at output size, with sub-pixel motion. */
-export async function shoot(img: Raster, frame: Frame): Promise<Buffer> {
-  const win = cropWindow(frame.camera);
-  const left = Math.floor(win.x);
-  const top = Math.floor(win.y);
-  const width = Math.min(img.width - left, Math.ceil(win.w) + 2);
-  const height = Math.min(img.height - top, Math.ceil(win.h) + 2);
-  const z = OUT.w / win.w;
-  const part = await sharp(img.data, { raw: { width: img.width, height: img.height, channels: 3 } }).extract({ left, top, width, height }).raw().toBuffer();
-  const scaled = await sharp(part, { raw: { width, height, channels: 3 } })
-    .affine([z, 0, 0, z], { odx: -(win.x - left) * z, ody: -(win.y - top) * z, interpolator: "bicubic" })
-    .raw()
-    .toBuffer({ resolveWithObject: true });
-  return sharp(scaled.data, { raw: { width: scaled.info.width, height: scaled.info.height, channels: 3 } })
-    .extract({ left: 0, top: 0, width: OUT.w, height: OUT.h })
-    .raw()
-    .toBuffer();
 }
 
 async function compose(base: Buffer, overlays: Overlay[]): Promise<Buffer> {
@@ -123,10 +109,10 @@ export async function renderTalk(r: RenderInput): Promise<{ video: string; secon
 
   const frameAt = async (f: number) => {
     const fr = r.frames[f];
-    const base = await shoot(await pics.get(fr.gesture, fr.mouth, fr.blink), fr);
+    const base = (await pics.get(fr.gesture, fr.mouth, fr.blink)).data;
     const overlays: Overlay[] = [];
     if (title) overlays.push(title);
-    if (fr.chunk !== undefined && fr.word !== undefined) overlays.push(await captions.get(fr.chunk, fr.word, fr.age));
+    if (fr.chunk !== undefined && fr.word !== undefined) overlays.push(await captions.get(fr.chunk, fr.word));
     return compose(base, overlays);
   };
   // A few frames in flight at once; written strictly in order.

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { align, pasteOval, type Raster } from "./patch.js";
 import { mockScript, scriptProblems, syllables } from "./script.js";
-import { blinkTrack, chunkWords, cropWindow, CANVAS, wordTimes } from "./timeline.js";
+import { blinkTrack, chunkWords, wordTimes } from "./timeline.js";
 import { hummedLine, joinLines, mouthTrack, RATE, wavBytes } from "./voice.js";
 
 test("words share the line's time, with a pause after punctuation", () => {
@@ -36,14 +36,6 @@ test("blinks are short and spaced", () => {
   const starts = b.flatMap((x, i) => (x && !b[i - 1] ? [i] : []));
   assert.ok(starts.length >= 4 && starts.length <= 9);
   for (let i = 1; i < starts.length; i++) assert.ok(starts[i] - starts[i - 1] >= 60);
-});
-
-test("the camera crop stays inside the canvas", () => {
-  for (const zoom of [1, 1.12, 1.3])
-    for (const cx of [0, 640, 2000]) {
-      const w = cropWindow({ zoom, cx, cy: 3000 });
-      assert.ok(w.x >= 0 && w.y >= 0 && w.x + w.w <= CANVAS.w && w.y + w.h <= CANVAS.h);
-    }
 });
 
 test("an edit drawn a few pixels off is lined up before its feature is pasted", () => {

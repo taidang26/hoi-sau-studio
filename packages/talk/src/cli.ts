@@ -20,7 +20,7 @@ import { renderTalk, silentCopy } from "./render.js";
 import { gateMouth, linesFromWords, readSound, soundVoice, stageLines, timeLyrics, toWords, voicedRegions } from "./sync.js";
 import { MuseTranscribe, type TimedWord } from "./transcribe.js";
 import { checkScript, writeScript, type TalkScript } from "./script.js";
-import { buildTimeline, CANVAS, FPS } from "./timeline.js";
+import { buildTimeline, FPS } from "./timeline.js";
 import { mouthTrack, voiceFor } from "./voice.js";
 
 const ROOT = fileURLToPath(new URL("../../..", import.meta.url));
@@ -78,17 +78,12 @@ async function make(slug: string, o: MakeOptions) {
 
   const voice = await voiceFor(script.lines.map((l) => l.text), o.out, { mock: o.mock, recorded: o.voice });
   const frames = Math.ceil((voice.pcm.length / voice.rate) * FPS);
-  const scale = CANVAS.h / 1536;
   const { frames: timeline, chunks } = buildTimeline({
     lines: script.lines,
     voice,
     mouth: mouthTrack(voice, FPS, frames),
     canMouth: (g) => !!art.gestures[g]?.mouth,
     canBlink: (g) => !!art.gestures[g]?.blink,
-    face: (g) => {
-      const b = art.gestures[g]?.mouth?.box;
-      return b ? { x: (b.x + b.w / 2) * scale, y: (b.y + b.h / 2) * scale - 70 } : undefined;
-    },
     frames,
   });
   const out = join(o.out, `${slug}.mp4`);
@@ -160,17 +155,12 @@ async function sync(slug: string, media: string, o: SyncOptions) {
 
   const voice = soundVoice(pcm, lines);
   const frames = Math.ceil((pcm.length / voice.rate) * FPS);
-  const scale = CANVAS.h / 1536;
   const { frames: timeline, chunks } = buildTimeline({
     lines: script.lines,
     voice,
     mouth: gateMouth(mouthTrack(voice, FPS, frames), lines, FPS),
     canMouth: (g) => !!art.gestures[g]?.mouth,
     canBlink: (g) => !!art.gestures[g]?.blink,
-    face: (g) => {
-      const b = art.gestures[g]?.mouth?.box;
-      return b ? { x: (b.x + b.w / 2) * scale, y: (b.y + b.h / 2) * scale - 70 } : undefined;
-    },
     frames,
     words: lines.map(toWords),
   });

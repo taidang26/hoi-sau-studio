@@ -34,6 +34,7 @@ import { type ChatMessage, type MuseSpark, S } from "./muse-spark.js";
 import { CHARACTERS_DIR, type Profile } from "./profile.js";
 import { iconLine } from "./prompts.js";
 import { type SeriesStyle, styleReference, styleText } from "./style.js";
+import { officeBrief, officePanelText, type Office } from "./office.js";
 
 export const EPISODES_DIR = fileURLToPath(new URL("../../../episodes", import.meta.url));
 
@@ -123,6 +124,8 @@ export interface StudioContext {
   bible: SeriesBible;
   /** series/style.yaml; without it panels use the lead's look.style. */
   style?: SeriesStyle;
+  /** series/office.yaml: who sits where and the background coworkers. */
+  office?: Office;
   profiles: Map<string, Profile>;
   dir?: string;
   charactersDir?: string;
@@ -410,6 +413,7 @@ export function episodePanelPrompt(ctx: StudioContext, ep: EpisodeSpec, sp: Scri
     `${bp.shot} shot, ${bp.angle}. ${bp.composition}`,
     who,
     cameo && sp.action.includes(cameo.name) ? `Also a coworker: ${cameo.description}.` : "",
+    ctx.office ? officePanelText(ctx.office, bp.staging.map((st) => st.character)) : "",
     `Match the character sheets and pose sheets exactly. Single comic panel. Style: ${style} Cheerful lighting that fits the scene (daytime unless the composition says otherwise), never gloomy. The scene fills the whole panel edge to edge; the top third shows soft, simple background (wall, window, ceiling) with no busy detail, ready for dialogue added later, never a blank band or a separate strip of plain colour, and keep every character away from the very top and bottom edges (the panel is trimmed slightly there). No text, no letters, no speech bubbles, no thought clouds, no captions, no symbols floating above heads.`,
   ]
     .filter(Boolean)
@@ -504,7 +508,12 @@ export async function runStep(ctx: StudioContext, id: string, step: EpisodeStep)
       const raw = await ctx.spark.json<Storyboard>(
         "storyboard",
         storyboardSchema(panelRange(ep, ctx.bible)),
-        writerMessages(ctx, ep, "Storyboard every script panel: shot size, angle, composition for the illustrator, and where each character stands. Vary shots; end on a close-up when it lands the joke.", { script }),
+        writerMessages(
+          ctx,
+          ep,
+          "Storyboard every script panel: shot size, angle, composition for the illustrator, and where each character stands. Vary shots; end on a close-up when it lands the joke. Follow the office floor plan: characters at their desks sit in their own seats, and the windows, meeting room and pantry stay where the plan puts them.",
+          ctx.office ? { script, office: officeBrief(ctx.office) } : { script },
+        ),
       );
       return writeStep(id, "storyboard", sanitizeBoard(raw, script), dir);
     }

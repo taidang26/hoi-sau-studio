@@ -231,3 +231,18 @@ test("a prompt the content filter refuses is retried once with gentler wording",
   const failing = { generate: async () => { throw new MuseImageError("Muse Image 401: bad key", 401); } };
   await assert.rejects(generateSoftly(failing, { prompt: "x" }), /401/);
 });
+
+test("the office floor plan seats every character once and reaches the prompts", async () => {
+  const { loadOffice, officeBrief, officePanelText, officePlanSvg } = await import("./office.js");
+  const office = loadOffice()!;
+  assert.ok(office, "series/office.yaml exists");
+  const seated = office.desks.map((d) => d.character).sort();
+  assert.deepEqual(seated, ["ca-noc", "cu-li", "sao-la", "te-te"]);
+  assert.match(officeBrief(office), /Lolo's desk/);
+  const text = officePanelText(office, ["cu-li"]);
+  assert.match(text, /pothos/);
+  assert.doesNotMatch(text, /Poppy's desk/, "only the seats of characters on stage");
+  assert.match(text, /small animal coworkers sitting and working/);
+  const svg = officePlanSvg(office, { "cu-li": "Lolo" });
+  assert.match(svg, />Lolo</);
+});

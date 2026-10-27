@@ -382,7 +382,13 @@ export function handler(opts: DashboardOptions) {
           if (!files.length) throw new Error(t("Chưa chọn ảnh."));
           let added = 0;
           for (const f of files) if (rs.add(brand, Buffer.from(await f.arrayBuffer()), { from: "upload", link: link || undefined }).added) added++;
-          return redirect(res, withNote(to, "ok", added ? t("Đã thêm {n} ảnh. Bấm “AI đọc tất cả” để rút công thức.", { n: added }) : t("Ảnh này đã có trong tư liệu.")));
+          if (!added) return redirect(res, withNote(to, "ok", t("Ảnh này đã có trong tư liệu.")));
+          // With the AI ready, reading starts at once: one drop, and the recipes follow.
+          if (!opts.studio || opts.studio.ready) {
+            rs.readNew(brand);
+            return redirect(res, withNote(to, "ok", t("Đã thêm {n} ảnh. AI đang đọc để rút công thức.", { n: added })));
+          }
+          return redirect(res, withNote(to, "ok", t("Đã thêm {n} ảnh. Thêm khoá AI Muse ở Cài đặt để AI đọc.", { n: added })));
         }
         const form = await readForm(req);
         if (path === "/research/instagram") {

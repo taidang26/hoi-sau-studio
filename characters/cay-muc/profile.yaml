@@ -5,6 +5,7 @@
 # flashy street style, a white cat); it is never a portrait of a real person.
 slug: cay-muc
 name: Bino
+name_vi: Mực
 species: binturong (cầy mực)
 status: candidate
 office_type: Sếp tổng chịu chơi, tim mềm hơn vẻ ngoài
@@ -16,7 +17,7 @@ fear: Con mèo trắng ghét ông và thích Lolo hơn
 contradiction: Trông như trùm khu phố với dây chuyền vàng và kính mát, nhưng sợ nhất là làm con mèo buồn và khóc khi xem quảng cáo Tết
 life:
   - 52 tuổi, mở công ty từ một quán net cũ, vẫn kể chuyện đó trong mọi buổi họp toàn công ty
-  - Con mèo trắng tên Bông là "trợ lý" duy nhất ông tin, nó ngồi ghế giám đốc nhiều hơn ông
+  - Con mèo trắng tên Tuyết là "trợ lý" duy nhất ông tin, nó ngồi ghế giám đốc nhiều hơn ông
   - Người toả mùi bỏng ngô bơ (cầy mực thật cũng vậy), cả tầng biết ông sắp tới trước khi thang máy kêu
   - Mỗi sáng thứ Hai tự tay mang xôi lên cho cả tầng, rồi giao deadline ngay sau đó
 comic_engine:
@@ -86,7 +87,7 @@ voice:
     - "Việc nhỏ thôi em."
     - "Hồi anh mở quán net…"
   sample_lines:
-    - "Bông duyệt rồi, anh duyệt theo."
+    - "Tuyết dẫm lên rồi, anh ký luôn."
     - "Không gấp, mai có là được."
   do: [nói to, hứa thưởng, hỏi chuyện con mèo trước chuyện công việc]
   dont: [quát mắng, nhớ đúng tên ai, nói chuyện tiền thật]

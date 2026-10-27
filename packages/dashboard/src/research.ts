@@ -471,7 +471,7 @@ export function researchPage(r: Research, v: ResearchView): string {
 
   const add = `<div class="grid2 research-add">
 <form class="card form drop" method="post" action="/research/upload?brand=${esc(v.brand)}" enctype="multipart/form-data"><h2>🖼 ${esc(t("Thêm ảnh"))}</h2>
-<label class="dropzone"><input type="file" name="files" accept="image/png,image/jpeg,image/webp" multiple required><span>${esc(t("Bấm để chọn ảnh, hoặc kéo ảnh vào đây"))}</span><small class="muted">${esc(t("Ảnh chụp màn hình bài đăng cũng được"))}</small></label>
+<label class="dropzone"><input type="file" name="files" accept="image/png,image/jpeg,image/webp" multiple required onchange="this.nextElementSibling.textContent=this.files.length?${esc(JSON.stringify(t("Đã chọn {n} ảnh")))}.replace('{n}',this.files.length):${esc(JSON.stringify(t("Bấm để chọn ảnh, hoặc kéo ảnh vào đây")))}"><span class="drop-say">${esc(t("Bấm để chọn ảnh, hoặc kéo ảnh vào đây"))}</span><small class="muted">${esc(t("Ảnh chụp màn hình bài đăng cũng được"))}</small></label>
 <label>${esc(t("Link bài gốc (để ghi nguồn)"))}<input name="link" type="url" placeholder="https://"></label>
 <div class="row-actions"><button class="btn on">${esc(t("Thêm vào tư liệu"))}</button></div></form>
 <form class="card form" method="post" action="/research/instagram?brand=${esc(v.brand)}"><h2>◎ ${esc(t("Lấy từ Instagram"))}</h2>

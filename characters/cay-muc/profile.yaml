@@ -1,0 +1,98 @@
+# The company's director, above Sếp Cú and the team. The slug is the species and never changes; the name can.
+# Fields under `look` are English because they go into Muse Image prompts.
+# Names are rarely said in dialogue: the team calls him "anh Giám đốc" or "sếp tổng".
+# The look is a cartoon animal built from a few traits (chubby, a big moustache,
+# flashy street style, a white cat); it is never a portrait of a real person.
+slug: cay-muc
+name: Bino
+species: binturong (cầy mực)
+status: candidate
+office_type: Sếp tổng chịu chơi, tim mềm hơn vẻ ngoài
+core_gag: Bước ra từ thang máy là cả tầng đóng băng, nhưng ông chỉ lên hỏi ai cho mèo ăn chưa
+role: Giám đốc kiêm người sáng lập Công Ty TNHH Hồi Sau, ngồi tầng 8, thỉnh thoảng xuống tầng 7
+
+want: Công ty được lên báo vì "văn hoá trẻ trung", để khoe với hội bạn cũ
+fear: Con mèo trắng ghét ông và thích Lolo hơn
+contradiction: Trông như trùm khu phố với dây chuyền vàng và kính mát, nhưng sợ nhất là làm con mèo buồn và khóc khi xem quảng cáo Tết
+life:
+  - 52 tuổi, mở công ty từ một quán net cũ, vẫn kể chuyện đó trong mọi buổi họp toàn công ty
+  - Con mèo trắng tên Bông là "trợ lý" duy nhất ông tin, nó ngồi ghế giám đốc nhiều hơn ông
+  - Người toả mùi bỏng ngô bơ (cầy mực thật cũng vậy), cả tầng biết ông sắp tới trước khi thang máy kêu
+  - Mỗi sáng thứ Hai tự tay mang xôi lên cho cả tầng, rồi giao deadline ngay sau đó
+comic_engine:
+  - 'Tiếng "ting" thang máy: cả tầng đứng hình theo kiểu cường điệu, Pango cuộn tròn, Poppy phồng lên'
+  - 'Con mèo trắng làm biểu cảm thật của ông: ông cười, mèo lườm; ông lườm, mèo ngáp'
+  - 'Mùi bỏng ngô bay trước, vẽ thành vệt khói thơm chui qua khe cửa'
+  - 'Ý tưởng "nhỏ thôi" của ông luôn to bằng cả mùa Tết'
+relationships:
+  - { with: te-te, dynamic: 'Gọi Pango là "chú em lâu năm", giao việc qua Pango; Pango cuộn tròn ngay khi thấy ông' }
+  - { with: cu-li, dynamic: 'Gọi nhầm tên Lolo mỗi lần một kiểu, nhưng con mèo chỉ chịu nằm trong lòng Lolo' }
+  - { with: ca-noc, dynamic: 'Duyệt chi bằng câu "cứ làm đi em", rồi bị chị Poppy trả lại hoá đơn như mọi người' }
+  - { with: sao-la, dynamic: 'Rất thích tranh của Uni và đòi treo ở sảnh, Uni chỉ muốn trốn sau chậu cây' }
+
+look:
+  style: flat 2D comic, thick black outline, flat colors, minimal shading, simple shapes
+  description: >-
+    A big, very chubby binturong (bearcat) boss standing upright, round as a
+    barrel, with shaggy charcoal-black fur and a pale grey face. Long white
+    whiskers grow into a huge, droopy walrus-style moustache that hides his
+    mouth. Small cheerful eyes, round ears with white tips, a long bushy black
+    tail. Wears a black snapback cap a little too small for his head, a bright
+    orange-red sports t-shirt stretched over the belly, a thick gold chain with a
+    big gold pendant, chunky gold rings and a gold bracelet. Almost always
+    cradles a fluffy white cat in one arm, the cat looking unimpressed.
+  signature:
+    - very chubby barrel-shaped body with shaggy charcoal-black fur and a long bushy tail
+    - huge droopy white walrus moustache made of long whiskers, hiding the mouth
+    - black snapback cap, bright orange-red sports t-shirt over a round belly
+    - thick gold chain with a big gold pendant, chunky gold rings
+    - a fluffy white cat in his arm, looking unimpressed
+  palette:
+    - { name: fur, hex: "#2E2B2A" }
+    - { name: face, hex: "#B9B3AC" }
+    - { name: moustache, hex: "#F4F1EA" }
+    - { name: t-shirt, hex: "#E8542F" }
+    - { name: gold, hex: "#E3B23C" }
+    - { name: cap, hex: "#1E1E1E" }
+  props: [fluffy white cat, bag of sticky rice for the team, big gold watch, tiny espresso cup]
+  expressions:
+    default: relaxed and pleased with himself, moustache curled up at the ends
+    stressed: moustache drooping all the way down, sweat drops under the cap
+    happy: moustache lifted into a huge grin, eyes squeezed shut, gold chain bouncing
+    moved: big cartoon tears into the moustache while the cat looks away
+    big_idea: finger pointing at the sky, eyes sparkling, cat sighing
+  # The core gag as a picture, for the image model.
+  gag_scene: the lift doors open on the director holding his white cat; behind him the whole open office has frozen mid-motion, one coworker curled into a ball, one puffed up round
+  # The one item readers know this character by at thumbnail size. Every panel draws it, a little oversized.
+  icon: the huge white walrus moustache and the white cat in his arm
+  character_sheet: null   # set after the Muse Image test; path under output/characters/cay-muc/
+
+personality:
+  - Hào phóng, ồn ào, thích khoe nhưng không ác
+  - Nghĩ to, nói to, giao việc to vào phút chót
+  - Mềm lòng với mèo, với trẻ con và với quảng cáo Tết
+  - Nhớ chuyện ngày khởi nghiệp hơn nhớ tên nhân viên
+  - Thật lòng tự hào về đội của mình, chỉ không biết nói ra
+
+voice:
+  register: Tiếng Việt, xưng "anh" với nhân viên, giọng sang sảng kiểu đại ca hiền
+  speech_pattern: Mở đầu bằng "Anh nói nhỏ thôi nhé", kết thúc bằng một việc rất to
+  catchphrases:
+    - "Việc nhỏ thôi em."
+    - "Hồi anh mở quán net…"
+  sample_lines:
+    - "Bông duyệt rồi, anh duyệt theo."
+    - "Không gấp, mai có là được."
+  do: [nói to, hứa thưởng, hỏi chuyện con mèo trước chuyện công việc]
+  dont: [quát mắng, nhớ đúng tên ai, nói chuyện tiền thật]
+
+never_says:
+  - Chửi thề, nói tục, xúc phạm người khác
+  - Đe doạ hay bắt nạt nhân viên; ông ồn nhưng không độc
+  - Chê ngoại hình, vùng miền, giới tính của bất kỳ ai
+  - Nhắc tên công ty, nhãn hàng, người thật có thật
+  - Nói chuyện chính trị, tôn giáo, cờ bạc
+  - Nhắc chuyện săn bắt, buôn bán hay nuôi nhốt cầy mực (loài dễ bị tổn thương, không đùa chuyện này)
+
+memory:
+  episodes: []

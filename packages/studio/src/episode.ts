@@ -46,7 +46,7 @@ import {
 import { addCanon, SERIES_DIR, type CanonFact, type SeriesBible } from "./bible.js";
 import { generateSoftly, type MuseImage } from "./muse-image.js";
 import { type ChatMessage, type MuseSpark, S } from "./muse-spark.js";
-import { CHARACTERS_DIR, type Profile } from "./profile.js";
+import { CHARACTERS_DIR, nameVi, type Profile } from "./profile.js";
 import { iconLine } from "./prompts.js";
 import { type SeriesStyle, styleReference, styleText } from "./style.js";
 import { officeBrief, officePanelText, type Office } from "./office.js";
@@ -252,7 +252,9 @@ function castBrief(ctx: StudioContext, slugs: string[]): string {
       const p = ctx.profiles.get(s)!;
       return {
         slug: p.slug,
-        name: p.name,
+        // The episode is written in Vietnamese, so it uses the Vietnamese name; the English one is kept for reference.
+        name: nameVi(p),
+        global_name: p.name,
         species: p.species,
         office_type: p.office_type,
         core_gag: p.core_gag,

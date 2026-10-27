@@ -557,4 +557,9 @@ export const EN: Record<string, string> = {
   "Mật khẩu": "Password",
   "Vào": "Enter",
   "Sai mật khẩu.": "Wrong password.",
+  // Names
+  "Tên tiếng Việt": "Vietnamese name",
+  "Dùng trong bài đăng và lời thoại tiếng Việt": "Used in Vietnamese posts and dialogue",
+  "Tên quốc tế": "Global name",
+  "Dùng cho bản tiếng Anh": "Used for the English version",
 };

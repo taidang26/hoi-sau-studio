@@ -15,45 +15,51 @@ import { join } from "node:path";
 import {
   BRANDS_FILE,
   DEFAULT_GRAPH_VERSION,
-  MAIN_BRAND,
+  FACEBOOK_REACH_METRICS,
   FileJournal,
   GraphClient,
   GraphError,
   InboxError,
+  MAIN_BRAND,
   THREADS_BASE_URL,
   brandTargets,
   channelStates,
   exchangeCodeForUserToken,
   exchangeLongLivedUserToken,
   exchangeThreadsLongLived,
+  facebookInsights,
   fetchConversations,
   fetchFacebookComments,
   fetchInstagramComments,
   fetchThreadsReplies,
   findBrand,
+  insightsPath,
   inspectToken,
+  instagramInsights,
   journalPath,
   listManagedPages,
   loadBrands,
   loadComments,
   loadInbox,
+  loadInsights,
   loginDialogUrl,
   mergeComments,
   mergeConversations,
+  mergeInsights,
   missingScopes,
+  parseJournalKey,
   publishEpisode,
   refreshThreadsToken,
   routeEpisode,
   approvalProblems,
-  fetchInsights,
   loadReplies,
-  saveInsights,
   saveReplies,
   sendApproved,
-  type PostInsights,
   saveComments,
   saveInbox,
+  saveInsights,
   sendReply,
+  threadsInsights,
   threadsProfile,
   waitForLoginCode,
   type Brand,
@@ -62,6 +68,7 @@ import {
   type Conversation,
   type EpisodePost,
   type Platform,
+  type PostMetrics,
   type Targets,
 } from "./index.js";
 import { demoGraph } from "./demo.js";
@@ -408,20 +415,6 @@ function accountsCache() {
   };
 }
 
-async function pullInsights() {
-  const targetsOf = accountsCache();
-  const found: PostInsights[] = [];
-  for (const post of await journal().published()) {
-    try {
-      found.push(await fetchInsights(targetsOf(post.brand), post.platform, post.postId));
-    } catch (e) {
-      console.warn(`${post.platform} ${post.postId}: ${(e as Error).message}`);
-    }
-  }
-  await saveInsights(dataDir(), found);
-  console.log(`Numbers for ${found.length} posts.`);
-}
-
 async function sendReplies() {
   const targetsOf = accountsCache();
   // Each comment goes out from the account that published its post.
@@ -456,6 +449,45 @@ async function reply(conversationId: string, text: string) {
   conversation.updatedAt = new Date().toISOString();
   await saveInbox(dataDir(), inbox);
   console.log(`Sent to ${conversation.customer.name}.`);
+}
+
+async function pullInsights() {
+  const cache = new Map<string, Targets>();
+  const targetsOf = (brand: Brand) => {
+    if (!cache.has(brand.id)) cache.set(brand.id, accounts(brand, true).targets);
+    return cache.get(brand.id)!;
+  };
+  const reachMetrics = process.env.FB_REACH_METRIC ? [process.env.FB_REACH_METRIC] : FACEBOOK_REACH_METRICS;
+
+  const fresh: PostMetrics[] = [];
+  const gaps = new Map<string, number>();
+  for (const [key, post] of await journal().publishedByKey()) {
+    const { format } = parseJournalKey(key);
+    const t = targetsOf(findBrand(brands(), post.brand ?? MAIN_BRAND));
+    const numbers =
+      post.platform === "facebook"
+        ? await facebookInsights(t.page, post.postId, reachMetrics)
+        : post.platform === "instagram"
+          ? await instagramInsights(t.page, post.postId, format === "reels-9x16")
+          : t.threads
+            ? await threadsInsights(t.threads.client, post.postId)
+            : undefined;
+    if (!numbers) continue;
+    const { missing, ...values } = numbers;
+    for (const m of missing) gaps.set(`${post.platform} ${m}`, (gaps.get(`${post.platform} ${m}`) ?? 0) + 1);
+    fresh.push({
+      postId: post.postId,
+      platform: post.platform,
+      ...(post.brand ? { brand: post.brand } : {}),
+      ...values,
+      fetchedAt: new Date().toISOString(),
+      ...(missing.length ? { missing } : {}),
+    });
+  }
+  const all = mergeInsights(await loadInsights(dataDir()), fresh);
+  await saveInsights(dataDir(), all);
+  console.log(`Numbers for ${fresh.length} posts, ${all.length} in ${insightsPath(dataDir())}.`);
+  for (const [gap, n] of gaps) console.log(`  not available on ${n} post(s): ${gap}`);
 }
 
 // -------------------------------------------------------------------- main
@@ -495,7 +527,11 @@ const commands: Record<string, Command> = {
     run: ([file, ...platforms]) => publish(file, platforms as Platform[]),
   },
   comments: { usage: "comments", help: "pull comments of every published episode into data/comments.json", run: pullComments },
-  insights: { usage: "insights", help: "reactions, shares, saves and reach of every published post into data/insights.json", run: pullInsights },
+  insights: {
+    usage: "insights",
+    help: "pull reach, reactions, shares, saves and views of every published post into data/insights.json",
+    run: pullInsights,
+  },
   "send-replies": {
     usage: "send-replies",
     help: "post the approved character comments in data/replies.json, each once",

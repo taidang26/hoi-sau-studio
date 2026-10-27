@@ -4,7 +4,8 @@ Gets each episode in front of people and brings their comments back.
 
 - **Publish** an episode to Facebook, Instagram and Threads, for the main Hồi Sau brand and for the brand of the character who leads it (`channels.yaml`).
 - **Comments**: pull comments and Threads replies of every published episode into `data/comments.json` for the listening step in `packages/story`.
-- **Talking back**: send the character comments a person approved, and read each post's numbers.
+- **Insights**: reach, reactions, shares, saves and views of every published post into `data/insights.json`, which the coach in `packages/story` and the dashboard read.
+- **Talking back**: send the character comments a person approved.
 - **Inbox**: Messenger and Instagram direct messages, answered within Meta's 24-hour window.
 
 The Meta app runs in **Development mode**. The Pages and accounts belong to the developer, who is an Admin of the app, so App Review is not needed. Background and pitfalls: [docs/meta-integration-notes.md](../../docs/meta-integration-notes.md).
@@ -25,7 +26,7 @@ Facebook and Instagram:
 Threads (separate login, token lasts about 60 days):
 
 1. Open Threads with the brand's Instagram account to create the profile.
-2. In the app dashboard add the **Access the Threads API** use case with `threads_basic`, `threads_content_publish`, `threads_read_replies`; copy its app secret into `.env` as `THREADS_APP_SECRET`.
+2. In the app dashboard add the **Access the Threads API** use case with `threads_basic`, `threads_content_publish`, `threads_read_replies`, `threads_manage_insights`; copy its app secret into `.env` as `THREADS_APP_SECRET`.
 3. Invite the profile as a Threads tester and accept in the Threads app (Settings › Account › Website permissions › Invites).
 4. Generate a token in the use case's User Token Generator and click Copy next to it, then run `npm run channel -- threads-setup` (it reads the token from the clipboard, so it is never pasted into a terminal; passing it as an argument also works).
 5. `check` shows the days left; `threads-refresh` extends it.
@@ -43,9 +44,11 @@ For a character brand add `--brand <id>` (for example `--brand lolo`); its `.env
 | `check` | Token validity, missing permissions, Threads days left |
 | `publish <episode.json> [platform...]` | Post to the episode's brands, or `--brand <id>`. Refuses an episode the owner has not approved, or one changed since (`episodes/<id>/approval.json`, [docs/safety.md](../../docs/safety.md)); `EPISODES_DIR` overrides the folder |
 | `comments` | Pull comments of every published episode |
-| `insights` | Reactions, shares, saves and reach of every published post into `data/insights.json`; metrics a post does not support are skipped. `story coach` uses them |
+| `insights` | Pull per-post numbers of every published episode into `data/insights.json` |
 | `send-replies` | Post the approved first comments and character replies in `data/replies.json` (drafted by `story replies` / `story first-comment`), each once, from the account that published the post |
 | `inbox` / `reply <conversation-id> <text>` | Pull conversations; answer one |
+
+Insights are best effort. A number Meta does not give for that kind of post, or a permission the token lacks, is left out and listed under `missing` for that post; the command prints which gaps it saw. Facebook has been renaming its reach metrics, so `insights` tries `post_total_media_view_unique`, then `post_impressions_unique`; set `FB_REACH_METRIC` to force one. Threads gives views, not reach. Facebook and Instagram need `read_insights` and `instagram_manage_insights` (`check` lists what the Page token lacks). Threads needs `threads_manage_insights` on the Threads use case: a Threads token generated without it gives no Threads numbers until a new token is generated and saved with `threads-setup`.
 
 An episode file looks like [examples/episode.json](examples/episode.json). Media must be public HTTPS URLs because Meta downloads them itself. Threads captions stop at 500 characters, so set `captions.threads` for a shorter one.
 

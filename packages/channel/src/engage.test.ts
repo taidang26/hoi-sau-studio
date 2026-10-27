@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { fetchInsights, GraphClient, sendApproved, THREADS_BASE_URL, type OutgoingComment } from "./index.js";
+import { GraphClient, sendApproved, THREADS_BASE_URL, type OutgoingComment } from "./index.js";
 import { createMockGraph, graphError } from "./mock.js";
 
 function setup(routes: Parameters<typeof createMockGraph>[0]) {
@@ -62,21 +62,6 @@ test("a failed comment is marked and the rest still go out", async () => {
   assert.deepEqual(r.list.map((c) => c.status), ["failed", "sent", "failed"]);
   assert.match(r.list[0].note!, /Permissions/);
   assert.equal(r.failed, 2);
-});
-
-test("insights read each platform's metrics and skip the ones it refuses", async () => {
-  const { t } = setup({
-    "GET FB1": () => ({ reactions: { summary: { total_count: 42 } }, shares: { count: 3 } }),
-    "GET FB1/insights": () => ({ data: [{ name: "post_impressions_unique", values: [{ value: 900 }] }] }),
-    "GET IG1/insights": (c) => (c.params.metric === "shares" ? graphError(400, 100, "metric not supported") : { data: [{ name: c.params.metric, values: [{ value: { reach: 500, likes: 30, saved: 7 }[c.params.metric as "reach"] }] }] }),
-    "GET TH1/insights": (c) => ({ data: [{ name: c.params.metric, values: [{ value: { views: 800, likes: 20, reposts: 2, quotes: 1, shares: 4 }[c.params.metric as "views"] }] }] }),
-  });
-  const now = new Date("2026-11-03T00:00:00Z");
-  assert.deepEqual(await fetchInsights(t, "facebook", "FB1", now), { postId: "FB1", platform: "facebook", reactions: 42, shares: 3, reach: 900, at: now.toISOString() });
-  const ig = await fetchInsights(t, "instagram", "IG1", now);
-  assert.deepEqual([ig.reactions, ig.saves, ig.reach, ig.shares], [30, 7, 500, undefined]);
-  const th = await fetchInsights(t, "threads", "TH1", now);
-  assert.deepEqual([th.reactions, th.shares, th.reach], [20, 7, 800]);
 });
 
 test("each comment can go out from its own brand's account", async () => {

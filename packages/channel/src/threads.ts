@@ -45,7 +45,7 @@ export async function threadsProfile(threads: GraphClient): Promise<{ id: string
   return threads.get("me", { fields: "id,username" });
 }
 
-export const THREADS_REQUIRED_SCOPES = ["threads_basic", "threads_content_publish", "threads_read_replies"] as const;
+export const THREADS_REQUIRED_SCOPES = ["threads_basic", "threads_content_publish", "threads_read_replies", "threads_manage_insights"] as const;
 
 export interface ThreadsPublishOptions {
   pollIntervalMs?: number;

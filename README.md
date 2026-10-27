@@ -6,6 +6,21 @@
 
 Meta Global AI Developer Hackathon 2026 · Indie Developer track · *Build for Your World*.
 
+| | |
+| --- | --- |
+| Demo video | *link added on 4 Nov* |
+| Live series | [Facebook](https://www.facebook.com/profile.php?id=61595845893958) · [Instagram @hoisau.comic](https://www.instagram.com/hoisau.comic/) · [Threads @hoisau.comic](https://www.threads.net/@hoisau.comic) · episodes at [hoisau.dangtrantai.com](https://hoisau.dangtrantai.com) |
+| How it is built | [docs/architecture.md](docs/architecture.md) · [docs/studio-pipeline.md](docs/studio-pipeline.md) |
+| Where each Meta tool is used | [docs/meta-tools.md](docs/meta-tools.md) |
+| Results | [docs/metrics.md](docs/metrics.md) |
+| Daily build log | [docs/build-log.md](docs/build-log.md) |
+
+## Why this exists
+
+Young office workers in Vietnam share relatable workplace jokes every day, and a recurring character is the format that builds a following. A character that posts daily is a full-time job by hand, and producing one with AI in bulk now gets demonetized: since July 2025 both YouTube and Meta have tightened monetization of mass-produced, unoriginal content.
+
+Hồi Sau goes the other way. The characters, their world and their rules are written by a person and enforced on every panel. Every episode is new and serialized, because the writer remembers what happened. And the audience co-writes it: comments are not a vanity metric here, they are tomorrow's input. The same studio can later run a brand's mascot, which gives it a B2B path next to the channels' own revenue.
+
 ## Built during the hackathon
 
 Kickoff was **26 Oct 2026, 23:24 Hanoi time (16:24 UTC)**. Every commit in this repository is from after kickoff, and [docs/build-log.md](docs/build-log.md) records the work day by day.
@@ -59,6 +74,10 @@ npm run channel -- publish post.json --brand poppy instagram   # one brand and p
 | Panel review against the model sheet | Muse Spark (vision) |
 | Model sheets, panels, single-detail redraws | Muse Image |
 | Scoring and grouping comments at volume | Muse Spark Open (open weights, on Baseten or Modal) |
+| Coach lessons from what worked | Muse Spark |
+| Publishing, comments, inbox, insights | Facebook Pages API, Instagram Graph API, Threads API, Messenger Platform |
+
+Call sites, status and fallbacks: [docs/meta-tools.md](docs/meta-tools.md).
 
 ### Vietnamese text layer
 
@@ -77,7 +96,7 @@ Image models distort Vietnamese diacritics, so Muse Image draws panels **with no
 | `packages/dashboard` | One web screen over all of it |
 | `characters/`, `series/` | Character profiles and portraits; series bible and style |
 | `channels.yaml` | Brands (Hồi Sau plus one per character) and their accounts |
-| `docs/` | Pipeline plan, integration notes, build log |
+| `docs/` | Architecture, pipeline plan, Meta tools, metrics, demo script, submission draft, integration notes, build log |
 
 ## Test characters
 

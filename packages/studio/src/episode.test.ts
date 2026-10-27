@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { COMIC_FONT_PATH, fitText, loadFont } from "@hoi-sau/svg-text";
 import { loadMemorySync } from "@hoi-sau/story";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -8,6 +9,7 @@ import { parse } from "yaml";
 import {
   approveSheet,
   bubbleLayout,
+  type BoardPanel,
   CHARACTERS_DIR,
   createCharacter,
   createEpisode,
@@ -87,7 +89,7 @@ test("approving a sheet locks it into the profile without losing comments", () =
   assert.equal(again.match(/^  pose_sheet:/gm)!.length, 1);
 });
 
-test("a strip3 episode: three beats, a wide last panel, sheets + poses + style attached, one 4:5 page", async () => {
+test("a strip3 episode: three beats, three 4:5 panels, sheets + poses + style attached, each posted on its own", async () => {
   const box = sandbox();
   const png = readFileSync(join(SERIES_DIR, "..", "docs", "images", "svg-text-demo.png"));
   const run = join(box.root, "run");
@@ -115,7 +117,7 @@ test("a strip3 episode: three beats, a wide last panel, sheets + poses + style a
 
   const draws = image.calls;
   // The API takes 1024x1536 for portrait; the result is cropped back to 4:5.
-  assert.deepEqual(draws.slice(0, 3).map((d) => d.tools[0].size), ["1024x1536", "1024x1536", "1536x1024"]);
+  assert.deepEqual(draws.slice(0, 3).map((d) => d.tools[0].size), ["1024x1536", "1024x1536", "1024x1536"]);
   // Panel 1: style reference, then the lead's model sheet and pose sheet (te-te has no locked sheet yet).
   const refs = draws[0].input[0].content.filter((c: any) => c.type === "input_image");
   assert.equal(refs.length, 3);
@@ -125,12 +127,14 @@ test("a strip3 episode: three beats, a wide last panel, sheets + poses + style a
   assert.match(draws[1].input, /fat red pen/, "panel 2 brings in te-te with its icon");
   assert.doesNotMatch(prompt, /flat 2D comic/, "the series style replaces the profile's own");
 
-  const letter = readStep<{ pages: unknown[]; page: string }>("ep-002", "letter", box.episodesDir)!;
+  // Each panel posts on its own at 1080x1350, so the lettering stays readable on a phone.
+  const letter = readStep<{ pages: Array<{ file: string }>; page?: string }>("ep-002", "letter", box.episodesDir)!;
   assert.equal(letter.pages.length, 3);
-  assert.equal(letter.page, "final/page.png");
-  const page = readFileSync(join(box.episodesDir, "ep-002", "final", "page.png"));
-  assert.deepEqual([page.readUInt32BE(16), page.readUInt32BE(20)], [1080, 1350]);
-  assert.equal((readFileSync(join(box.episodesDir, "ep-002", "final", "page.svg"), "utf8").match(/<image /g) ?? []).length, 3);
+  assert.equal(letter.page, undefined);
+  for (const p of letter.pages) {
+    const png = readFileSync(join(box.episodesDir, "ep-002", p.file));
+    assert.deepEqual([png.readUInt32BE(16), png.readUInt32BE(20)], [1080, 1350]);
+  }
 });
 
 test("unknown episode formats are refused", () => {
@@ -146,6 +150,27 @@ test("bubbles sit above their speaker and inside the panel", () => {
     assert.ok(l.bubble.y + l.bubble.height < 1250 * 0.4);
   }
   assert.ok(lines[0].bubble.tail!.x < 500 && lines[1].bubble.tail!.x > 500);
+});
+
+test("lettering is big enough to read on a phone, and a long line still fits", () => {
+  const sp = {
+    dialogue: [
+      { speaker: "a", text: "Dạ em đang làm ạ…", kind: "speech" },
+      { speaker: "b", text: "Chị không giận. Chị chỉ đang… to ra một chút.", kind: "thought" },
+    ],
+  } as ScriptPanel;
+  const bp = { shot: "medium", angle: "eye level", composition: "", staging: [{ character: "a", position: "left" }, { character: "b", position: "right" }] } as BoardPanel;
+  const lines = bubbleLayout(sp, bp, 1080, 1350);
+  assert.deepEqual(lines.map((l) => l.bubble.kind), ["speech", "thought"]);
+  for (const l of lines) {
+    const fit = fitText(l.text, l.bubble, loadFont(COMIC_FONT_PATH), { ...l.options, padding: 12 + 0.07 * Math.min(l.bubble.width, l.bubble.height) });
+    assert.ok(fit.fits, `"${l.text}" overflows`);
+    // 1080 px shown about 390 pt wide: at least 14 pt on screen.
+    assert.ok((fit.fontSize * 390) / 1080 >= 14, `"${l.text}" letters at ${fit.fontSize}px`);
+  }
+  // Two bubbles never sit on top of each other.
+  const [a, b] = lines.map((l) => l.bubble);
+  assert.ok(a.x + a.width <= b.x || b.x + b.width <= a.x || a.y + a.height * 0.85 <= b.y);
 });
 
 test("a full episode runs offline: script, panels with model sheets, review + redraw, lettering, canon", async () => {

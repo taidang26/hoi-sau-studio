@@ -13,7 +13,7 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { composePanel, imageSize, svgToPng, type DialogueLine } from "@hoi-sau/svg-text";
+import { BUBBLE_KINDS, composePanel, imageSize, snugBubble, svgToPng, type BubbleKind, type DialogueLine } from "@hoi-sau/svg-text";
 import {
   episodeNumber,
   type Llm,
@@ -47,7 +47,7 @@ export interface EpisodeSpec {
   direction: string;
   /** Commenters to credit; they may appear as coworkers drawn from text only. */
   credits: Array<{ name: string; comment: string }>;
-  /** "carousel" (default): 4–6 panels posted one by one. "strip3": three panels on one 4:5 page. */
+  /** "carousel" (default): 4–6 panels posted one by one. "strip3": exactly three panels, the rule of three, posted one by one too. */
   format?: EpisodeFormat;
   createdAt: string;
 }
@@ -76,7 +76,8 @@ export interface ScriptPanel {
   characters: string[];
   action: string;
   expressions: Array<{ character: string; expression: string }>;
-  dialogue: Array<{ speaker: string; text: string }>;
+  /** kind: said aloud, thought, shouted or whispered; it picks the balloon. Older scripts have none (speech). */
+  dialogue: Array<{ speaker: string; text: string; kind?: BubbleKind }>;
 }
 
 export interface Script {
@@ -134,17 +135,23 @@ export interface StudioContext {
 }
 
 const PANEL_SIZE = "1024x1280";
-const WIDE_PANEL_SIZE = "1536x1024";
 
 /** How many panels a format takes. */
 export function panelRange(ep: Pick<EpisodeSpec, "format">, bible: SeriesBible): { min: number; max: number } {
   return ep.format === "strip3" ? { min: 3, max: 3 } : bible.format.panels;
 }
 
-/** strip3 ends on a wide panel: the twist gets the whole bottom row. */
-export function panelSize(ep: Pick<EpisodeSpec, "format">, n: number): string {
-  return ep.format === "strip3" && n === 3 ? WIDE_PANEL_SIZE : PANEL_SIZE;
+/**
+ * Every panel is 4:5 and posts as its own image, in both formats. Feeds are
+ * read on phones, and three panels shrunk onto one page made the lettering
+ * too small to read there.
+ */
+export function panelSize(_ep: Pick<EpisodeSpec, "format">, _n: number): string {
+  return PANEL_SIZE;
 }
+
+/** Width of a posted image. Lettering is sized against it. */
+export const POST_WIDTH = 1080;
 
 // ── storage ────────────────────────────────────────────────────────────────
 
@@ -278,7 +285,15 @@ const scriptSchema = (n: Range) =>
         characters: S.arr(S.str("cast slug"), 1, 3),
         action: S.str("Vietnamese, what we see. The joke should read from the picture alone."),
         expressions: S.arr(S.obj({ character: S.str(), expression: S.str("a key from that character's expressions") }), 0, 3),
-        dialogue: S.arr(S.obj({ speaker: S.str("cast slug"), text: S.str("Vietnamese, at most 12 words. Avoid calling characters by name.") }), 0, 2),
+        dialogue: S.arr(
+          S.obj({
+            speaker: S.str("cast slug"),
+            text: S.str("Vietnamese, at most 12 words. Avoid calling characters by name."),
+            kind: S.enum(BUBBLE_KINDS, "speech: said aloud. thought: only in their head. shout: loud, short. whisper: quiet aside."),
+          }),
+          0,
+          2,
+        ),
       }),
       n.min,
       n.max,
@@ -291,7 +306,7 @@ const storyboardSchema = (n: Range) =>
       S.obj({
         shot: S.enum(["wide", "medium", "close-up", "extreme close-up"]),
         angle: S.enum(["eye level", "high angle", "low angle"]),
-        composition: S.str("English, one or two sentences for the illustrator: setting, poses, props, what draws the eye. Keep the top quarter calm for dialogue."),
+        composition: S.str("English, one or two sentences for the illustrator: setting, poses, props, what draws the eye. Keep the top third calm for dialogue."),
         staging: S.arr(S.obj({ character: S.str("cast slug"), position: S.enum(["left", "center", "right"]) }), 1, 3),
       }),
       n.min,
@@ -319,7 +334,7 @@ function sanitizeScript(script: Script, ep: EpisodeSpec, bible: SeriesBible): Sc
     ...p,
     characters: [...new Set(p.characters.map(fix))],
     expressions: p.expressions.filter((e) => cast.has(e.character)),
-    dialogue: p.dialogue.slice(0, 2).map((d) => ({ speaker: fix(d.speaker), text: d.text.trim() })),
+    dialogue: p.dialogue.slice(0, 2).map((d) => ({ speaker: fix(d.speaker), text: d.text.trim(), kind: BUBBLE_KINDS.includes(d.kind!) ? d.kind : "speech" })),
   }));
   return { ...script, panels };
 }
@@ -372,60 +387,57 @@ export function episodePanelPrompt(ctx: StudioContext, ep: EpisodeSpec, sp: Scri
     `${bp.shot} shot, ${bp.angle}. ${bp.composition}`,
     who,
     cameo && sp.action.includes(cameo.name) ? `Also a coworker: ${cameo.description}.` : "",
-    `Match the character sheets and pose sheets exactly. Single comic panel. Style: ${style} Keep the top quarter calm and uncluttered for dialogue added later, and keep every character away from the very top and bottom edges (the panel is trimmed slightly there). No text, no letters, no speech bubbles, no captions.`,
+    `Match the character sheets and pose sheets exactly. Single comic panel. Style: ${style} Keep the top third calm and uncluttered for dialogue added later, and keep every character away from the very top and bottom edges (the panel is trimmed slightly there). No text, no letters, no speech bubbles, no thought clouds, no captions, no symbols floating above heads.`,
   ]
     .filter(Boolean)
     .join(" ");
 }
 
-/**
- * strip3 page, 1080x1350 (4:5): panels 1 and 2 side by side on top, the wide
- * twist across the bottom, thick black borders on white. Each box matches its
- * panel's aspect ratio (4:5 and 3:2), so nothing is cropped unless the model
- * returns a different ratio; then the centre is kept.
- */
-export function stripPage(panels: Buffer[], size = { width: 1080, height: 1350 }): string {
-  const { width, height } = size;
-  const side = 40;
-  const gutter = 30;
-  const topW = (width - 2 * side - gutter) / 2;
-  const topH = topW * 1.25;
-  const bottomW = width - 2 * side;
-  const bottomH = bottomW / 1.5;
-  const y0 = (height - topH - gutter - bottomH) / 2;
-  const boxes = [
-    { x: side, y: y0, w: topW, h: topH },
-    { x: side + topW + gutter, y: y0, w: topW, h: topH },
-    { x: side, y: y0 + topH + gutter, w: bottomW, h: bottomH },
-  ];
-  const cells = panels.slice(0, 3).map((data, i) => {
-    const b = boxes[i];
-    const href = `data:${imageSize(data).mime};base64,${data.toString("base64")}`;
-    return (
-      `<image href="${href}" x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" preserveAspectRatio="xMidYMid slice"/>` +
-      `<rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" fill="none" stroke="#111" stroke-width="6" stroke-linejoin="round"/>`
-    );
-  });
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><rect width="100%" height="100%" fill="#fff"/>${cells.join("")}</svg>`;
+/** Dialogue size as a share of panel width, for reading on a phone. */
+export const PHONE_FONT = 0.044;
+export const PHONE_MIN_FONT = 0.036;
+
+/** Roughly where a speaker's head is, from staging and shot. Coordinates as shares of the panel. */
+function headAt(bp: BoardPanel, pos: Position): { x: number; y: number } {
+  const X: Record<Position, number> = { left: 0.27, center: 0.5, right: 0.73 };
+  const y = bp.shot === "wide" ? 0.5 : bp.shot === "medium" ? 0.42 : 0.36;
+  return { x: X[pos], y };
 }
 
-/** Bubble boxes from staging: above the speaker, tail pointing down at them. Coordinates in px. */
+/**
+ * Bubbles from staging. Each is sized to its words, sits in the calm top of
+ * the panel above its speaker, and aims a short tail (or a trail of puffs for
+ * a thought) at the speaker's head. A second line reads after the first:
+ * lower, and on its own side when the speakers stand apart. Coordinates in px.
+ */
 export function bubbleLayout(sp: ScriptPanel, bp: BoardPanel, width: number, height: number): DialogueLine[] {
-  const X: Record<Position, number> = { left: 0.27, center: 0.5, right: 0.73 };
-  const lines = sp.dialogue.length;
+  const margin = width * 0.035;
+  // A feed image is about 390 pt wide on a phone. 4.4% of the width is about
+  // 17 pt there; below 3.6% (14 pt) a line counts as overflow so review flags it.
+  const fontSize = Math.round(width * PHONE_FONT);
+  const minFontSize = Math.round(width * PHONE_MIN_FONT);
+  const placed: Array<{ x: number; y: number; w: number; h: number }> = [];
   return sp.dialogue.map((d, i) => {
+    const kind = d.kind ?? "speech";
     const pos = bp.staging.find((s) => s.character === d.speaker)?.position ?? "center";
-    const w = width * (lines > 1 ? 0.46 : 0.6);
-    const h = height * 0.16;
-    // Two lines read top-left then lower-right, in speaking order.
-    const cx = lines > 1 ? width * (i === 0 ? 0.28 : 0.72) : width * X[pos];
-    const y = height * (0.035 + i * 0.085);
-    const x = Math.min(Math.max(cx - w / 2, width * 0.03), width * 0.97 - w);
-    return {
-      speaker: d.speaker,
-      text: d.text,
-      bubble: { x, y, width: w, height: h, draw: true, tail: { x: width * X[pos], y: y + h + height * 0.09 } },
-    };
+    const head = headAt(bp, pos);
+    const two = sp.dialogue.length > 1;
+    // Bangers is condensed, so shouts get a larger size to read as loud.
+    const size = kind === "shout" ? Math.round(fontSize * 1.25) : fontSize;
+    const { width: w, height: h } = snugBubble(d.text, kind, { fontSize: size, maxWidth: width * (two ? 0.52 : 0.62) });
+    // Lean towards the reading order: the first of two sits left of its speaker, the second right.
+    const lean = two ? (i === 0 ? -0.06 : 0.06) : 0;
+    let x = Math.min(Math.max((head.x + lean) * width - w / 2, margin), width - margin - w);
+    let y = height * 0.03 + (two && i > 0 ? height * 0.05 : 0);
+    const prev = placed[i - 1];
+    if (prev && x < prev.x + prev.w + margin * 0.5 && prev.x < x + w + margin * 0.5) {
+      // They would touch: hang the second below the first, nudged aside.
+      y = prev.y + prev.h * 0.82;
+      x = Math.min(Math.max(prev.x + prev.w * 0.35, margin), width - margin - w);
+    }
+    placed.push({ x, y, w, h });
+    const aim = { x: head.x * width, y: Math.max(head.y * height, y + h + height * 0.06) };
+    return { speaker: d.speaker, text: d.text, bubble: { x, y, width: w, height: h, kind, draw: true, tail: aim }, options: { maxFontSize: size, minFontSize, strokeWidth: Math.max(3, width / 300) } };
   });
 }
 
@@ -451,7 +463,7 @@ export async function runStep(ctx: StudioContext, id: string, step: EpisodeStep)
       const n = panelRange(ep, ctx.bible);
       const task =
         ep.format === "strip3"
-          ? 'Break it into exactly 3 beats, the rule of three: beat 1 sets up the everyday trigger, beat 2 repeats the pattern one step worse, beat 3 is the twist (purpose "punchline") and must land from the drawing alone. Panel 3 is drawn wide.'
+          ? 'Break it into exactly 3 beats, the rule of three: beat 1 sets up the everyday trigger, beat 2 repeats the pattern one step worse, beat 3 is the twist (purpose "punchline") and must land from the drawing alone. Each panel is posted as its own swipeable image.'
           : `Break it into ${n.min}–${n.max} beats. Last beat is the hook for "hồi sau".`;
       const beats = await ctx.spark.json<Beats>("beats", beatsSchema(n), writerMessages(ctx, ep, task, { premise: need("premise") }));
       return writeStep(id, "beats", beats, dir);
@@ -544,17 +556,9 @@ export async function runStep(ctx: StudioContext, id: string, step: EpisodeStep)
         const lines = bubbleLayout(script.panels[r.n - 1], board.panels[r.n - 1], size.width, size.height);
         const { svg, overflow } = composePanel({ data, ...size }, lines);
         const name = `${String(r.n).padStart(2, "0")}.png`;
-        writeFileSync(join(out, name), svgToPng(svg));
+        writeFileSync(join(out, name), svgToPng(svg, { width: POST_WIDTH }));
         writeFileSync(join(out, `${String(r.n).padStart(2, "0")}.svg`), svg);
         pages.push({ n: r.n, file: `final/${name}`, overflow: overflow.length });
-      }
-      // strip3 also posts as one page: two panels on top, the wide twist below.
-      if (ep.format === "strip3") {
-        const lettered = pages.map((p) => readFileSync(join(episodeDir(id, dir), p.file)));
-        const page = stripPage(lettered);
-        writeFileSync(join(out, "page.svg"), page);
-        writeFileSync(join(out, "page.png"), svgToPng(page));
-        return writeStep(id, "letter", { pages, page: "final/page.png" }, dir);
       }
       return writeStep(id, "letter", { pages }, dir);
     }
@@ -594,7 +598,7 @@ async function reviewPanel(ctx: StudioContext, ep: EpisodeSpec, sp: ScriptPanel,
           const p = ctx.profiles.get(c)!;
           return `${p.name} must have: ${p.look.signature.join("; ")}.${p.look.icon ? ` Its identifying item must be clearly visible: ${p.look.icon}.` : ""} Palette: ${p.look.palette.map((s) => s.hex).join(", ")}.`;
         }),
-        "Fail the panel if a signature feature is wrong or missing, a character is off-model, there is drawn text or a speech bubble, or anything unsafe. The first image is the panel; any others are the locked model sheets.",
+        "Fail the panel if a signature feature is wrong or missing, a character is off-model, there is drawn text, a speech bubble or a thought cloud, or anything unsafe. The first image is the panel; any others are the locked model sheets.",
       ].join("\n"),
     },
     { type: "image_url", image_url: { url: `data:${imageSize(data).mime};base64,${data.toString("base64")}` } },

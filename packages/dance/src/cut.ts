@@ -201,12 +201,19 @@ export async function cutRig(sam: SamLike, image: Buffer, opts: { phrases?: Part
       if (t <= 0.53) up[i] = 1;
       if (t >= 0.45) lo[i] = 1; // overlaps the upper part a little; drawn above it
     }
-    parts.push({ name: names[0], bone: upper, mask: up, z }, { name: names[1], bone: lower, mask: lo, z: z + 1 });
+    // A disc of the drawing around the shoulder or hip goes with the upper part, drawn
+    // behind the torso: when the limb swings out, it fills the gap at the joint.
+    const len = Math.hypot(ax.far[0] - ax.near[0], ax.far[1] - ax.near[1]);
+    const r = len * 0.22;
+    for (let y = Math.max(0, Math.floor(ax.near[1] - r)); y <= Math.min(height - 1, Math.ceil(ax.near[1] + r)); y++)
+      for (let x = Math.max(0, Math.floor(ax.near[0] - r)); x <= Math.min(width - 1, Math.ceil(ax.near[0] + r)); x++)
+        if (Math.hypot(x - ax.near[0], y - ax.near[1]) <= r && body[y * width + x]) up[y * width + x] = 1;
+    parts.push({ name: names[0], bone: upper, mask: up, z }, { name: names[1], bone: lower, mask: lo, z: z + 2 });
   };
-  split(legR.m, "thighR", "shinR", ["thigh-r", "shin-r"], 0);
-  split(legL.m, "thighL", "shinL", ["thigh-l", "shin-l"], 0);
-  split(armR.m, "upperArmR", "foreArmR", ["upper-arm-r", "fore-arm-r"], 3);
-  split(armL.m, "upperArmL", "foreArmL", ["upper-arm-l", "fore-arm-l"], 3);
+  split(legR.m, "thighR", "shinR", ["thigh-r", "shin-r"], -1);
+  split(legL.m, "thighL", "shinL", ["thigh-l", "shin-l"], -1);
+  split(armR.m, "upperArmR", "foreArmR", ["upper-arm-r", "fore-arm-r"], 1);
+  split(armL.m, "upperArmL", "foreArmL", ["upper-arm-l", "fore-arm-l"], 1);
 
   const hips = mean(bones.thighL.pivot, bones.thighR.pivot);
   const shoulders = mean(bones.upperArmL.pivot, bones.upperArmR.pivot);

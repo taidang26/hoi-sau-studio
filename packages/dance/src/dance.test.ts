@@ -141,11 +141,14 @@ test("cut: a rest drawing becomes a rig with joints where the limbs bend", async
 test("render: the cast takes the places of the people in the clip", { skip: !hasFfmpeg && "ffmpeg not installed", timeout: 120_000 }, async () => {
   const file = syntheticPoses(0.5);
   const rigs = [placeholderRig(), placeholderRig()];
+  const kept = keepComposition(file, rigs, { layout: "keep" });
+  assert.ok(kept.actors[0].height < kept.actors[1].height, "kept: the dancer at the back is drawn smaller");
+  assert.ok(kept.actors[1].height > 1920 * 0.5, "kept: the group is scaled up to fill the frame");
   const scene = keepComposition(file, rigs);
-  assert.ok(scene.actors[0].height < scene.actors[1].height, "the dancer at the back is drawn smaller");
-  assert.ok(scene.actors[1].height > 1920 * 0.5, "the group is scaled up to fill the frame");
+  assert.equal(scene.actors[0].height, scene.actors[1].height, "lined up: same height");
+  assert.ok(scene.actors[0].at[0] < scene.actors[1].at[0], "the dancer stood left of the other person, and still does");
   assert.equal((scene.actors[0].track as { id: number }).id, 2, "the dancer is followed first");
-  assert.ok((scene.actors[1].layer ?? 0) > (scene.actors[0].layer ?? 0), "the one in front is painted last");
+  assert.ok((kept.actors[1].layer ?? 0) > (kept.actors[0].layer ?? 0), "kept: the one in front is painted last");
   const out = join(mkdtempSync(join(tmpdir(), "dance-")), "d.mp4");
   const r = await renderDance(file, scene, out);
   assert.equal(r.frames, 15);

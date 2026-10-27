@@ -50,6 +50,13 @@ export function pickCast(file: PoseFile, count: number, ids?: number[]): PoseTra
   return chosen;
 }
 
+/** Last frame up to which every chosen person is still seen, so an end card or cutaway is dropped. */
+export function lastSteadyFrame(tracks: PoseTrack[]): number {
+  const reversed = tracks.map((t) => ({ ...t, frames: [...t.frames].reverse() }));
+  const n = Math.min(...tracks.map((t) => t.frames.length));
+  return n - 1 - firstSteadyFrame(reversed);
+}
+
 /** First frame from which every chosen person is seen, so the dance does not start on a cutaway. */
 export function firstSteadyFrame(tracks: PoseTrack[]): number {
   const n = Math.min(...tracks.map((t) => t.frames.length));
@@ -69,10 +76,11 @@ export interface CompositionOptions {
   /** Track ids to follow, in cast order. */
   tracks?: number[];
   /**
-   * Scale the group up to fill the frame (default). Off keeps the people
-   * exactly where and as big as they are in the clip.
+   * lineup (default): every character the same height, side by side, in the
+   * left-to-right order of the people they follow. keep: the clip's own
+   * places and sizes, scaled up to fill the frame. exact: the clip as is.
    */
-  fit?: boolean;
+  layout?: "lineup" | "keep" | "exact";
 }
 
 /**
@@ -97,10 +105,14 @@ export function keepComposition(file: PoseFile, rigs: Rig[], opts: CompositionOp
     const height = (torsoLength(track) * s * rig.size[1]) / rigTorso;
     return { rig, track: { id: track.id }, at, height, follow: 1, mirror: opts.mirror };
   });
-  if (opts.fit !== false) fitGroup(actors, size);
+  const layout = opts.layout ?? "lineup";
+  if (layout === "lineup") lineUp(actors, size);
+  else if (layout === "keep") fitGroup(actors, size);
   // Bigger on screen means nearer the camera: paint it last.
   actors.forEach((a) => (a.layer = a.height));
-  return { size, background: opts.background ?? "#FFF4DE", actors, start: firstSteadyFrame(tracks) / file.fps };
+  const first = firstSteadyFrame(tracks);
+  const last = Math.max(first, lastSteadyFrame(tracks));
+  return { size, background: opts.background ?? "#FFF4DE", actors, start: first / file.fps, duration: (last - first + 1) / file.fps };
 }
 
 /** Scales and moves the actors together so the group fills the frame, feet near the bottom. */
@@ -121,4 +133,20 @@ export function fitGroup(actors: Actor[], size: Vec): void {
     a.at = [size[0] / 2 + (a.at[0] - cx) * scale, size[1] * 0.95 - (y1 - a.at[1]) * scale];
     a.height *= scale;
   }
+}
+
+/** Same height, side by side, keeping who stands left of whom; each dances around its own spot. */
+export function lineUp(actors: Actor[], size: Vec): void {
+  const order = [...actors].sort((a, b) => a.at[0] - b.at[0]);
+  const slot = size[0] / order.length;
+  order.forEach((a, i) => {
+    const [px, py] = a.rig.bones.torso.pivot;
+    void px;
+    // Rest drawing about 70% of the frame tall for one character, less as more share the stage.
+    const height = Math.min(size[1] * 0.62, (slot * 1.25 * a.rig.size[1]) / a.rig.size[0]);
+    const k = height / a.rig.size[1];
+    a.at = [slot * (i + 0.5), size[1] * 0.95 - (a.rig.size[1] - py) * k];
+    a.height = height;
+    a.follow = 0.35;
+  });
 }

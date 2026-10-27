@@ -20,7 +20,10 @@ export interface EpisodePost {
   caption: string;
   /** Caption overrides per platform, e.g. a short one for Threads. */
   captions?: Partial<Record<Platform, string>>;
-  /** Public HTTPS media: carousel images in order, a single image, or a single video. */
+  /**
+   * Public HTTPS media: carousel images in order, a single image, or a single video.
+   * A relative path such as "cu-li-ep-003/01.jpg" is read under MEDIA_BASE_URL.
+   */
   mediaUrls: string[];
   /** Lead character slug and the rest of the cast, used to route the post to brands. */
   lead?: string;
@@ -61,6 +64,8 @@ export interface PublishOptions {
   pollTimeoutMs?: number;
   /** Brand ID from channels.yaml; each brand keeps separate journal entries. */
   brand?: string;
+  /** Base for relative mediaUrls, e.g. https://hoisau.dangtrantai.com/media/. Defaults to MEDIA_BASE_URL. */
+  mediaBaseUrl?: string;
 }
 
 export class PublishError extends Error {
@@ -72,6 +77,15 @@ export class PublishError extends Error {
   ) {
     super(message);
   }
+}
+
+/** Absolute media URLs pass through; relative ones are resolved under the base. */
+export function resolveMediaUrls(urls: string[], base = process.env.MEDIA_BASE_URL): string[] {
+  return urls.map((u) => {
+    if (/^https?:\/\//.test(u)) return u;
+    if (!base) throw new PublishError(`Media "${u}" is a relative path but MEDIA_BASE_URL is not set.`, "NO_MEDIA_BASE_URL");
+    return new URL(u.replace(/^\/+/, ""), base.endsWith("/") ? base : base + "/").href;
+  });
 }
 
 export function captionFor(platform: Platform, post: EpisodePost): string {
@@ -107,7 +121,7 @@ export async function publishEpisode(
   journal: PublishJournal,
   options: PublishOptions = {},
 ): Promise<PublishedPost> {
-  const post: EpisodePost = { ...episode, caption: captionFor(platform, episode) };
+  const post: EpisodePost = { ...episode, caption: captionFor(platform, episode), mediaUrls: resolveMediaUrls(episode.mediaUrls, options.mediaBaseUrl) };
   const problems = validatePost(platform, post);
   if (problems.length > 0) {
     throw new PublishError(problems.map((p) => p.message).join(" "), problems[0].code);

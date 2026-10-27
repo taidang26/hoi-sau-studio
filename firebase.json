@@ -1,0 +1,22 @@
+{
+  "hosting": {
+    "target": "hoisau",
+    "public": "site/public",
+    "cleanUrls": true,
+    "trailingSlash": false,
+    "ignore": ["**/.*"],
+    "headers": [
+      {
+        "source": "/media/**",
+        "headers": [
+          { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" },
+          { "key": "Access-Control-Allow-Origin", "value": "*" }
+        ]
+      },
+      {
+        "source": "/callback",
+        "headers": [{ "key": "Cache-Control", "value": "no-store" }]
+      }
+    ]
+  }
+}

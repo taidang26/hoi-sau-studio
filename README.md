@@ -113,6 +113,20 @@ npm run demo -w @hoi-sau/svg-text        # letter a sample panel in Vietnamese
 npm run dashboard -- --demo              # dashboard with sample data on http://localhost:4321
 ```
 
+### Public site and media
+
+Instagram and Threads fetch media from a public HTTPS URL, so finished episodes
+go to Firebase Hosting (`firebase.json`, `site/public/`). The dashboard stays on
+your machine: it has no login and can post and spend API credits.
+
+```bash
+npm run site -- add ep-001    # episodes/ep-001/final → site/public/media/ep-001/*.jpg
+npm run site -- deploy        # firebase deploy --only hosting
+```
+
+An episode post can then list `"mediaUrls": ["ep-001/01.jpg", …]`; relative
+paths are read under `MEDIA_BASE_URL`.
+
 ## Status
 
 In place: character creation, series bible, the full Muse episode pipeline (with an offline mock), Vietnamese lettering, listening and story memory, the dashboard, and publishing, comments and inbox for every brand. Day-by-day progress is in [docs/build-log.md](docs/build-log.md).

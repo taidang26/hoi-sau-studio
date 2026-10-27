@@ -17,7 +17,8 @@
     "studio": "tsc -b && node packages/studio/dist/cli.js",
     "story": "tsc -b && node packages/story/dist/cli.js",
     "channel": "tsc -b && node packages/channel/dist/cli.js",
-    "dashboard": "tsc -b && node packages/dashboard/dist/cli.js"
+    "dashboard": "tsc -b && node packages/dashboard/dist/cli.js",
+    "site": "node scripts/site.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

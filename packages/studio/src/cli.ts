@@ -3,7 +3,7 @@
  * Studio CLI.
  *
  *   npm run studio -- characters                 validate and list character profiles
- *   npm run studio -- brand-art [brand…] [--mock] profile pictures and cover photos for the pages in channels.yaml
+ *   npm run studio -- brand-art [brand…] [--only avatar|cover] [--recrop] [--mock] profile pictures and cover photos for the pages in channels.yaml
  *   npm run studio -- edge [slug…] [--mock]      one picture of each character's rebellious or weird side
  *   npm run studio -- office                     draw the office floor plan to series/office-plan.png
  *   npm run studio -- style [--mock]             draw the test scene in every series style variant
@@ -85,7 +85,9 @@ async function main(argv: string[]): Promise<void> {
     const brands = args.length ? all.filter((b) => args.includes(b.id)) : all;
     if (!brands.length) throw new Error(`no such brand; known: ${all.map((b) => b.id).join(", ")}`);
     const out = join(ROOT, "output", "brand-art");
-    const { art } = await makeBrandArt(ctx, brands, out, console.log);
+    const only = opt("--only") as "avatar" | "cover" | undefined;
+    if (only && only !== "avatar" && only !== "cover") throw new Error("--only takes avatar or cover");
+    const { art } = await makeBrandArt(ctx, brands, out, console.log, { only, recrop: flags.has("--recrop") });
     console.log(`${art.length} brands → ${out} (avatar.png, cover.png, cover-title.png each)`);
     return;
   }

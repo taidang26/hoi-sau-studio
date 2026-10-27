@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { cpSync, existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { test } from "node:test";
 import {
   approveStyle,
@@ -271,7 +271,7 @@ test("the office floor plan seats every character once and reaches the prompts",
 });
 
 test("brand art: an avatar and a Facebook-size cover for every brand, offline", async () => {
-  const { loadBrandList, makeBrandArt, coverPrompt, COVER_SIZE } = await import("./brand-art.js");
+  const { loadBrandList, makeBrandArt, coverPrompt, COVER_SIZE, SOCIAL_SIZES } = await import("./brand-art.js");
   const { openStudio } = await import("./studio.js");
   const { imageSize } = await import("@hoi-sau/svg-text");
   const ctx = openStudio({ mock: true });
@@ -279,7 +279,8 @@ test("brand art: an avatar and a Facebook-size cover for every brand, offline", 
   assert.ok(brands.some((b) => b.id === "hoi-sau") && brands.some((b) => b.character === "cu-li"));
   const series = coverPrompt(ctx, brands.find((b) => b.id === "hoi-sau")!);
   assert.match(series, /zebra crossing/);
-  assert.match(series, /Pango[\s\S]*Poppy[\s\S]*Lolo[\s\S]*Uni/, "walk order front to back");
+  assert.match(series, /Bino[\s\S]*Pango[\s\S]*Poppy[\s\S]*Lolo[\s\S]*Uni[\s\S]*Rico/, "walk order front to back, the director leads");
+  assert.match(series, /head to feet/);
   // Characters added later join the parade: the cover follows the cast, not a fixed four.
   assert.match(series, new RegExp(`Exactly ${["", "one", "two", "three", "four", "five", "six", "seven"][ctx.profiles.size]} main characters`));
   for (const p of ctx.profiles.values()) assert.ok(series.includes(`${p.name} (`), p.name);
@@ -291,7 +292,31 @@ test("brand art: an avatar and a Facebook-size cover for every brand, offline", 
     assert.deepEqual(imageSize(readFileSync(a.cover)), { ...COVER_SIZE, mime: "image/png" });
     assert.deepEqual(imageSize(readFileSync(a.avatar)), { width: 1024, height: 1024, mime: "image/png" });
     assert.ok(existsSync(a.coverTitle));
+    const dir = dirname(a.cover);
+    for (const [network, sizes] of Object.entries(SOCIAL_SIZES)) {
+      assert.deepEqual(imageSize(readFileSync(join(dir, "social", network, "avatar.png"))), { ...sizes.avatar, mime: "image/png" }, network);
+      if ("cover" in sizes) assert.deepEqual(imageSize(readFileSync(join(dir, "social", network, "cover.png"))), { ...sizes.cover, mime: "image/png" });
+    }
   }
+  // Only the cover again, cropped from the saved drawing without asking Muse.
+  const before = readFileSync(art[0].avatar);
+  const again = await makeBrandArt(ctx, brands.filter((b) => b.id === "hoi-sau"), out, () => {}, { only: "cover", recrop: true });
+  assert.equal(again.usage.length, 0);
+  assert.deepEqual(readFileSync(art[0].avatar), before);
+});
+
+test("brand art: the cover crop keeps the colourful cast, not the centre", async () => {
+  const { coverCrop, COVER_SIZE } = await import("./brand-art.js");
+  const sharp = (await import("sharp")).default;
+  // A grey office with the cast in a bright strip along the bottom.
+  const w = 1536, h = 1024;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><rect width="${w}" height="${h}" fill="#d8d6d0"/><rect y="${h - 300}" width="${w}" height="260" fill="#e0482a"/></svg>`;
+  const img = await sharp(Buffer.from(svg)).png().toBuffer();
+  const out = await coverCrop(img);
+  const meta = await sharp(out).metadata();
+  assert.deepEqual([meta.width, meta.height], [COVER_SIZE.width, COVER_SIZE.height]);
+  const { data } = await sharp(out).extract({ left: 800, top: COVER_SIZE.height - 120, width: 1, height: 1 }).raw().toBuffer({ resolveWithObject: true });
+  assert.ok(data[0] > 200 && data[1] < 120, `bottom of the cover is the cast strip, got ${[...data]}`);
 });
 
 test("edge art: one picture per character of its secret side, offline", async () => {

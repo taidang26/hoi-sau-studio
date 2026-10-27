@@ -1,0 +1,4 @@
+# torch comes from the CUDA (or CPU) index for your machine, installed first.
+transformers>=4.40
+scipy
+numpy

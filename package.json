@@ -22,7 +22,8 @@
     "pipeline": "tsc -b && node packages/pipeline/dist/cli.js",
     "site": "node scripts/site.mjs",
     "cloud": "node scripts/cloud.mjs",
-    "dance": "tsc -b && node packages/dance/dist/cli.js"
+    "dance": "tsc -b && node packages/dance/dist/cli.js",
+    "talk": "tsc -b && node packages/talk/dist/cli.js"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

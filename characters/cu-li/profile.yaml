@@ -58,7 +58,7 @@ look:
   # The one item readers know this character by at thumbnail size. Every panel draws it, a little oversized.
   icon: the oversized mustard-yellow hoodie, sleeves hanging past the paws
   character_sheet: model-sheet.png   # locked with `studio sheet approve`; every panel is drawn against it
-  pose_sheet: pose-sheet.png   # locked with `studio sheet approve`; six reusable poses, attached with the model sheet
+  pose_sheet: pose-sheet.png   # locked with `studio sheet approve`; reusable poses, attached with the model sheet
 
 personality:
   - Hiền, lễ phép, sợ làm phiền người khác hơn sợ trễ deadline

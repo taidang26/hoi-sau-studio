@@ -57,7 +57,7 @@ look:
   # The one item readers know this character by at thumbnail size. Every panel draws it, a little oversized.
   icon: big round cream over-ear headphones, almost as wide as the head
   character_sheet: model-sheet.png   # locked with `studio sheet approve`; every panel is drawn against it
-  pose_sheet: pose-sheet.png   # locked with `studio sheet approve`; six reusable poses, attached with the model sheet
+  pose_sheet: pose-sheet.png   # locked with `studio sheet approve`; reusable poses, attached with the model sheet
 
 personality:
   - Giỏi thật, nhưng chưa bao giờ tự nhận

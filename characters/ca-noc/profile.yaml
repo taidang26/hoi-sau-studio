@@ -57,7 +57,7 @@ look:
   # The one item readers know this character by at thumbnail size. Every panel draws it, a little oversized.
   icon: a wide teal necktie, still knotted even when the body inflates into a spiky ball
   character_sheet: model-sheet.png   # locked with `studio sheet approve`; every panel is drawn against it
-  pose_sheet: pose-sheet.png   # locked with `studio sheet approve`; six reusable poses, attached with the model sheet
+  pose_sheet: pose-sheet.png   # locked with `studio sheet approve`; reusable poses, attached with the model sheet
 
 personality:
   - Hiền, chu đáo, chăm cả phòng như chăm con

@@ -58,7 +58,8 @@ look:
   gag_scene: during a meeting the boss points at a chart; the character has curled into a tight scaly ball on the chair, tail tip and pen sticking out
   # The one item readers know this character by at thumbnail size. Every panel draws it, a little oversized.
   icon: a fat red pen clipped in the shirt pocket, still sticking out when curled into a ball
-  character_sheet: null   # set after the Muse Image test; path under output/characters/te-te/
+  character_sheet: model-sheet.png   # locked with `studio sheet approve`; every panel is drawn against it
+  pose_sheet: pose-sheet.png   # locked with `studio sheet approve`; six reusable poses, attached with the model sheet
 
 personality:
   - Bình tĩnh tuyệt đối, không gì làm anh vội được

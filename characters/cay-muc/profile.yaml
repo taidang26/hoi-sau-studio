@@ -69,7 +69,8 @@ look:
   gag_scene: the lift doors open on the director holding his white cat; behind him the whole open office has frozen mid-motion, one coworker curled into a ball, one puffed up round
   # The one item readers know this character by at thumbnail size. Every panel draws it, a little oversized.
   icon: the huge white walrus moustache and the white cat in his arm
-  character_sheet: null   # set after the Muse Image test; path under output/characters/cay-muc/
+  character_sheet: model-sheet.png   # locked with `studio sheet approve`; every panel is drawn against it
+  pose_sheet: pose-sheet.png   # locked with `studio sheet approve`; six reusable poses, attached with the model sheet
 
 personality:
   - Hào phóng, ồn ào, thích khoe nhưng không ác

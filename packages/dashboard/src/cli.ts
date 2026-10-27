@@ -3,7 +3,9 @@
  *   npm run dashboard               real data from CHANNEL_DATA_DIR (default data/)
  *   npm run dashboard -- --demo     sample data in data-demo/, nothing real touched
  *
- * PORT (default 4321) and .env are read like the other CLIs.
+ * PORT (default 4321) and .env are read like the other CLIs. HOST=0.0.0.0 opens it to
+ * the network (a container); real data then needs DASHBOARD_PASSWORD, since the
+ * dashboard can post to the Pages and spend API credits.
  */
 
 import { cpSync, existsSync, readFileSync } from "node:fs";
@@ -101,9 +103,16 @@ const research = new Research({
 if (demo) await seedResearch(research);
 
 const port = Number(process.env.PORT || 4321);
+const host = process.env.HOST || "127.0.0.1";
+const password = process.env.DASHBOARD_PASSWORD || undefined;
+if (!demo && !password && !["127.0.0.1", "localhost", "::1"].includes(host)) {
+  console.error(`Refusing to serve real data on ${host} without DASHBOARD_PASSWORD.`);
+  process.exit(1);
+}
 await startDashboard(
   {
     ...paths,
+    password,
     inbox,
     studio,
     accounts,
@@ -117,6 +126,7 @@ await startDashboard(
     }),
   },
   port,
+  host,
 );
 console.log(`Hồi Sau dashboard${demo ? " (dữ liệu mẫu)" : ""}: http://localhost:${port}`);
 console.log(`Dữ liệu: ${paths.dataDir}`);

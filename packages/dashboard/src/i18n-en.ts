@@ -553,4 +553,8 @@ export const EN: Record<string, string> = {
   "Chưa duyệt": "Not approved",
   "Soát lại": "Check again",
   "Duyệt lại": "Approve again",
+  "Đăng nhập": "Sign in",
+  "Mật khẩu": "Password",
+  "Vào": "Enter",
+  "Sai mật khẩu.": "Wrong password.",
 };

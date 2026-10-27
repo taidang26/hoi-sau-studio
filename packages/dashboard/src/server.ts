@@ -12,6 +12,7 @@ import type { Conversation, InboxMessage, Platform } from "@hoi-sau/channel";
 import { NeedsSetup, type Accounts } from "./accounts.js";
 import { editCharacterPage, newCharacterPage, saveCharacter } from "./characters.js";
 import { appendMessage, brandArtDir, loadState, toggleDirection, type Paths } from "./data.js";
+import { isSignedIn, passwordMatches, sessionCookie } from "./auth.js";
 import { pickLang, t, withLang, type Lang } from "./i18n.js";
 import { characterNotes, compareSection, inspirationField, researchPage, type IdeaKind, IDEA_KINDS, type Research } from "./research.js";
 import { episodeStudioPage, friendly, Studio, studioPage, stylePage } from "./studio.js";
@@ -26,6 +27,7 @@ import {
   commentsPage,
   episodesPage,
   inboxPage,
+  loginPage,
   notFoundPage,
   overviewPage,
   settingsPage,
@@ -52,6 +54,8 @@ const TYPES: Record<string, string> = {
 
 export interface DashboardOptions extends Paths {
   channel: () => ChannelStatus;
+  /** When set, every page but /login and /static asks for it. Set it whenever the dashboard is online. */
+  password?: string;
   /** Shown on top of every page, e.g. to say the data is a sample. */
   banner?: string;
   inbox?: {
@@ -545,6 +549,18 @@ export function handler(opts: DashboardOptions) {
     const lang: Lang = pickLang(req.headers.cookie);
     return withLang(lang, async () => {
       try {
+        const pw = opts.password;
+        if (pw && path === "/login") {
+          if (req.method !== "POST") return send(res, 200, loginPage());
+          if (!passwordMatches(pw, (await readForm(req)).get("password") ?? "")) return send(res, 401, loginPage(t("Sai mật khẩu.")));
+          res.writeHead(303, { Location: "/", "Set-Cookie": sessionCookie(pw) });
+          return void res.end();
+        }
+        if (pw && path === "/logout") {
+          res.writeHead(303, { Location: "/login", "Set-Cookie": sessionCookie(undefined) });
+          return void res.end();
+        }
+        if (pw && !path.startsWith("/static/") && !path.startsWith("/lang/") && !isSignedIn(req, pw)) return redirect(res, "/login");
         await route(req, res, url, path);
       } catch (e) {
         console.error(e);

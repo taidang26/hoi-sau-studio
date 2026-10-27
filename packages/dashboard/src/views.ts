@@ -633,3 +633,11 @@ ${opts.demo ? `<div class="notice">${esc(t("Đang xem dữ liệu mẫu nên kh�
 ${opts.mock ? `<p class="muted small">${esc(t("AI đang ở chế độ vẽ thử: ảnh là mẫu, không tốn lượt."))}</p>` : ""}</section></div>`;
   return layout(t("Cài đặt"), "/settings", body);
 }
+
+export function loginPage(error?: string): string {
+  return `<!doctype html><html lang="${lang()}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${t("Đăng nhập")} · Hồi Sau</title><link rel="stylesheet" href="/static/app.css"></head>
+<body><main class="login"><h1>Hồi Sau</h1><p class="muted">Studio dashboard</p>
+${error ? `<div class="warn small">${esc(error)}</div>` : ""}
+<form method="post" action="/login"><input type="password" name="password" placeholder="${t("Mật khẩu")}" autocomplete="current-password" required autofocus><button class="btn on">${t("Vào")}</button></form></main></body></html>`;
+}

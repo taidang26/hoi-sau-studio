@@ -9,7 +9,7 @@
  * every picture next to its edge in Vietnamese.
  */
 
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import sharp from "sharp";
 import { characterRefs, type StudioContext } from "./episode.js";
@@ -70,6 +70,8 @@ export async function makeEdgeArt(ctx: StudioContext, slugs: string[], outDir: s
     writeFileSync(join(outDir, `${slug}.png`), png);
     done.push(slug);
   }
-  writeFileSync(join(outDir, "index.html"), galleryPage(ctx, done));
+  // The page shows every picture in the folder, so redrawing one keeps the rest.
+  const shown = [...ctx.profiles.keys()].filter((s) => existsSync(join(outDir, `${s}.png`)));
+  writeFileSync(join(outDir, "index.html"), galleryPage(ctx, shown));
   return { files: done.map((s) => join(outDir, `${s}.png`)), usage };
 }

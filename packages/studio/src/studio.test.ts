@@ -307,4 +307,7 @@ test("edge art: one picture per character of its secret side, offline", async ()
   assert.equal(files.length, 2);
   for (const f of files) assert.deepEqual(imageSize(readFileSync(f)), { ...EDGE_SIZE, mime: "image/png" });
   assert.match(readFileSync(join(out, "index.html"), "utf8"), /Rico/);
+  await makeEdgeArt(ctx, ["te-te"], out);
+  const page = readFileSync(join(out, "index.html"), "utf8");
+  assert.ok(/Rico/.test(page) && /Pango/.test(page), "redrawing one keeps the others on the page");
 });

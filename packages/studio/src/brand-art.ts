@@ -6,7 +6,8 @@
  * painted on the office aisle. Each character's own cover is the same shot
  * with that character crossing alone while the office watches. Avatars are a
  * head-and-shoulders portrait that reads inside a small circle; the series
- * avatar is all their heads peeking over a desk.
+ * avatar is its lead character alone, one big face (six faces were too small
+ * to read in a 40 px circle).
  *
  *   npm run studio -- brand-art [brand…] [--only avatar|cover] [--recrop] [--mock]
  *
@@ -72,6 +73,9 @@ export function seriesCast(ctx: StudioContext): string[] {
   return [...WALK_ORDER.filter((s) => ctx.profiles.has(s)), ...rest];
 }
 
+/** The face of the series on its profile picture. */
+export const SERIES_FACE = "cu-li";
+
 const COUNT = ["no", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"];
 const ORDINAL = ["first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth"];
 const count = (n: number) => COUNT[n] ?? String(n);
@@ -97,7 +101,7 @@ export function coverPrompt(ctx: StudioContext, brand: BrandInfo): string {
       ? [
           "Wide cover illustration, a playful homage to a famous album-cover shot of people crossing a zebra crossing in single file, moved inside an office.",
           "Side view, eye level, one-point perspective down the long office aisle, seen from far away. A white zebra crossing is painted across the aisle carpet.",
-          `Exactly ${n} main characters walk across it in single file from left to right, evenly spaced, mid-stride, arms swinging. All ${n} are standing and walking in the line, none sitting at a desk or left in the background; each appears exactly once, never twice, and no other character is on the crossing. From front to back: ${cast.map((s, i) => describe(ctx, s, `${ORDINAL[i] ?? "next"} in line`)).join(" ")}`,
+          `Exactly ${n} main characters walk across it in single file from left to right, evenly spaced, mid-stride, arms swinging. All ${n} are standing and walking in the line, none sitting at a desk or left in the background; each appears exactly once, never twice, and no other character is on the crossing. Walking left to right means the front of the line is on the RIGHT side of the picture: the leader is the rightmost character, nearest the right edge, and the last in line is the leftmost. From the leader at the far right to the last on the left: ${cast.map((s, i) => describe(ctx, s, i === 0 ? "leading the line at the far right, in front of everyone" : `${ORDINAL[i] ?? "next"} in line, ${i === cast.length - 1 ? "last, at the far left" : "further left"}`)).join(" ")}`,
           "Desks with background coworkers on both sides of the aisle, some glancing up at the parade.",
         ]
       : [
@@ -112,17 +116,19 @@ export function coverPrompt(ctx: StudioContext, brand: BrandInfo): string {
 export function avatarPrompt(ctx: StudioContext, brand: BrandInfo): string {
   const style = ctx.style ? styleText(ctx.style) : "";
   const circle = "It is a social media profile picture shown as a small circle: everything important sits in the central circle, big and simple, readable at thumbnail size.";
+  const face = brand.kind === "series" || !brand.character ? seriesFace(ctx) : brand.character;
   const scene =
     brand.kind === "series" || !brand.character
-      ? `The ${count(seriesCast(ctx).length)} coworkers peek over the edge of one office desk side by side, heads and paws only, big curious eyes, packed close together so every face stays big, in this order left to right: ${seriesCast(ctx)
-          .map((s) => describe(ctx, s, "peeking"))
-          .join(" ")} Plain soft butter-yellow background.`
-      : `${describe(ctx, brand.character, "head and shoulders, facing the viewer, centred, a big friendly expression")} Plain soft background in a light tint of the character's own colours.`;
+      ? `${describe(ctx, face, "alone, a big close-up of the face filling most of the circle, peeking in from the bottom edge with paws on it, wide curious eyes looking straight at the viewer, one strong funny expression")} Nobody else in the picture. Plain soft butter-yellow background.`
+      : `${describe(ctx, face, "head and shoulders, facing the viewer, centred, a big friendly expression")} Plain soft background in a light tint of the character's own colours.`;
   return [scene, circle, style ? `Style: ${style}` : "", NO_TEXT].filter(Boolean).join(" ");
 }
 
-function refsFor(ctx: StudioContext, brand: BrandInfo): string[] {
-  const slugs = brand.kind === "series" || !brand.character ? seriesCast(ctx) : [brand.character];
+const seriesFace = (ctx: StudioContext) => (ctx.profiles.has(SERIES_FACE) ? SERIES_FACE : seriesCast(ctx)[0]);
+
+function refsFor(ctx: StudioContext, brand: BrandInfo, picture: "avatar" | "cover"): string[] {
+  const series = brand.kind === "series" || !brand.character;
+  const slugs = series ? (picture === "avatar" ? [seriesFace(ctx)] : seriesCast(ctx)) : [brand.character!];
   // One model sheet per character keeps the request small; a solo brand also gets its pose sheet.
   const refs = slugs.flatMap((s) => (slugs.length > 1 ? characterRefs(ctx, s).slice(0, 1) : characterRefs(ctx, s)));
   const styleRef = styleReference(ctx.style, ctx.seriesDir ?? SERIES_DIR);
@@ -172,7 +178,7 @@ async function fit(image: Buffer, size: { width: number; height: number }, enlar
   }
 }
 
-/** The cover with the page name and tagline lettered at the bottom right, clear of Facebook's profile picture on the left. */
+/** The cover with the page name and tagline lettered at the top right, over the ceiling and clear of the cast below and of Facebook's profile picture at the bottom left. */
 export function titledCover(cover: Buffer, brand: BrandInfo): Buffer {
   const size = imageSize(cover);
   const w = size.width * 0.34;
@@ -180,14 +186,14 @@ export function titledCover(cover: Buffer, brand: BrandInfo): Buffer {
   const lines = [
     {
       text: brand.name,
-      bubble: { x: size.width * 0.62, y: size.height * 0.6, width: w, height: h * 0.62, shape: "rect" as const, draw: true },
+      bubble: { x: size.width * 0.62, y: size.height * 0.06, width: w, height: h * 0.62, shape: "rect" as const, draw: true },
       options: { fontPath: COMIC_FONT_PATH, maxFontSize: Math.round(size.height * 0.11), padding: 10 },
     },
     ...(brand.tagline
       ? [
           {
             text: brand.tagline,
-            bubble: { x: size.width * 0.62, y: size.height * 0.6 + h * 0.62 + 8, width: w, height: h * 0.4, shape: "rect" as const, draw: true },
+            bubble: { x: size.width * 0.62, y: size.height * 0.06 + h * 0.62 + 8, width: w, height: h * 0.4, shape: "rect" as const, draw: true },
             options: { fontPath: COMIC_FONT_PATH, maxFontSize: Math.round(size.height * 0.045), padding: 6, strokeWidth: 3 },
           },
         ]
@@ -227,10 +233,9 @@ export async function makeBrandArt(
     }
     const dir = join(outDir, b.id);
     mkdirSync(dir, { recursive: true });
-    const references = refsFor(ctx, b);
     if (opts.only !== "cover" && !opts.recrop) {
       log(`${b.id}: avatar`);
-      const a = await generateSoftly(ctx.image, { prompt: avatarPrompt(ctx, b), size: "1024x1024", references }, log);
+      const a = await generateSoftly(ctx.image, { prompt: avatarPrompt(ctx, b), size: "1024x1024", references: refsFor(ctx, b, "avatar") }, log);
       if (a.usage) usage.push(a.usage);
       writeFileSync(join(dir, "avatar.png"), await fit(a.image, AVATAR_SIZE, false));
     }
@@ -238,7 +243,7 @@ export async function makeBrandArt(
       const rawFile = join(dir, "cover-raw.png");
       if (!opts.recrop) {
         log(`${b.id}: cover`);
-        const c = await generateSoftly(ctx.image, { prompt: coverPrompt(ctx, b), size: "1536x1024", references }, log);
+        const c = await generateSoftly(ctx.image, { prompt: coverPrompt(ctx, b), size: "1536x1024", references: refsFor(ctx, b, "cover") }, log);
         if (c.usage) usage.push(c.usage);
         // The uncropped drawing, so a crop can be redone without drawing again.
         writeFileSync(rawFile, c.image);

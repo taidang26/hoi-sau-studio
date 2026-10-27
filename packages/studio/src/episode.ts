@@ -28,7 +28,7 @@ import {
   WRITER_GUIDE,
 } from "@hoi-sau/story";
 import { addCanon, SERIES_DIR, type CanonFact, type SeriesBible } from "./bible.js";
-import type { MuseImage } from "./muse-image.js";
+import { generateSoftly, type MuseImage } from "./muse-image.js";
 import { type ChatMessage, type MuseSpark, S } from "./muse-spark.js";
 import { CHARACTERS_DIR, type Profile } from "./profile.js";
 import { iconLine } from "./prompts.js";
@@ -372,7 +372,7 @@ export function episodePanelPrompt(ctx: StudioContext, ep: EpisodeSpec, sp: Scri
     `${bp.shot} shot, ${bp.angle}. ${bp.composition}`,
     who,
     cameo && sp.action.includes(cameo.name) ? `Also a coworker: ${cameo.description}.` : "",
-    `Match the character sheets and pose sheets exactly. Single comic panel. Style: ${style} Keep the top quarter calm and uncluttered for dialogue added later. No text, no letters, no speech bubbles, no captions.`,
+    `Match the character sheets and pose sheets exactly. Single comic panel. Style: ${style} Keep the top quarter calm and uncluttered for dialogue added later, and keep every character away from the very top and bottom edges (the panel is trimmed slightly there). No text, no letters, no speech bubbles, no captions.`,
   ]
     .filter(Boolean)
     .join(" ");
@@ -496,7 +496,7 @@ export async function runStep(ctx: StudioContext, id: string, step: EpisodeStep)
         if (i === 0 && styleRef) refs.unshift(styleRef);
         const prompt = episodePanelPrompt(ctx, ep, sp, bp, premise.cameo);
         log(`${id}: panel ${i + 1}${refs.length ? ` (+${refs.length} reference)` : ""}`);
-        const res = await ctx.image.generate({ prompt, size: panelSize(ep, i + 1), previousResponseId: previous, references: refs });
+        const res = await generateSoftly(ctx.image, { prompt, size: panelSize(ep, i + 1), previousResponseId: previous, references: refs }, (m) => log(`${id}: panel ${i + 1}: ${m}`));
         const name = `panel-${i + 1}.${imageSize(res.image).mime.split("/")[1]}`;
         writeFileSync(join(out, name), res.image);
         renders.push({ n: i + 1, file: `panels/${name}`, responseId: res.id, prompt, history: [] });
@@ -514,7 +514,7 @@ export async function runStep(ctx: StudioContext, id: string, step: EpisodeStep)
         let redrawn = false;
         for (let attempt = 0; !verdict.pass && attempt < (ctx.maxRedraws ?? 1); attempt++) {
           log(`${id}: redraw panel ${r.n}: ${verdict.fix}`);
-          const res = await ctx.image.generate({
+          const res = await generateSoftly(ctx.image, {
             prompt: `Edit this panel. Change only this: ${verdict.fix}. Keep everything else exactly the same: composition, background, other characters, colours. No text.`,
             previousResponseId: current.responseId,
             size: panelSize(ep, r.n),

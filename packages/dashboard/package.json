@@ -10,7 +10,7 @@
   },
   "scripts": {
     "build": "tsc -b",
-    "test": "tsc -b && node --test dist/*.test.js"
+    "test": "tsc -b && node ../../scripts/run-tests.mjs"
   },
   "dependencies": {
     "@hoi-sau/channel": "0.0.0",

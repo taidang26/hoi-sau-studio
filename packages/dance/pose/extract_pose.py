@@ -34,8 +34,10 @@ def main():
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     ap.add_argument("--min-score", type=float, default=0.8, help="person detection threshold")
     ap.add_argument("--max-width", type=int, default=720, help="frames are shrunk to this width for speed")
+    ap.add_argument("--every", type=int, default=0, help="read every Nth frame; the rest are filled in later (default: 1 on GPU, 3 on CPU)")
     args = ap.parse_args()
 
+    every = args.every or (1 if args.device.startswith("cuda") else 3)
     weights = KeypointRCNN_ResNet50_FPN_Weights.DEFAULT
     model = keypointrcnn_resnet50_fpn(weights=weights).eval().to(args.device)
 
@@ -55,6 +57,9 @@ def main():
             ok, frame = cap.read()
             if not ok:
                 break
+            if index % every:
+                index += 1
+                continue
             img = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             if shrink < 1:
                 img = cv2.resize(img, None, fx=shrink, fy=shrink, interpolation=cv2.INTER_AREA)
@@ -73,7 +78,7 @@ def main():
             for b, pose in sorted(people, key=lambda p: -(p[0][2] - p[0][0]) * (p[0][3] - p[0][1])):
                 best, best_iou = None, 0.2
                 for tr in tracks:
-                    if tr["id"] in used or index - tr["last"] > 15:
+                    if tr["id"] in used or index - tr["last"] > 15 * every:
                         continue
                     o = iou(b, tr["box"])
                     if o > best_iou:
@@ -95,7 +100,7 @@ def main():
         "width": width,
         "height": height,
         "frameCount": index,
-        "tracks": [{"id": tr["id"], "frames": [tr["frames"].get(i) for i in range(index)]} for tr in tracks if len(tr["frames"]) >= 10],
+        "tracks": [{"id": tr["id"], "frames": [tr["frames"].get(i) for i in range(index)]} for tr in tracks if len(tr["frames"]) * every >= 10],
     }
     with open(args.out, "w", encoding="utf-8") as f:
         json.dump(out, f)

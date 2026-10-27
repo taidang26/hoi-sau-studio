@@ -93,28 +93,41 @@ async function* asEvents(text: string): AsyncIterable<ResponsesEvent> {
   yield { type: "response.completed" } as ResponsesEvent;
 }
 
-/** Parses SAM's text with @meta-sam/parser and lays each mask on a full-size canvas. */
+/**
+ * Parses SAM's text with @meta-sam/parser and lays each mask on a full-size
+ * canvas. SAM works on a shrunk copy of a large image (about 1024 px) and
+ * reports boxes and masks in that copy's pixels, named by the box's w and h;
+ * those are scaled back up to `width` × `height`.
+ */
 export async function decodeSegments(text: string, width: number, height: number): Promise<Segment[]> {
   if (!text.trim()) return [];
+  const seen = /<\|box;[^|]*?w=(\d+);h=(\d+)/.exec(text);
+  const sw = seen ? Number(seen[1]) : width;
+  const sh = seen ? Number(seen[2]) : height;
   const result = await parseImageStream(asEvents(text)).finalResult;
   const out: Segment[] = [];
   for (const rec of recordsOfKind(result.records, "mask")) {
     const raster = decodeMaskToRaster(rec.mask);
     const mw = rec.mask.width;
-    const mh = rec.mask.height;
     const { left, top } = rec.bounds;
-    const mask = new Uint8Array(width * height);
-    let area = 0;
-    for (let y = 0; y < mh; y++) {
-      const gy = top + y;
-      if (gy < 0 || gy >= height) continue;
+    // Mask in SAM's own pixels first, then each full-size pixel looks up its source pixel.
+    const small = new Uint8Array(sw * sh);
+    for (let y = 0; y < rec.mask.height; y++)
       for (let x = 0; x < mw; x++) {
         const gx = left + x;
-        if (gx < 0 || gx >= width || !raster[y * mw + x]) continue;
-        mask[gy * width + gx] = 1;
-        area++;
+        const gy = top + y;
+        if (gx >= 0 && gx < sw && gy >= 0 && gy < sh && raster[y * mw + x]) small[gy * sw + gx] = 1;
+      }
+    let mask = small;
+    if (sw !== width || sh !== height) {
+      mask = new Uint8Array(width * height);
+      for (let y = 0; y < height; y++) {
+        const row = Math.min(sh - 1, Math.floor((y * sh) / height)) * sw;
+        for (let x = 0; x < width; x++) mask[y * width + x] = small[row + Math.min(sw - 1, Math.floor((x * sw) / width))];
       }
     }
+    let area = 0;
+    for (let i = 0; i < mask.length; i++) area += mask[i];
     out.push({ objectId: rec.objectId, score: rec.confidence, width, height, mask, area });
   }
   return out;

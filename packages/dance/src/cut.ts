@@ -213,8 +213,8 @@ export async function cutRig(sam: SamLike, image: Buffer, opts: { phrases?: Part
   if (shoulders[1] >= hips[1]) throw new CutError("The shoulders came out below the hips; check the arm and leg masks.");
   bones.torso = { pivot: hips, tip: shoulders };
   const headPts = pixels(head, width);
-  const top = Math.min(...headPts.map((p) => p[1]));
-  const bottom = Math.max(...headPts.map((p) => p[1]));
+  const top = headPts.reduce((m, p) => Math.min(m, p[1]), Infinity);
+  const bottom = headPts.reduce((m, p) => Math.max(m, p[1]), -Infinity);
   const cx = centroid(headPts)[0];
   bones.head = { pivot: [cx, bottom - (bottom - top) * 0.08], tip: [cx, top] };
 

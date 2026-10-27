@@ -6,7 +6,7 @@ Trend dance videos: a person dancing in a clip becomes one of our characters dan
 | --- | --- | --- |
 | Draw the character front-on in an A-pose, on-model from its locked sheets | Muse Image 1.0 | Meta Model API |
 | Cut the drawing into head, torso, upper arms, forearms, thighs, shins; find the joints | SAM 3.1 (`sam-3.1`), parsed with Meta's `@meta-sam/parser` | Meta Model API |
-| Read every person's pose, frame by frame | Keypoint R-CNN (Meta AI Research), open weights via torchvision | locally, `pose/extract_pose.py` |
+| Read every person's pose (every 3rd frame on CPU, the rest filled in) | Keypoint R-CNN (Meta AI Research), open weights via torchvision | locally, `pose/extract_pose.py` |
 | Move the puppet, render 9:16 | our code (resvg + ffmpeg) | locally |
 
 ```bash

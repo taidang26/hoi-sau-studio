@@ -7,7 +7,8 @@
  */
 
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { availableParallelism, tmpdir } from "node:os";
+import { Worker } from "node:worker_threads";
 import { join } from "node:path";
 import { Resvg } from "@resvg/resvg-js";
 import { ffmpeg } from "@hoi-sau/motion";
@@ -102,7 +103,7 @@ interface Prepared {
   images: Map<string, string>;
 }
 
-function prepare(file: PoseFile, actor: Actor): Prepared {
+export function prepare(file: PoseFile, actor: Actor): Prepared {
   let track = pickTrack(file, actor.track);
   if (actor.mirror) track = { ...track, frames: track.frames.map((p) => (p ? mirrorPose(p, file.width) : null)) };
   const poses = cleanTrack(track);
@@ -144,18 +145,33 @@ export interface RenderResult {
   seconds: number;
 }
 
-export async function renderDance(file: PoseFile, scene: Scene, out: string, opts: { compare?: string; log?: (s: string) => void } = {}): Promise<RenderResult> {
-  const prepared = scene.actors.map((a) => prepare(file, a));
+export async function renderDance(file: PoseFile, scene: Scene, out: string, opts: { compare?: string; log?: (s: string) => void; workers?: number } = {}): Promise<RenderResult> {
   const first = Math.round((scene.start ?? 0) * file.fps);
   const count = Math.min(file.frameCount - first, scene.duration ? Math.round(scene.duration * file.fps) : Infinity);
   if (count <= 0) throw new Error("Nothing to render: start is past the end of the clip.");
+  scene.actors.forEach((a) => prepare(file, a)); // fail here, not inside a worker
   const work = mkdtempSync(join(tmpdir(), "dance-"));
   try {
-    for (let i = 0; i < count; i++) {
-      const png = new Resvg(frameSvg(scene, prepared, first + i), { fitTo: { mode: "original" } }).render().asPng();
-      writeFileSync(join(work, `${String(i).padStart(5, "0")}.png`), png);
-      if (opts.log && i % 60 === 0) opts.log(`frame ${i + 1}/${count}`);
-    }
+    // Frames are independent, so every core rasterises its own share.
+    const workers = Math.max(1, Math.min(opts.workers ?? availableParallelism() - 1, 12, Math.ceil(count / 20)));
+    const per = Math.ceil(count / workers);
+    let done = 0;
+    await Promise.all(
+      Array.from({ length: workers }, (_, w) => {
+        const from = w * per;
+        const to = Math.min(count, from + per);
+        if (from >= to) return Promise.resolve();
+        return new Promise<void>((ok, fail) => {
+          const worker = new Worker(new URL("./render-worker.js", import.meta.url), { workerData: { file, scene, first, from, to, work } });
+          worker.on("message", (n: number) => {
+            done += n;
+            opts.log?.(`frame ${done}/${count}`);
+          });
+          worker.on("error", fail);
+          worker.on("exit", (code) => (code === 0 ? ok() : fail(new Error(`Render worker exited with ${code}.`))));
+        });
+      }),
+    );
     mkdirSync(join(out, ".."), { recursive: true });
     const input = ["-framerate", String(file.fps), "-i", join(work, "%05d.png")];
     const encode = ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "veryfast", "-crf", "20", "-movflags", "+faststart"];
@@ -178,3 +194,14 @@ export async function renderDance(file: PoseFile, scene: Scene, out: string, opt
 }
 
 export const loadPoses = (path: string): PoseFile => JSON.parse(readFileSync(path, "utf8")) as PoseFile;
+
+/** Writes frames [from, to) of the render as numbered PNGs in `work`. */
+export function renderFrames(file: PoseFile, scene: Scene, first: number, from: number, to: number, work: string, progress?: (n: number) => void): void {
+  const prepared = scene.actors.map((a) => prepare(file, a));
+  for (let i = from; i < to; i++) {
+    const png = new Resvg(frameSvg(scene, prepared, first + i), { fitTo: { mode: "original" } }).render().asPng();
+    writeFileSync(join(work, `${String(i).padStart(5, "0")}.png`), png);
+    if ((i - from) % 30 === 29) progress?.(30);
+  }
+  if ((to - from) % 30) progress?.((to - from) % 30);
+}

@@ -8,9 +8,12 @@
  * the main brand). META_GRAPH_MOCK=1 swaps Meta for the fake in demo.ts.
  */
 
+import { spawn } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import {
   BRANDS_FILE,
+  DEFAULT_GRAPH_VERSION,
   MAIN_BRAND,
   FileJournal,
   GraphClient,
@@ -19,6 +22,7 @@ import {
   THREADS_BASE_URL,
   brandTargets,
   channelStates,
+  exchangeCodeForUserToken,
   exchangeLongLivedUserToken,
   exchangeThreadsLongLived,
   fetchConversations,
@@ -32,6 +36,7 @@ import {
   loadBrands,
   loadComments,
   loadInbox,
+  loginDialogUrl,
   mergeComments,
   mergeConversations,
   missingScopes,
@@ -42,6 +47,7 @@ import {
   saveInbox,
   sendReply,
   threadsProfile,
+  waitForLoginCode,
   type Brand,
   type ChannelEnv,
   type Comment,
@@ -195,6 +201,48 @@ async function setup(shortToken: string) {
   );
 }
 
+/** Opens a URL in the default browser without going through a shell. */
+function openBrowser(url: string) {
+  const [cmd, args] =
+    process.platform === "win32"
+      ? ["rundll32", ["url.dll,FileProtocolHandler", url]]
+      : process.platform === "darwin"
+        ? ["open", [url]]
+        : ["xdg-open", [url]];
+  try {
+    spawn(cmd, args, { stdio: "ignore", detached: true }).on("error", () => {}).unref();
+  } catch {
+    // No browser to open: the URL is printed anyway.
+  }
+}
+
+/** Facebook Login in the browser, then the same steps as setup. No token to copy by hand. */
+async function login(portArg?: string) {
+  const appId = required("META_APP_ID");
+  const appSecret = required("META_APP_SECRET");
+  const port = Number(portArg ?? process.env.META_LOGIN_PORT ?? 8765);
+  const redirectUri = `http://localhost:${port}/callback`;
+  const state = randomBytes(16).toString("hex");
+  const url = loginDialogUrl({
+    appId,
+    redirectUri,
+    state,
+    version: process.env.META_GRAPH_VERSION || DEFAULT_GRAPH_VERSION,
+    configId: process.env.META_LOGIN_CONFIG_ID || undefined,
+  });
+
+  const code = await waitForLoginCode({
+    port,
+    state,
+    onListening: () => {
+      console.log("Opening Facebook in your browser. Approve the Page (and its Instagram), then come back here.");
+      console.log(`If nothing opens, visit:\n${url}\n`);
+      if (!mock) openBrowser(url);
+    },
+  });
+  await setup(await exchangeCodeForUserToken(client(), appId, appSecret, redirectUri, code));
+}
+
 const DAY_MS = 86_400_000;
 
 async function storeThreadsToken(token: string, expiresIn: number | undefined, more: Record<string, string> = {}): Promise<string> {
@@ -342,6 +390,11 @@ interface Command {
 
 const commands: Record<string, Command> = {
   brands: { usage: "brands", help: "brands and channels from channels.yaml, and empty .env names", run: listBrands },
+  login: {
+    usage: "login [port]",
+    help: "log in with Facebook in the browser, then save the Page and its Instagram to .env",
+    run: ([port]) => login(port),
+  },
   setup: {
     usage: "setup <short-lived user token>",
     help: "swap the token, find the Page and its Instagram, save them to .env",

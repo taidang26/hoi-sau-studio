@@ -58,8 +58,8 @@ const studioDirs = demo
 if (demo) {
   if (!existsSync(studioDirs.charactersDir)) cpSync(CHARACTERS_DIR, studioDirs.charactersDir, { recursive: true });
   if (!existsSync(studioDirs.seriesDir)) cpSync(SERIES_DIR, studioDirs.seriesDir, { recursive: true });
-  // Demo copies made before the series style existed get it now.
-  if (!existsSync(join(studioDirs.seriesDir, "style.yaml"))) cpSync(join(SERIES_DIR, "style.yaml"), join(studioDirs.seriesDir, "style.yaml"));
+  // Demo copies made before the series style or the safety list existed get them now.
+  for (const f of ["style.yaml", "safety.yaml"]) if (!existsSync(join(studioDirs.seriesDir, f))) cpSync(join(SERIES_DIR, f), join(studioDirs.seriesDir, f));
   paths.charactersDir = studioDirs.charactersDir;
   paths.seriesDir = studioDirs.seriesDir;
   seedLessons(studioDirs.seriesDir);

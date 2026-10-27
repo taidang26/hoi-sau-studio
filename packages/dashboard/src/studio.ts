@@ -7,7 +7,12 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { postHash, readApproval, sha256, type Approval, type EpisodePost } from "@hoi-sau/channel";
 import {
+  approveEpisode,
+  checkForApproval,
+  type ApprovalIssue,
+  type SafetyRecord,
   approveSheet,
   approveStyle,
   EPISODE_FORMATS,
@@ -41,7 +46,7 @@ import {
   type StudioContext,
 } from "@hoi-sau/studio";
 import type { State } from "./data.js";
-import { t } from "./i18n.js";
+import { locale, t } from "./i18n.js";
 import { button, esc, flash, layout } from "./views.js";
 
 export interface StudioOptions {
@@ -90,6 +95,9 @@ interface Job {
 export function friendly(message: string): string {
   if (/API key|META_API_KEY|MODEL_API_KEY/i.test(message)) return t("Chưa có khoá AI Muse. Vào Cài đặt để thêm.");
   if (/already exists/i.test(message)) return t("Tên này đã có. Chọn tên khác.");
+  if (/stopped by the safety check/i.test(message)) return t("Soát an toàn chưa đạt nên chưa vẽ gì. Xem chi tiết ở thẻ Kiểm duyệt.");
+  if (/story changed after the safety check/i.test(message)) return t("Truyện đã sửa sau khi soát. Bấm “Soát an toàn” lại trước khi vẽ.");
+  if (/refused by the safety rules/i.test(message)) return t("Hướng truyện bị chặn: có chủ đề cấm hoặc câu giống lệnh cho AI. Viết lại hướng khác.") + ` (${message.split("\n").slice(1).map((l) => l.replace(/^\s*-\s*/, "")).join("; ")})`;
   if (/unknown style/i.test(message)) return t("Không thấy kiểu vẽ này.");
   if (/fetch failed|ENOTFOUND|ECONNREFUSED|ETIMEDOUT/i.test(message)) return t("Không gọi được máy chủ AI. Kiểm tra mạng rồi thử lại.");
   if (/\b(429|rate limit)/i.test(message)) return t("AI đang quá tải. Đợi một phút rồi thử lại.");
@@ -212,10 +220,115 @@ export class Studio {
     });
   }
 
+  /** Runs only the safety gate, in the background. */
+  checkSafety(id: string): void {
+    this.run(id, { from: "safety", to: "safety" });
+  }
+
+  /** Everything the review card shows: the gate, what blocks approval, and the approval as it stands now. */
+  review(id: string): ReviewState {
+    const dir = this.opts.episodesDir;
+    const folder = join(dir, id);
+    const gate = readStep<SafetyRecord>(id, "safety", dir);
+    const check = checkForApproval(id, dir);
+    const approval = readApproval(folder);
+    const changed: string[] = [];
+    if (approval) {
+      for (const [f, hash] of Object.entries(approval.files)) {
+        if (!existsSync(join(folder, f)) || sha256(readFileSync(join(folder, f))) !== hash) changed.push(f);
+      }
+      if (existsSync(join(folder, "post.json"))) {
+        const post = JSON.parse(readFileSync(join(folder, "post.json"), "utf8")) as EpisodePost;
+        if (approval.post && approval.post !== postHash(post)) changed.push("post.json");
+      }
+    }
+    return { gate, stale: check.blockers.some((b) => b.code === "safety-stale"), blockers: check.blockers, warnings: check.warnings, approval, changed, hasPost: existsSync(join(folder, "post.json")) };
+  }
+
+  /** The owner's sign-off; warnings need an explicit tick. */
+  approveEpisode(id: string, despiteWarnings: boolean): Approval {
+    const { blockers, warnings } = checkForApproval(id, this.opts.episodesDir);
+    if (blockers.length) throw new Error(t("Chưa duyệt được: {why}", { why: blockers.map((b) => issueText(b)).join(" ") }));
+    if (warnings.length && !despiteWarnings) throw new Error(t("Có cảnh báo. Xem lại rồi đánh dấu “Tôi đã xem cảnh báo” để duyệt."));
+    return approveEpisode(id, { dir: this.opts.episodesDir, despiteWarnings });
+  }
+
   /** Waits for a background run; for tests. */
   async settle(key: string): Promise<void> {
     while (this.jobs.get(key)?.running) await new Promise((r) => setTimeout(r, 20));
   }
+}
+
+export interface ReviewState {
+  gate?: SafetyRecord;
+  stale: boolean;
+  blockers: ApprovalIssue[];
+  warnings: ApprovalIssue[];
+  approval?: Approval;
+  /** Files changed since approval, as stored in the approval. */
+  changed: string[];
+  hasPost: boolean;
+}
+
+/** An approval issue in words, by its code; the English text is only a fallback. */
+export function issueText(i: ApprovalIssue): string {
+  switch (i.code) {
+    case "safety-not-run":
+      return t("Chưa soát an toàn.");
+    case "safety-failed":
+      return t("Soát an toàn chưa đạt.");
+    case "safety-stale":
+      return t("Truyện đã sửa sau khi soát, cần soát lại.");
+    case "not-lettered":
+      return t("Chưa ghép chữ xong.");
+    case "not-reviewed":
+      return t("Các khung chưa được tự soát.");
+    case "review-failed":
+      return t("Có khung chưa đạt khi tự soát.");
+    case "overflow":
+      return t("Có lời thoại tràn bong bóng.");
+    case "edited":
+      return t("Có bước bị sửa tay ngoài quy trình.");
+    default:
+      return i.text;
+  }
+}
+
+/** A file inside the episode, named the way the page names it. */
+function partName(file: string): string {
+  const step = file.match(/^([a-z]+)\.json$/)?.[1];
+  if (step === "episode") return t("Hướng truyện");
+  if (step === "post") return t("Chú thích bài đăng");
+  if (step && step in STEP_LABEL) return t(STEP_LABEL[step as EpisodeStep]);
+  const page = file.match(/^final\/0*(\d+)\./)?.[1];
+  if (page) return t("Trang {n}", { n: page });
+  return t("Trang ghép");
+}
+
+function reviewCard(st: Studio, id: string, running: boolean): string {
+  const r = st.review(id);
+  const done = doneSteps(id, st.opts.episodesDir);
+  if (!done.includes("script")) return "";
+  const gateState = !r.gate ? ["closed", "Chưa soát"] : r.stale ? ["due", "Cần soát lại"] : r.gate.pass ? ["ok", "Đạt"] : ["bad", "Chưa đạt"];
+  const issues = r.gate && !r.gate.pass ? `<ul class="issues">${r.gate.issues.map((i) => `<li><b>${esc(i.where)}</b> · <span class="tag over">${esc(i.topic)}</span> ${esc(i.detail)}</li>`).join("")}</ul>` : "";
+  const safetyBtn = running ? "" : button(`/studio/${id}/safety`, `🛡 ${esc(t(r.gate ? "Soát lại" : "Soát an toàn"))}`, r.gate && r.gate.pass && !r.stale ? "btn" : "btn on");
+
+  let approvalState: string[];
+  if (r.approval && r.changed.length) approvalState = ["bad", "Bị sửa sau khi duyệt"];
+  else if (r.approval) approvalState = ["ok", "Đã duyệt"];
+  else approvalState = ["closed", "Chưa duyệt"];
+  const changed = r.changed.length ? `<p class="warn small">${esc(t("Đã đổi sau khi duyệt"))}: ${r.changed.map((f) => esc(partName(f))).join(", ")}. ${esc(t("Cần duyệt lại trước khi đăng."))}</p>` : "";
+  const who = r.approval ? `<p class="muted small">${esc(t("Duyệt bởi {by} lúc {at}", { by: r.approval.approvedBy, at: new Date(r.approval.approvedAt).toLocaleString(locale()) }))}${r.approval.post ? "" : ` · ${esc(t("chưa có chú thích bài đăng lúc duyệt"))}`}</p>` : "";
+  const blockers = r.blockers.length ? `<ul class="gate-list">${r.blockers.map((b) => `<li><span class="dot warn"></span>${esc(issueText(b))}</li>`).join("")}</ul>` : "";
+  const warnings = r.warnings.length ? `<ul class="gate-list">${r.warnings.map((w) => `<li><span class="dot off"></span>${esc(issueText(w))}</li>`).join("")}</ul>` : "";
+  const needsApproval = !r.approval || r.changed.length > 0 || (r.hasPost && !r.approval.post);
+  const approveForm =
+    !running && !r.blockers.length && needsApproval
+      ? `<form class="inline approve" method="post" action="/studio/${esc(id)}/approve">${r.warnings.length ? `<label class="check"><input type="checkbox" name="despite" value="1" required> ${esc(t("Tôi đã xem cảnh báo"))}</label>` : ""}<button class="btn on">✓ ${esc(t(r.approval ? "Duyệt lại" : "Duyệt tập"))}</button></form>`
+      : "";
+  return `<section class="card review-card" id="review"><div class="card-head"><h2>${esc(t("Kiểm duyệt"))}</h2></div>
+<div class="gates"><div class="gate"><div class="gate-head"><span class="g-ico">🛡</span><b>${esc(t("Soát an toàn"))}</b><span class="tag ${gateState[0]}">${esc(t(gateState[1]))}</span></div><p class="muted small">${esc(t("Kiểm mọi chữ trong tập theo danh sách chủ đề cấm và câu nhân vật không bao giờ nói. Chưa đạt thì không vẽ."))}</p>${issues}${safetyBtn}</div>
+<div class="gate"><div class="gate-head"><span class="g-ico">✓</span><b>${esc(t("Duyệt tập"))}</b><span class="tag ${approvalState[0]}">${esc(t(approvalState[1]))}</span></div><p class="muted small">${esc(t("Chỉ tập đã duyệt mới được đăng. Sửa bất cứ thứ gì sau khi duyệt thì phải duyệt lại."))}</p>${who}${changed}${blockers}${warnings}${approveForm}</div></div></section>`;
 }
 
 // ── views ──────────────────────────────────────────────────────────────────
@@ -298,7 +411,7 @@ function motionSection(st: Studio, id: string): string {
 
 const media = (id: string, file: string) => `/studio-media/${encodeURIComponent(id)}/${file.split("/").map(encodeURIComponent).join("/")}`;
 
-export function episodeStudioPage(s: State, st: Studio, id: string, error?: string, extra = ""): string | undefined {
+export function episodeStudioPage(s: State, st: Studio, id: string, error?: string, ok?: string, extra = ""): string | undefined {
   const dir = st.opts.episodesDir;
   const ep = readStep<EpisodeSpec>(id, "episode", dir);
   if (!ep) return undefined;
@@ -324,12 +437,13 @@ export function episodeStudioPage(s: State, st: Studio, id: string, error?: stri
 
   const runBar = job?.running
     ? `<div class="notice"><span class="spinner"></span><b>${esc(t("Đang chạy"))}:</b> ${esc(job.step ?? t("bắt đầu…"))}</div><meta http-equiv="refresh" content="2">`
-    : `${job?.error ? `<div class="warn small">${esc(t("Lần chạy trước dừng lại"))}: ${esc(job.error)}</div>` : ""}${flash(undefined, error)}
+    : `${job?.error ? `<div class="warn small">${esc(t("Lần chạy trước dừng lại"))}: ${esc(job.error)}</div>` : ""}${flash(ok, error)}
 ${next ? `<form class="run" method="post" action="/studio/${esc(id)}/run"><button class="btn on">▶ ${esc(t(done.length ? "Chạy tiếp đến hết" : "Bắt đầu làm tập"))}</button><button class="btn" name="to" value="${next}">${esc(t("Chỉ chạy bước {step}", { step: t(STEP_LABEL[next]) }))}</button>${aiNote(st)}</form>` : ""}`;
 
   const dl = (rows: Array<[string, string | undefined]>) => `<dl class="kv">${rows.filter(([, v]) => v).map(([k, v]) => `<dt>${esc(t(k))}</dt><dd>${esc(v)}</dd>`).join("")}</dl>`;
   const body = `<p><a href="/studio">← Studio</a></p><header class="page-head"><div><h1>${esc(premise?.title ?? t("Tập mới"))}</h1><p class="muted">${esc(t(FORMAT_LABEL[ep.format ?? "carousel"]))} · ${esc(t("vai chính"))}: ${esc(name(ep.lead))}${ep.characters.length > 1 ? ` · ${esc(t("cùng"))}: ${esc(ep.characters.slice(1).map(name).join(", "))}` : ""}</p></div>${steps(id, dir)}</header>
 ${runBar}
+${reviewCard(st, id, Boolean(job?.running))}
 <section class="card"><h2>${esc(t("Hướng từ khán giả"))}</h2><p class="pre">${esc(ep.direction)}</p>${ep.credits.length ? `<p class="muted small">${esc(t("Ghi công"))}: ${ep.credits.map((c) => esc(c.name)).join(", ")}</p>` : ""}</section>
 ${motionSection(st, id)}
 ${letter?.page ? `<section class="card"><h2>${esc(t("Trang ghép"))}</h2><img class="strip-page" src="${media(id, letter.page)}" alt=""></section>` : ""}

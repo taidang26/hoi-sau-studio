@@ -408,6 +408,25 @@ export function handler(opts: DashboardOptions) {
           return fail("/studio", e);
         }
       }
+      const sf = path.match(/^\/studio\/([a-z0-9-]+)\/safety$/);
+      if (sf) {
+        try {
+          st.checkSafety(sf[1]);
+          return redirect(res, `/studio/${sf[1]}#review`);
+        } catch (e) {
+          return fail(`/studio/${sf[1]}`, e);
+        }
+      }
+      const apv = path.match(/^\/studio\/([a-z0-9-]+)\/approve$/);
+      if (apv) {
+        const form = await readForm(req);
+        try {
+          st.approveEpisode(apv[1], form.get("despite") === "1");
+          return redirect(res, withNote(`/studio/${apv[1]}`, "ok", t("Đã duyệt tập. Giờ có thể đăng.")));
+        } catch (e) {
+          return fail(`/studio/${apv[1]}`, e);
+        }
+      }
       const cmp = path.match(/^\/studio\/([a-z0-9-]+)\/compare$/);
       if (cmp && rs) {
         try {
@@ -476,7 +495,7 @@ export function handler(opts: DashboardOptions) {
     if (path === "/style") return page(res, 200, st ? stylePage(st, err) : notFoundPage());
     const sp = path.match(/^\/studio\/([a-z0-9-]+)$/);
     if (sp && st) {
-      const html = episodeStudioPage(state, st, sp[1], err, rs ? compareSection(rs, sp[1], finishedPages(st, sp[1]).length > 0) : "");
+      const html = episodeStudioPage(state, st, sp[1], err, ok, rs ? compareSection(rs, sp[1], finishedPages(st, sp[1]).length > 0) : "");
       return html ? page(res, 200, html) : page(res, 404, notFoundPage());
     }
     if (path === "/") return page(res, 200, overviewPage(state, opts.channel(), abilities(), ok, err));

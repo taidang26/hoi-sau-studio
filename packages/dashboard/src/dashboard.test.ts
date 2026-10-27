@@ -149,6 +149,24 @@ test("studio: create a character, lock its sheet, build an episode end to end", 
     assert.equal((await fetch(at + "/studio-media/ep-009/final/01.png")).status, 200);
     assert.equal((await fetch(at + "/studio-media/..%2F..%2Fcharacters%2Fcu-li%2Fprofile.yaml")).status, 404);
     assert.equal((await fetch(at + "/studio")).status, 200);
+
+    // Review: the gate ran in the pipeline; approve, then an edit after approval shows.
+    assert.match(html, /Kiểm duyệt/);
+    assert.match(html, /tag ok">Đạt/);
+    assert.match(html, /Chưa duyệt/);
+    assert.doesNotMatch(html, /episode approve|npm run|\.json\b/);
+    assert.match(decodeURIComponent((await post("/studio/ep-009/approve", { despite: "1" })).headers.get("location")!), /ok=Đã duyệt tập/);
+    assert.match(await (await fetch(at + "/studio/ep-009")).text(), /tag ok">Đã duyệt/);
+    const { appendFileSync } = await import("node:fs");
+    appendFileSync(join(dirs.episodesDir, "ep-009", "final", "01.png"), Buffer.from([0]));
+    const changed = await (await fetch(at + "/studio/ep-009")).text();
+    assert.match(changed, /Bị sửa sau khi duyệt/);
+    assert.match(changed, /Đã đổi sau khi duyệt: Trang 1/);
+    assert.match(changed, /Duyệt lại/);
+    // Rerunning the gate alone is a button too.
+    assert.equal((await post("/studio/ep-009/safety", {})).headers.get("location"), "/studio/ep-009#review");
+    await studio.settle("ep-009");
+    assert.equal(studio.jobs.get("ep-009")!.error, undefined);
   } finally {
     server.close();
   }

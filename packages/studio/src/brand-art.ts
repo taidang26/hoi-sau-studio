@@ -69,7 +69,7 @@ export function coverPrompt(ctx: StudioContext, brand: BrandInfo): string {
       ? [
           "Wide cover illustration, a playful homage to a famous album-cover shot of four people crossing a zebra crossing, moved inside an office.",
           "Side view, eye level, one-point perspective down the long office aisle. A white zebra crossing is painted across the aisle carpet.",
-          `The four coworkers walk across it in single file from left to right, evenly spaced, mid-stride, arms swinging, each in their own outfit: ${cast.map((s, i) => describe(ctx, s, i === 0 ? "in front" : "next in line")).join(" ")}`,
+          `Exactly four main characters walk across it in single file from left to right, evenly spaced, mid-stride, arms swinging. Each of the four appears exactly once, never twice, and no other character is on the crossing. From front to back: ${cast.map((s, i) => describe(ctx, s, `${["first", "second", "third", "fourth"][i] ?? "next"} in line`)).join(" ")}`,
           "Desks with background coworkers on both sides of the aisle, some glancing up at the parade.",
         ]
       : [

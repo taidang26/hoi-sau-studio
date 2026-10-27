@@ -630,7 +630,7 @@ async function reviewPanel(ctx: StudioContext, ep: EpisodeSpec, sp: ScriptPanel,
           const p = ctx.profiles.get(c)!;
           return `${p.name} must have: ${p.look.signature.join("; ")}.${p.look.icon ? ` Its identifying item must be clearly visible: ${p.look.icon}.` : ""} Palette: ${p.look.palette.map((s) => s.hex).join(", ")}.`;
         }),
-        "Fail the panel if a signature feature is wrong or missing, a character is off-model, there is drawn text, a speech bubble or a thought cloud, or anything unsafe. The first image is the panel; any others are the locked model sheets.",
+        "Fail the panel if a signature feature is wrong or missing, a character is off-model, there is drawn text, a speech bubble or a thought cloud, a human figure anywhere (every coworker is an animal), or anything unsafe. The first image is the panel; any others are the locked model sheets.",
       ].join("\n"),
     },
     { type: "image_url", image_url: { url: `data:${imageSize(data).mime};base64,${data.toString("base64")}` } },

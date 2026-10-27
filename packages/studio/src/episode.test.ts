@@ -48,7 +48,7 @@ test("slugs drop Vietnamese accents", () => {
 
 test("the series bible loads with its cast and format", () => {
   const b = loadBible();
-  assert.deepEqual(b.cast, ["cu-li", "ca-noc", "te-te", "sao-la"]);
+  assert.deepEqual(b.cast, ["cu-li", "ca-noc", "te-te", "sao-la", "cay-muc"]);
   assert.ok(b.format.panels.min >= 4 && b.format.panels.max <= 6);
 });
 

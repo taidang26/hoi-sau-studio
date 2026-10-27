@@ -11,7 +11,8 @@ world:
     - Pantry có máy pha cà phê hay hỏng
     - Thang máy chậm
   recurring_extras:
-    - Sếp (một con cú mèo đeo kính, không bao giờ nêu tên)
+    - Sếp (một con cú mèo đeo kính, trưởng phòng, không bao giờ nêu tên)
+    - Con mèo trắng Bông của Giám đốc, con vật duy nhất ở công ty không phải đi làm
     - Chị kế toán trưởng (một con rùa, luôn đúng)
     - Đồng nghiệp do khán giả đề xuất (vẽ theo mô tả bằng chữ)
 rules:
@@ -36,6 +37,7 @@ cast:
   - ca-noc
   - te-te
   - sao-la
+  - cay-muc
 relationships:
   - { a: cu-li, b: sao-la, dynamic: "Lolo thần tượng Uni và khen suốt, nên Uni sợ Lolo nhất phòng" }
   - { a: ca-noc, b: cu-li, dynamic: "Chị Poppy chăm Lolo như em ruột, nhưng hoá đơn tạm ứng của Lolo thì vẫn trả về" }
@@ -43,6 +45,8 @@ relationships:
   - { a: ca-noc, b: te-te, dynamic: "Hai người lâu năm nhất phòng, cãi nhau như vợ chồng già về cái điều hoà" }
   - { a: ca-noc, b: sao-la, dynamic: "Uni chỉ nói chuyện bình thường với chị Poppy, vì chị không bao giờ khen ai" }
   - { a: te-te, b: sao-la, dynamic: "Anh Pango lấy việc của Uni làm ví dụ ở mọi cuộc họp; Uni chỉ muốn biến mất" }
+  - { a: cay-muc, b: te-te, dynamic: "Giám đốc giao việc qua Pango; Pango cuộn tròn ngay khi nghe tiếng thang máy" }
+  - { a: cay-muc, b: cu-li, dynamic: "Giám đốc gọi nhầm tên Lolo mỗi lần một kiểu, nhưng con mèo Bông chỉ chịu nằm trong lòng Lolo" }
 season:
   arc: 'Mùa 1 "Dự Án Tết": cả phòng phải xong một chiến dịch Tết trong 30 tập; khán giả quyết định chiến dịch thành hay hỏng.'
   milestones:

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { Resvg } from "@resvg/resvg-js";
-import { composePanel, fitText, imageSize, loadFont, missingGlyphs, MissingGlyphError, renderSpeech, svgToPng, tokens } from "./index.js";
+import { BUBBLE_KINDS, COMIC_FONT_PATH, composePanel, fitText, imageSize, loadFont, missingGlyphs, MissingGlyphError, renderSpeech, SHOUT_FONT_PATH, snugBubble, svgToPng, tokens } from "./index.js";
 
 const font = loadFont();
 const box = { x: 0, y: 0, width: 420, height: 260 };
@@ -105,4 +105,34 @@ test("composePanel keeps panel size and reports overflow; PNG round-trips", () =
   assert.equal(overflow.length, 1);
   const out = svgToPng(svg);
   assert.deepEqual(imageSize(out), { width: 540, height: 675, mime: "image/png" });
+});
+
+test("comic fonts cover every Vietnamese letter and tone", () => {
+  for (const path of [COMIC_FONT_PATH, SHOUT_FONT_PATH]) assert.deepEqual(missingGlyphs(loadFont(path), ALL_VIETNAMESE), [], path);
+});
+
+test("each kind of line gets its own balloon, the same one every time", () => {
+  const b = { x: 40, y: 40, width: 360, height: 200, draw: true, tail: { x: 120, y: 380 } };
+  const svgs = BUBBLE_KINDS.map((kind) => renderSpeech("Ừ thì để em xem lại", { ...b, kind }).svg);
+  assert.equal(new Set(svgs).size, BUBBLE_KINDS.length);
+  assert.equal(renderSpeech("Ừ thì để em xem lại", { ...b, kind: "speech" }).svg, svgs[0]);
+  assert.match(svgs[1], /<ellipse /, "a thought trails puffs towards the thinker");
+  assert.match(svgs[3], /stroke-dasharray/, "a whisper has a dashed outline");
+  assert.match(svgs[0], /class="speech"/);
+});
+
+test("shouts are lettered in capitals with the comic shout face", () => {
+  const { svg } = renderSpeech("ai làm vỡ cốc?", { x: 0, y: 0, width: 400, height: 200, kind: "shout" }, { mode: "text" });
+  assert.match(svg, /AI LÀM VỠ CỐC\?/);
+  assert.match(svg, new RegExp(`font-family="${loadFont(SHOUT_FONT_PATH).family}"`));
+});
+
+test("a snug bubble holds its line at the asked size, wider than tall", () => {
+  for (const kind of BUBBLE_KINDS) {
+    const text = "Chị không giận. Chị chỉ đang… to ra một chút.";
+    const size = snugBubble(text, kind, { fontSize: 46, maxWidth: 560 });
+    assert.ok(size.width <= 560 && size.width > size.height * 0.9, `${kind}: ${size.width}x${size.height}`);
+    const fit = renderSpeech(text, { x: 0, y: 0, ...size, kind }, { maxFontSize: 46 }).fit;
+    assert.ok(fit.fits && fit.fontSize >= 45, `${kind} letters at ${fit.fontSize}px`);
+  }
 });

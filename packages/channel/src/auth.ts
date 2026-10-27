@@ -5,7 +5,7 @@
  * derived from that has no fixed expiry.
  */
 
-import type { GraphClient } from "./graph.js";
+import { GraphError, type GraphClient } from "./graph.js";
 
 /** What the build asks for, and nothing more. */
 export const REQUIRED_SCOPES = [
@@ -18,12 +18,13 @@ export const REQUIRED_SCOPES = [
   "instagram_basic",
   "instagram_content_publish",
   "instagram_manage_comments",
+  // Replying to and hiding comments as the Page, reading post reach and engagement
+  "pages_manage_engagement",
+  "read_insights",
+  "instagram_manage_insights",
   // Inbox (Messenger and Instagram direct)
   "pages_messaging",
   "instagram_manage_messages",
-  // Reach, shares and saves per post for the coach
-  "read_insights",
-  "instagram_manage_insights",
 ] as const;
 
 export interface LongLivedToken {
@@ -108,23 +109,51 @@ export async function exchangeLongLivedUserToken(
   return { accessToken: access_token, expiresIn: expires_in };
 }
 
-/** Pages the token's user manages, each with its Page token and linked Instagram account. */
-export async function listManagedPages(userGraph: GraphClient): Promise<ManagedPage[]> {
+/**
+ * Pages the token's user manages, each with its Page token and linked Instagram account.
+ *
+ * A Page owned by a business portfolio can be missing from /me/accounts. Then the
+ * portfolio's owned and client Pages are read (needs business_management), and
+ * finally `pageId` itself is asked for directly.
+ */
+export async function listManagedPages(userGraph: GraphClient, opts: { pageId?: string } = {}): Promise<ManagedPage[]> {
   type Row = {
     id: string;
     name: string;
-    access_token: string;
+    access_token?: string;
     instagram_business_account?: { id: string; username?: string };
   };
-  const rows = await userGraph.getAll<Row>("me/accounts", {
-    fields: ["id", "name", "access_token", "instagram_business_account{id,username}"].join(","),
-  });
-  return rows.map(({ id, name, access_token, instagram_business_account }) => ({
-    id,
-    name,
-    accessToken: access_token,
-    ...(instagram_business_account ? { instagram: instagram_business_account } : {}),
-  }));
+  const fields = ["id", "name", "access_token", "instagram_business_account{id,username}"].join(",");
+  let rows = await userGraph.getAll<Row>("me/accounts", { fields });
+
+  if (!rows.length) {
+    try {
+      for (const biz of await userGraph.getAll<{ id: string }>("me/businesses", { fields: "id" })) {
+        rows.push(...(await userGraph.getAll<Row>(`${biz.id}/owned_pages`, { fields })));
+        rows.push(...(await userGraph.getAll<Row>(`${biz.id}/client_pages`, { fields })));
+      }
+    } catch (e) {
+      // Without business_management this edge is refused; fall through to the direct lookup.
+      if (!(e instanceof GraphError) || (e.kind !== "permission" && e.kind !== "invalid")) throw e;
+    }
+  }
+  if (!rows.length && opts.pageId) {
+    try {
+      rows = [await userGraph.get<Row>(opts.pageId, { fields })];
+    } catch (e) {
+      if (!(e instanceof GraphError) || (e.kind !== "permission" && e.kind !== "invalid")) throw e;
+    }
+  }
+
+  const seen = new Set<string>();
+  return rows
+    .filter((r) => r.access_token && !seen.has(r.id) && seen.add(r.id))
+    .map(({ id, name, access_token, instagram_business_account }) => ({
+      id,
+      name,
+      accessToken: access_token!,
+      ...(instagram_business_account ? { instagram: instagram_business_account } : {}),
+    }));
 }
 
 /** /debug_token, called with an app token (`appId|appSecret`). */

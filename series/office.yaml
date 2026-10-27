@@ -1,0 +1,42 @@
+# Floor plan of the team's office (7th floor). Storyboards and panel prompts
+# read it, so seats, windows and doors stay in the same place in every
+# episode. Text in English goes to Muse; `label` is Vietnamese for the plan.
+#
+# Coordinates: the room is 10 x 8 units, x left→right, y from the back wall
+# (windows, y=0) to the entrance (y=8), as seen from the entrance.
+
+room: >-
+  A bright open-plan office on the 7th floor of an old building. Wide windows
+  with light wooden blinds along the back wall look out on Hanoi rooftops.
+  Pale cream walls, light wooden desks in small clusters with low pale-grey
+  dividers, potted plants everywhere.
+
+landmarks:
+  - { id: windows, label: Cửa sổ lớn, x: 0, y: 0, w: 10, h: 0.3, text: "wide windows with light wooden blinds along the back wall" }
+  - { id: meeting, label: Phòng họp "Sáng Tạo", x: 0, y: 5.4, w: 2.6, h: 2.6, text: "the glass-walled meeting room \"Sáng Tạo\" at the front left, with a flickering projector" }
+  - { id: boss, label: Phòng Sếp Cú, x: 7.6, y: 0.3, w: 2.4, h: 2.4, text: "the boss's glass office in the back right corner, blinds half closed" }
+  - { id: pantry, label: Pantry, x: 7.6, y: 5.6, w: 2.4, h: 2.4, text: "the pantry at the front right with the coffee machine that keeps breaking" }
+  - { id: lift, label: Thang máy, x: 4.2, y: 7.6, w: 1.6, h: 0.4, text: "the slow lift by the entrance" }
+
+# The team's own desk cluster, by the windows, left of centre.
+desks:
+  - { character: te-te, x: 1.0, y: 1.0, faces: entrance, text: "Pango's team-lead desk at the window end of the cluster, facing the room, so he sees everyone" }
+  - { character: ca-noc, x: 2.4, y: 1.0, faces: entrance, text: "Poppy's desk beside Pango's, by the window: a desk clock, a child's crayon drawing on the monitor, a candy jar" }
+  - { character: cu-li, x: 1.0, y: 2.4, faces: windows, text: "Lolo's desk facing Pango across the cluster, back to the aisle, with the half-dead pothos (trầu bà) on the corner" }
+  - { character: sao-la, x: 2.4, y: 2.4, faces: windows, text: "Uni's desk next to Lolo's, facing Poppy, half hidden behind a tall potted plant" }
+
+# Background coworkers. They fill the room so it never looks empty, sitting
+# and working at their own desks, smaller, simpler and never in focus.
+# Recurring extras from the bible keep their own places.
+extras:
+  - { label: Sếp Cú, where: boss, text: "the owl boss with glasses, only ever glimpsed through the glass office" }
+  - { label: Chị kế toán trưởng, x: 6.9, y: 3.6, desks: 1, text: "the head accountant, a calm tortoise, at a desk just outside the boss's office" }
+  - { label: Nhóm bên cạnh, x: 4.4, y: 1.4, text: "a neighbouring team at the middle cluster: a gecko typing, a squirrel on a call, a heron reading papers" }
+  - { label: Nhóm gần cửa, x: 4.4, y: 4.6, text: "another cluster near the entrance: a frog with headphones, a sparrow carrying a coffee, a monkey stretching" }
+
+background_rule: >-
+  When the scene is in the open office, fill the background with these small
+  animal coworkers sitting and working at their desks (typing, on calls,
+  sipping coffee), drawn simpler and lighter than the main cast and never in
+  focus. Every figure in the office is an animal: no humans, not even
+  blurred or in the distance. Keep seats and windows where the floor plan puts them.

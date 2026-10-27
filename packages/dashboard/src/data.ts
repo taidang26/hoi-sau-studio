@@ -76,7 +76,7 @@ export function loadComics(episodesDir?: string): Map<string, Comic> {
       logline: premise.logline,
       lead: ep.lead,
       characters: ep.characters ?? [],
-      // A strip3 posts as one page; show that rather than its three panels.
+      // Episodes lettered before 27/10 have a combined strip page; newer ones post each panel.
       pages: existsSync(join(dir, "final", "page.png")) ? [url("final/page.png")] : finals.map((f) => url(`final/${f}`)),
       cover: existsSync(join(dir, "motion", "cover.jpg")) ? url("motion/cover.jpg") : finals[0] ? url(`final/${finals[0]}`) : undefined,
       reel: existsSync(join(dir, "motion", "reel.mp4")) ? url("motion/reel.mp4") : undefined,

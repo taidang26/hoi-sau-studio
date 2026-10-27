@@ -5,7 +5,7 @@
 
 import type { Profile } from "./profile.js";
 
-const NO_TEXT = "no text, no letters, no speech bubbles, no captions, no logos";
+const NO_TEXT = "no text, no letters, no speech bubbles, no thought clouds, no captions, no logos";
 
 const palette = (p: Profile) => p.look.palette.map((s) => `${s.name} ${s.hex}`).join(", ");
 
@@ -77,7 +77,7 @@ export function consistencyBeats(p: Profile): PoseBeat[] {
     },
     {
       id: "meeting",
-      scene: `the character from the sheet in a small office meeting room with two plain generic human coworkers seen from behind, ${p.look.expressions.stressed ?? p.look.expressions.default}`,
+      scene: `the character from the sheet in a small office meeting room with two other cartoon animal coworkers seen from behind, ${p.look.expressions.stressed ?? p.look.expressions.default}`,
       size: "1024x1280",
     },
     {
@@ -99,7 +99,7 @@ export function panelPrompt(p: Profile, scene: string, style?: string): string {
     `${scene}.`,
     `Keep the character exactly as on the sheet: ${p.look.signature.join("; ")}.`,
     iconLine(p),
-    `Single comic panel. Style: ${drawStyle(p, style)} Leave the top quarter of the panel calm and empty for dialogue added later. ${NO_TEXT}.`,
+    `Single comic panel. Style: ${drawStyle(p, style)} Bright, cheerful daylight. The scene fills the whole panel; the top third shows soft, simple background for dialogue added later, never a blank band. ${NO_TEXT}.`,
   ]
     .filter(Boolean)
     .join(" ");

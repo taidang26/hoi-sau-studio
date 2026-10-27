@@ -229,6 +229,9 @@ async function login(portArg?: string) {
     state,
     version: process.env.META_GRAPH_VERSION || DEFAULT_GRAPH_VERSION,
     configId: process.env.META_LOGIN_CONFIG_ID || undefined,
+    // Comma-separated subset, e.g. only the pages_* scopes while the Page has no Instagram yet,
+    // so Facebook does not make you pick an unrelated Instagram account.
+    scopes: process.env.META_LOGIN_SCOPES ? process.env.META_LOGIN_SCOPES.split(",").map((s) => s.trim()) : undefined,
   });
 
   const code = await waitForLoginCode({

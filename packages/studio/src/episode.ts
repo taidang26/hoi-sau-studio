@@ -301,9 +301,12 @@ function writerMessages(ctx: StudioContext, ep: EpisodeSpec, task: string, earli
         `Series bible: ${seriesBrief(ctx, ep)}`,
         `Cast for this episode: ${castBrief(ctx, ep.characters)}`,
         "Use only the cast slugs given above in character and speaker fields.",
+        namesRule(ctx),
         BANNED_RULE(safetyOf(ctx)),
         AUDIENCE_DATA_RULE,
-      ].join("\n\n"),
+      ]
+        .filter(Boolean)
+        .join("\n\n"),
     },
     {
       role: "user",
@@ -312,6 +315,12 @@ function writerMessages(ctx: StudioContext, ep: EpisodeSpec, task: string, earli
         .join("\n\n"),
     },
   ];
+}
+
+/** The bible and notes may use the global names; Vietnamese text always uses the Vietnamese ones. */
+function namesRule(ctx: StudioContext): string {
+  const pairs = [...ctx.profiles.values()].filter((p) => nameVi(p) !== p.name).map((p) => `${p.name} → ${nameVi(p)}`);
+  return pairs.length ? `Names: in every Vietnamese text (titles, captions, dialogue) call the characters by their Vietnamese names: ${pairs.join(", ")}. The other names in the bible and notes are the same characters.` : "";
 }
 
 const safetyOf = (ctx: StudioContext) => (ctx.safety ??= loadSafety(ctx.seriesDir ?? SERIES_DIR));

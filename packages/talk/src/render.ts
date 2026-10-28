@@ -63,7 +63,8 @@ export async function onPhoto(png: Buffer, mask: Buffer, backdrop: Buffer): Prom
     px[i * 4] = rgb[i * 3];
     px[i * 4 + 1] = rgb[i * 3 + 1];
     px[i * 4 + 2] = rgb[i * 3 + 2];
-    px[i * 4 + 3] = m[i];
+    // Pull the soft edge in a pixel or so, so no light fringe of the old background shows.
+    px[i * 4 + 3] = Math.max(0, Math.min(255, ((m[i] - 96) * 255) / 128));
   }
   const rgba = sharp(px, { raw: { width: w0, height: h0, channels: 4 } });
   // The cut includes the desk in front (it spans the picture's width): keep the

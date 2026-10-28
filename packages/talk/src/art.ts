@@ -170,14 +170,17 @@ export async function cutTalkArt(sam: Sam, dir: string, art: TalkArt, phrase: st
     for (let i = 0; i < mask.length; i++) if (main.mask[i]) mask[i] = 255;
     // Keep the desk in front too, so the character sits behind it in the new room instead of ending in a straight cut.
     if (opts.keep) {
-      const extra = (await sam.segment(opts.keep, dataUrl(png), img.width, img.height)).filter((x) => (x.score ?? 1) >= 0.3);
+      // Only what reaches the bottom of the picture is the desk in front; a shelf or desk further back belongs to the old room.
+      const extra = (await sam.segment(opts.keep, dataUrl(png), img.width, img.height)).filter((x) => (x.score ?? 1) >= 0.3 && (maskBox(x.mask, img.width, img.height)?.y ?? 0) + (maskBox(x.mask, img.width, img.height)?.h ?? 0) >= img.height * 0.97);
       for (const e of extra) for (let i = 0; i < mask.length; i++) if (e.mask[i]) mask[i] = 255;
       if (!extra.length) opts.log?.(`${id}: no "${opts.keep}" found; the character alone is cut.`);
     }
     const file = `${id}.mask.png`;
     writeFileSync(join(dir, file), await sharp(mask, { raw: { width: img.width, height: img.height, channels: 1 } }).blur(1.2).png().toBuffer());
     ga.mask = file;
-    opts.log?.(`${id}: cut out (${Math.round((100 * main.area) / mask.length)}% of the picture)`);
+    let kept = 0;
+    for (const v of mask) if (v) kept++;
+    opts.log?.(`${id}: cut out (${Math.round((100 * kept) / mask.length)}% of the picture)`);
   }
   writeFileSync(join(dir, "talk.json"), JSON.stringify(art, null, 2) + "\n");
   return art;

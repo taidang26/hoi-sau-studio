@@ -38,6 +38,8 @@ export interface TextBlock {
   y: number;
   /** Wrap width; defaults to the frame width minus margins. */
   width?: number;
+  /** Centre of the lines in pixels; defaults to the middle of the frame. */
+  cx?: number;
   lineGap?: number;
   /** Dark outline so text reads on any background. */
   border?: number;
@@ -65,7 +67,7 @@ export function drawTextFilters(block: TextBlock, frameWidth: number, workDir: s
       `textfile=${name}`,
       `fontsize=${block.fontSize}`,
       `fontcolor=${block.color ?? "white"}`,
-      `x=(w-text_w)/2`,
+      block.cx === undefined ? `x=(w-text_w)/2` : `x=${Math.round(block.cx)}-text_w/2`,
       `y=${Math.round(block.y + i * (block.fontSize + gap))}`,
       `borderw=${block.border ?? Math.max(2, Math.round(block.fontSize / 12))}`,
       `bordercolor=black@0.85`,

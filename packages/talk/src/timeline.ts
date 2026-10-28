@@ -5,6 +5,7 @@
  * simply change between lines.
  */
 
+import { PLATFORM_SAFE } from "@hoi-sau/motion";
 import type { TalkLine } from "./script.js";
 import type { Voice } from "./voice.js";
 
@@ -16,7 +17,7 @@ export const OUT = { w: 1080, h: 1920 };
  * share column on the right sit on everything outside. Title, captions and
  * the character's face and body stay inside; only the backdrop runs out.
  */
-export const SAFE = { left: 60, top: 250, right: 940, bottom: 1480 };
+export const SAFE = PLATFORM_SAFE;
 export const SAFE_CX = (SAFE.left + SAFE.right) / 2;
 /** Where the whole talk picture (2:3) sits in the 9:16 frame: full width, a band above and below. */
 export const PICTURE = { x: 0, y: 130, w: 1080, h: 1620 };

@@ -8,7 +8,7 @@ import { createEpisode, openStudio, runEpisode, SERIES_DIR } from "@hoi-sau/stud
 import { moveForShot, preset, zoompanExprs } from "./camera.js";
 import { episodeNumber, lineTimes, specFromEpisode } from "./episode.js";
 import { probeVideo, reelsProblems, type VideoInfo } from "./probe.js";
-import { joinGraph, panelBox, renderMotionComic, spreadCues, timeline } from "./render.js";
+import { joinGraph, panelBox, PLATFORM_SAFE, renderMotionComic, spreadCues, timeline, TITLE_BAND } from "./render.js";
 import { toSrt } from "./srt.js";
 import { readingSeconds, wrap } from "./text.js";
 
@@ -43,6 +43,14 @@ test("a 4:5 panel fills the width and sits between the app's top and bottom bars
   assert.ok(b.y >= b.top && b.y + b.h <= 1920 - b.top);
   const tall = panelBox({ width: 1000, height: 2000 }, 1080, 1920);
   assert.ok(tall.h <= 1920 - 2 * tall.top && tall.w < 1080);
+});
+
+test("with a safe area the panel fits inside it, under the title band", () => {
+  const b = panelBox({ width: 1024, height: 1280 }, 1080, 1920, PLATFORM_SAFE);
+  assert.ok(b.x >= PLATFORM_SAFE.left && b.x + b.w <= PLATFORM_SAFE.right, "clear of the button column");
+  assert.ok(b.y >= PLATFORM_SAFE.top + TITLE_BAND && b.y + b.h <= PLATFORM_SAFE.bottom, "clear of the top bar and the caption block");
+  const half = panelBox({ width: 1024, height: 1280 }, 540, 960, PLATFORM_SAFE);
+  assert.equal(half.w, b.w / 2, "scaled for drafts");
 });
 
 test("Vietnamese wraps between syllables and keeps diacritics composed", () => {
@@ -130,6 +138,16 @@ test("a mock Studio episode becomes a Reels-ready motion comic", { skip: !hasFfm
   assert.match(readFileSync(res.subtitles, "utf8"), /Cu Li: /);
   assert.equal(res.segments[0].kind, "intro");
   assert.equal(res.segments.at(-1)!.kind, "outro");
+
+  // The short-video cut: still panels, hard cuts, title on top, no title card.
+  const story = specFromEpisode(dir, { quality: "draft", story: true });
+  assert.ok(story.shots.every((s) => s.move === "still" && s.transition === "none"));
+  assert.equal(story.intro, undefined);
+  assert.deepEqual(story.area, PLATFORM_SAFE);
+  assert.ok(story.title);
+  const cut = await renderMotionComic(story, join(dir, "story"));
+  assert.equal(cut.segments[0].kind, "shot", "straight into the first panel");
+  assert.ok(Math.abs((await probeVideo(cut.video)).duration - cut.duration) < 0.25);
 
   // A second render reuses every clip.
   const t = Date.now();

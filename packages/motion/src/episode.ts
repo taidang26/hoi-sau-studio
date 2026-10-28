@@ -17,7 +17,7 @@ import { bubbleLayout, type EpisodeSpec, type PanelRender, type Premise, type Sc
 import { composePanel, imageSize, svgToPng } from "@hoi-sau/svg-text";
 import { moveForShot } from "./camera.js";
 import { MotionError } from "./ffmpeg.js";
-import type { MotionSpec, Shot } from "./render.js";
+import { PLATFORM_SAFE, type MotionSpec, type Shot } from "./render.js";
 import { readingSeconds } from "./text.js";
 
 export interface Lettered {
@@ -41,6 +41,12 @@ export interface EpisodeMotionOptions {
   quality?: MotionSpec["quality"];
   audio?: MotionSpec["audio"];
   font?: string;
+  /**
+   * The short-video cut: panels held still with hard cuts (no camera moves), the
+   * hook title on top, everything inside the platforms' safe area, straight
+   * into the first panel (no title card) and a short call to comment at the end.
+   */
+  story?: boolean;
 }
 
 export function specFromEpisode(dir: string, opts: EpisodeMotionOptions = {}): MotionSpec {
@@ -60,7 +66,10 @@ export function specFromEpisode(dir: string, opts: EpisodeMotionOptions = {}): M
     const sp = script?.panels[page.n - 1];
     const bp = board?.panels[page.n - 1];
     const lines = sp?.dialogue ?? [];
-    const art = renders?.find((r) => r.n === page.n)?.file;
+    // The finish pass's panel (recoloured, focused) when there is one: that is what was lettered.
+    const drawn = renders?.find((r) => r.n === page.n)?.file;
+    const finished = join("panels", `panel-${page.n}-finished.png`);
+    const art = existsSync(join(dir, finished)) ? finished : drawn;
     const split = art && sp && bp && existsSync(join(dir, art)) ? bubbleLayers(dir, art, page.n, sp, bp) : undefined;
     // Follow whoever speaks first; otherwise the first character on stage.
     const focusOn = lines[0]?.speaker ?? bp?.staging[0]?.character;
@@ -70,13 +79,35 @@ export function specFromEpisode(dir: string, opts: EpisodeMotionOptions = {}): M
       image: split ? art! : page.file,
       layers: split,
       duration: readingSeconds(lines.map((l) => l.text)) + (last ? 0.8 : 0),
-      move: moveForShot(bp?.shot, position, { index: i, last }),
+      move: opts.story ? "still" : moveForShot(bp?.shot, position, { index: i, last }),
       dialogue: lines.map((l) => ({ speaker: l.speaker, text: `${opts.names?.[l.speaker] ?? l.speaker}: ${l.text}` })),
-      transition: last ? "none" : i === pages.length - 2 ? "fadewhite" : "fade",
+      transition: opts.story || last ? "none" : i === pages.length - 2 ? "fadewhite" : "fade",
     };
   });
 
   const credits = ep?.credits?.map((c) => c.name).filter(Boolean) ?? [];
+  if (opts.story) {
+    // Inside the safe area (x 60–940, y 250–1480), centred on its middle.
+    const cx = (PLATFORM_SAFE.left + PLATFORM_SAFE.right) / 2, w = PLATFORM_SAFE.right - PLATFORM_SAFE.left - 40;
+    return {
+      shots,
+      baseDir: dir,
+      title: premise?.title,
+      area: PLATFORM_SAFE,
+      outro: {
+        duration: 2.5,
+        blocks: [
+          { text: "Tập sau do bạn viết", fontSize: 72, y: 760, width: w, cx, color: "#FFD45C" },
+          { text: "Bình luận ý tưởng ở dưới nhé", fontSize: 50, y: 870, width: w, cx },
+          ...(credits.length ? [{ text: `Cảm ơn ý tưởng của ${credits.join(", ")}`, fontSize: 38, y: 1010, width: w, cx }] : []),
+        ],
+      },
+      transition: { kind: "none", duration: 0 },
+      quality: opts.quality,
+      audio: opts.audio,
+      font: opts.font,
+    };
+  }
   return {
     shots,
     baseDir: dir,

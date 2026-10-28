@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- *   npm run motion -- episode <id> [--draft] [--audio music.mp3]   episodes/<id>/ → episodes/<id>/motion/reel.mp4
+ *   npm run motion -- episode <id> [--draft] [--audio music.mp3] [--story]   episodes/<id>/ → episodes/<id>/motion/reel.mp4
+ *                    --story: the short-video cut, still panels with hard cuts, title on top, all inside the safe area
  *   npm run motion -- render <spec.json> <out-dir>                 any list of panels, see MotionSpec
  *   npm run motion -- check <video.mp4>                            would Reels accept it?
  */
@@ -32,6 +33,7 @@ async function report(video: string) {
 
 async function main() {
   const draft = bool("draft");
+  const story = bool("story");
   const audio = flag("audio");
   const episodesDir = flag("episodes-dir") ?? process.env.EPISODES_DIR ?? EPISODES_DIR;
   const [cmd, a, b] = argv;
@@ -39,7 +41,7 @@ async function main() {
   if (cmd === "episode" && a) {
     const dir = episodeDir(a, episodesDir);
     const names = Object.fromEntries([...loadProfiles().values()].map((p) => [p.slug, p.name]));
-    const spec = specFromEpisode(dir, { names, quality: draft ? "draft" : "final", audio: audio ? { file: resolve(audio) } : undefined });
+    const spec = specFromEpisode(dir, { names, quality: draft ? "draft" : "final", audio: audio ? { file: resolve(audio) } : undefined, story });
     const res = await renderMotionComic(spec, join(dir, "motion"));
     console.log(`${res.video}\n${res.cover}\n${res.subtitles}`);
     if (!draft && !(await report(res.video))) process.exitCode = 1;

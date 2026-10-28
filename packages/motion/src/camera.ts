@@ -26,6 +26,7 @@ export interface CameraMove {
 }
 
 export type MovePreset =
+  | "still"
   | "hold"
   | "push-in"
   | "pull-out"
@@ -39,6 +40,8 @@ export type MovePreset =
 export function preset(name: MovePreset, focus: { x: number; y: number } = { x: 0.5, y: 0.4 }): CameraMove {
   const f = { x: clamp01(focus.x), y: clamp01(focus.y) };
   switch (name) {
+    case "still":
+      return { from: { zoom: 1, x: 0.5, y: 0.5 }, to: { zoom: 1, x: 0.5, y: 0.5 } };
     case "hold":
       return { from: { zoom: 1, x: 0.5, y: 0.5 }, to: { zoom: 1.04, ...f } };
     case "push-in":
@@ -59,7 +62,7 @@ export function preset(name: MovePreset, focus: { x: number; y: number } = { x: 
 }
 
 export const isPreset = (s: string): s is MovePreset =>
-  ["hold", "push-in", "pull-out", "pan-left", "pan-right", "pan-up", "pan-down", "punch"].includes(s);
+  ["still", "hold", "push-in", "pull-out", "pan-left", "pan-right", "pan-up", "pan-down", "punch"].includes(s);
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 const num = (v: number) => (Math.round(v * 10000) / 10000).toString();

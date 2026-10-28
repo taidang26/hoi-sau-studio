@@ -49,6 +49,14 @@ export interface MotionSpec {
   fps?: number;
   /** Small label at the top of every panel clip, e.g. "HỒI SAU · TẬP 3". */
   header?: string;
+  /** Hook title kept at the top of every panel clip, inside `area`, above the panel. */
+  title?: string;
+  /**
+   * Where everything that matters stays (on a 1080x1920 frame, scaled for drafts):
+   * the platforms' safe area. The panel fits inside it under the title; only the
+   * blurred backdrop runs out to the edges.
+   */
+  area?: Area;
   /** Text-only clip before the first panel. */
   intro?: Card;
   /** Text-only clip after the last panel: the call to comment. */
@@ -104,8 +112,37 @@ export async function imageSize(file: string): Promise<{ width: number; height: 
   return { width: w, height: h };
 }
 
-/** Where the panel sits in the frame: full width, leaving room at top and bottom for the app's UI. */
-export function panelBox(img: { width: number; height: number }, W: number, H: number) {
+export interface Area {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+
+/**
+ * What TikTok, Reels and Shorts leave uncovered on a 1080x1920 video: their top
+ * bar, the caption/name/music block at the bottom and the button column on the
+ * right sit on everything outside.
+ */
+export const PLATFORM_SAFE: Area = { left: 60, top: 250, right: 940, bottom: 1480 };
+
+/** The title band at the top of `area`, on a 1080-wide frame. */
+export const TITLE_BAND = 170;
+
+/**
+ * Where the panel sits in the frame: full width, leaving room at top and bottom
+ * for the app's UI; with an `area` (1080x1920 units), as large as fits inside
+ * it below the title band.
+ */
+export function panelBox(img: { width: number; height: number }, W: number, H: number, area?: Area) {
+  if (area) {
+    const s = W / 1080;
+    const top = (area.top + TITLE_BAND) * s, left = area.left * s;
+    const maxW = (area.right - area.left) * s, maxH = (area.bottom - area.top - TITLE_BAND) * s;
+    const k = Math.min(maxW / img.width, maxH / img.height);
+    const w = even(img.width * k), h = even(img.height * k);
+    return { w, h, x: Math.round(left + (maxW - w) / 2), y: Math.round(top), top: Math.round(area.top * s) };
+  }
   const reserve = Math.round(H * 0.135);
   const maxH = H - 2 * reserve;
   let w = W;
@@ -149,22 +186,27 @@ const background = (ctx: Ctx, input: string) =>
   `${input}scale=${ctx.W}:${ctx.H}:force_original_aspect_ratio=increase,crop=${ctx.W}:${ctx.H},` +
   `boxblur=${Math.round(ctx.W / 40)}:2,eq=brightness=-0.18:saturation=0.75,setsar=1`;
 
-async function renderShot(ctx: Ctx, shot: Shot, index: number, header?: string): Promise<string> {
+async function renderShot(ctx: Ctx, shot: Shot, index: number, header?: string, title?: string, area?: Area): Promise<string> {
   const image = resolveImage(ctx, shot.image);
   if (!existsSync(image)) throw new MotionError(`Panel not found: ${image}`);
   const out = join(ctx.workDir, `shot-${String(index + 1).padStart(2, "0")}.mp4`);
   const move = typeof shot.move === "string" ? preset(shot.move) : (shot.move ?? preset("hold"));
   const layers = (shot.layers ?? []).map((l) => ({ ...l, image: resolveImage(ctx, l.image) }));
-  const key = clipKey(ctx, { move, d: shot.duration, header, at: layers.map((l) => l.at) }, [image, ...layers.map((l) => l.image)]);
+  const key = clipKey(ctx, { move, d: shot.duration, header, title, area, at: layers.map((l) => l.at) }, [image, ...layers.map((l) => l.image)]);
   if (cached(out, key)) return out;
 
   const frames = Math.max(2, Math.round(shot.duration * ctx.fps));
   const size = await imageSize(image);
-  const box = panelBox(size, ctx.W, ctx.H);
+  const box = panelBox(size, ctx.W, ctx.H, area);
   const z = zoompanExprs(move, frames);
-  const headerFilters = header
-    ? drawTextFilters({ text: header, fontSize: Math.round(ctx.W / 26), y: box.top * 0.45, color: "white" }, ctx.W, ctx.workDir, ctx.font)
-    : [];
+  const s = ctx.W / 1080;
+  const headerFilters = [
+    ...(header ? drawTextFilters({ text: header, fontSize: Math.round(ctx.W / 26), y: box.top * 0.45, color: "white" }, ctx.W, ctx.workDir, ctx.font) : []),
+    // The hook title, inside the safe area's top band; two lines at most.
+    ...(title && area
+      ? drawTextFilters({ text: title, fontSize: Math.round(54 * s), y: Math.round((area.top + 24) * s), width: (area.right - area.left - 40) * s, cx: ((area.left + area.right) / 2) * s, color: "#FFD45C", border: Math.round(5 * s) }, ctx.W, ctx.workDir, ctx.font)
+      : []),
+  ];
 
   const secs = String(frames / ctx.fps);
   const graph = [
@@ -202,7 +244,7 @@ async function renderCard(ctx: Ctx, card: Card, name: string, fallbackImage: str
   // Card text is laid out for 1080 wide; scale it to the frame.
   const s = ctx.W / 1080;
   const text = card.blocks.flatMap((b) =>
-    drawTextFilters({ ...b, fontSize: Math.round(b.fontSize * s), y: b.y * s, width: b.width && b.width * s }, ctx.W, ctx.workDir, ctx.font),
+    drawTextFilters({ ...b, fontSize: Math.round(b.fontSize * s), y: b.y * s, width: b.width && b.width * s, cx: b.cx === undefined ? undefined : b.cx * s }, ctx.W, ctx.workDir, ctx.font),
   );
   const graph = `[0:v]${background(ctx, "")},drawbox=x=0:y=0:w=iw:h=ih:color=black@0.35:t=fill${text.length ? "," + text.join(",") : ""},format=yuv420p[v]`;
   await ffmpeg(
@@ -282,7 +324,7 @@ export async function renderMotionComic(spec: MotionSpec, outDir: string): Promi
     clips.push({ kind: "intro", file: await renderCard(ctx, { ...spec.intro, duration: d }, "intro", firstImage), duration: d, transition: "fadeblack" });
   }
   for (const [i, shot] of spec.shots.entries()) {
-    clips.push({ kind: "shot", index: i, file: await renderShot(ctx, shot, i, spec.header), duration: shot.duration, transition: shot.transition ?? defaultT });
+    clips.push({ kind: "shot", index: i, file: await renderShot(ctx, shot, i, spec.header, spec.title, spec.area), duration: shot.duration, transition: shot.transition ?? defaultT });
   }
   if (spec.outro) {
     const d = spec.outro.duration ?? 3;

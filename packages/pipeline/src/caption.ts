@@ -54,5 +54,8 @@ export function captions(premise: Premise, ep: EpisodeSpec, opts: { number?: num
   const threads = clip(`${premise.title}: ${premise.logline}`, 480) + " #HoiSau";
   const threadsReply = clip([question, "Trả lời ở đây, ý được nhiều tim nhất thành tập sau.", thanks].filter(Boolean).join("\n"), 500);
 
-  return { facebook, instagram, threads, threadsReply };
+  // TikTok: short, the question to pull comments, at most 5 tags without diacritics.
+  const tiktok = clip([`${premise.title} 👀`, question, ["#HoiSau", "#HaiVanPhong", "#DanVanPhong", "#CongSo", ...leadTag].slice(0, 5).join(" ")].filter(Boolean).join("\n"), 2200);
+
+  return { facebook, instagram, threads, threadsReply, tiktok };
 }

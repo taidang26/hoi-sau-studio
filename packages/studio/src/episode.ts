@@ -542,6 +542,13 @@ export function episodePanelPrompt(ctx: StudioContext, ep: EpisodeSpec, sp: Scri
 export const PHONE_FONT = 0.044;
 export const PHONE_MIN_FONT = 0.036;
 
+/** The review may name a character by slug, display name or Vietnamese name; letter matches by slug. */
+export function slugFor(ctx: StudioContext, who: string): string {
+  const k = who.trim().toLowerCase();
+  for (const p of ctx.profiles.values()) if ([p.slug, p.name, nameVi(p)].some((n) => n?.toLowerCase() === k)) return p.slug;
+  return who;
+}
+
 const clamp01 = (v: number) => Math.min(1, Math.max(0, Number.isFinite(v) ? v : 0.5));
 
 /** Roughly where a speaker's head is, from staging and shot. Coordinates as shares of the panel. */
@@ -730,7 +737,7 @@ export async function runStep(ctx: StudioContext, id: string, step: EpisodeStep)
       for (const r of renders) {
         const data = await fitPost(readFileSync(join(episodeDir(id, dir), r.file)));
         const size = imageSize(data);
-        const heads = readStep<{ reviews: PanelReview[] }>(id, "review", dir)?.reviews.find((v) => v.n === r.n)?.heads;
+        const heads = readStep<{ reviews: PanelReview[] }>(id, "review", dir)?.reviews.find((v) => v.n === r.n)?.heads?.map((h) => ({ ...h, character: slugFor(ctx, h.character) }));
         const lines = bubbleLayout(script.panels[r.n - 1], board.panels[r.n - 1], size.width, size.height, heads);
         const { svg, overflow } = composePanel({ data, ...size }, lines);
         const name = `${String(r.n).padStart(2, "0")}.png`;
@@ -778,7 +785,7 @@ async function reviewPanel(ctx: StudioContext, ep: EpisodeSpec, sp: ScriptPanel,
           return `${p.name} must have: ${p.look.signature.join("; ")}.${p.look.icon ? ` Its identifying item must be clearly visible: ${p.look.icon}.` : ""} Palette: ${p.look.palette.map((s) => s.hex).join(", ")}.`;
         }),
         "Fail the panel if a signature feature is wrong or missing, a character is off-model, there is drawn text, a speech bubble or a thought cloud, a human figure anywhere (every coworker is an animal), or anything unsafe. The first image is the panel; any others are the locked model sheets.",
-        "Also give, for every cast character you can see, where the centre of their head is in the panel, as shares of its width and height (0 is left or top, 1 is right or bottom). Speech tails will aim there.",
+        `Also give, for every cast character you can see (by slug: ${sp.characters.map((c) => `${c} = ${ctx.profiles.get(c)!.name}`).join(", ")}), where the centre of their head is in the panel, as shares of its width and height (0 is left or top, 1 is right or bottom). Speech tails will aim there.`,
         `Unsafe means anything on this list, even in the background: ${safetyOf(ctx).topics.map((t) => t.describe).join("; ")}.`,
       ].join("\n"),
     },

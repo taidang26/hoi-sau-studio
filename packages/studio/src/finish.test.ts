@@ -166,3 +166,14 @@ test("fillBands also paints over a flat coloured margin strip, as a recolour lea
   assert.deepEqual(at(3, 2), at(12, 2), "strip takes the picture's colour on that row");
   assert.deepEqual(at(3, 7), at(12, 7));
 });
+
+test("fillBands also paints over a smeared margin: every column the same top-to-bottom gradient", async () => {
+  const { fillBands } = await import("./finish.js");
+  const stripes = Array.from({ length: 64 }, (_, i) => `<rect x="0" y="${i * 10}" width="512" height="5" fill="#223344"/>`).join("");
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="512" height="640"><defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f0e0b0"/><stop offset="1" stop-color="#806040"/></linearGradient></defs><rect width="512" height="640" fill="#efe6d8"/>${stripes}<rect x="490" y="0" width="22" height="640" fill="url(#g)"/></svg>`;
+  const out = await fillBands(await sharp(Buffer.from(svg)).png().toBuffer());
+  const px = await sharp(out).removeAlpha().raw().toBuffer();
+  const at = (x: number, y: number) => [...px.subarray((y * 512 + x) * 3, (y * 512 + x) * 3 + 3)];
+  assert.deepEqual(at(508, 2), at(486, 2), "smear takes the picture's colour on that row");
+  assert.deepEqual(at(508, 7), at(486, 7));
+});

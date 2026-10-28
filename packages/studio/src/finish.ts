@@ -235,9 +235,19 @@ export async function fillBands(png: Buffer): Promise<Buffer> {
     });
     return n / a.length > 0.5;
   };
+  // Or smeared: each line a copy of the next one in, a gradient that never changes across the strip.
+  const smeared = (a: Array<[number, number]>, b2: Array<[number, number]>) => {
+    const near = a.filter(([x, y], i) => {
+      const [r0, g0, b0] = rgb(x, y), [r1, g1, b1] = rgb(...b2[i]);
+      return Math.abs(r1 - r0) + Math.abs(g1 - g0) + Math.abs(b1 - b0) < 6;
+    }).length;
+    return near / a.length > 0.97;
+  };
   const flatBand = (line: (i: number) => Array<[number, number]>, max: number) => {
     let n = 0;
     while (n < max && flat(line(n))) n++;
+    // Only when there is no flat strip: a picture of horizontal lines also repeats column to column.
+    if (n === 0) while (n < max && smeared(line(n), line(n + 1))) n++;
     // The edge of the strip is soft, so the picture is read a few lines further in.
     return n > 0 && n < max && apart(line(n - 1), line(Math.min(max, n + 6))) ? Math.min(max, n + 2) : 0;
   };

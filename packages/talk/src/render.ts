@@ -33,9 +33,13 @@ async function flatten(base: Buffer, layers: sharp.OverlayOptions[]): Promise<Ra
 /** Where the cut-out character stands on a photo: bottom-centred, this share of the frame height (a waist-up cut is taller and touches the bottom). */
 export const ON_PHOTO = { height: 0.44, bottom: 0.15, cutHeight: 0.36 };
 
-/** A background photo filling the frame, a touch soft so the character reads first. */
+/** A background photo filling the frame, out of focus so the character reads first. */
+/** Gaussian sigma for the backdrop, in output pixels. */
+export const BACKDROP_BLUR = 6;
+
 export async function photoBackdrop(photo: string): Promise<Buffer> {
-  const plate = await sharp(photo).rotate().removeAlpha().resize(OUT.w, OUT.h, { fit: "cover" }).blur(1.5).png().toBuffer();
+  // Out of focus like a shallow camera, so the sharp cut-out character carries the frame.
+  const plate = await sharp(photo).rotate().removeAlpha().resize(OUT.w, OUT.h, { fit: "cover" }).blur(BACKDROP_BLUR).png().toBuffer();
   return finishBackdrop(plate);
 }
 

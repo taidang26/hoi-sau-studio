@@ -17,6 +17,18 @@ export interface TalkSet {
 
 export const SETS: TalkSet[] = [
   {
+    id: "ngo",
+    vi: "ngõ Hà Nội",
+    scene:
+      "a quiet Hanoi residential alley in daylight seen from the middle of the lane: narrow tube houses of different heights with small balconies and roll-up shutters, a concrete electric pole with a thick tangle of black power cables sagging across the sky, a big green tree on one side, pink bougainvillea spilling over a wall, two parked motorbikes, a plastic stool by a doorway, pale sky",
+  },
+  {
+    id: "van-phong",
+    vi: "văn phòng Việt",
+    scene:
+      "a plain small Vietnamese office in daylight: a row of simple desks with monitors, office chairs, a water dispenser, a potted plant, a whiteboard (no readable words), a wall clock, a window with Hanoi tube houses and power cables outside",
+  },
+  {
     id: "office",
     vi: "góc văn phòng",
     scene:
@@ -47,8 +59,8 @@ export const setsDir = (seriesDir: string) => join(seriesDir, "sets");
 export function setPrompt(ctx: StudioContext, s: TalkSet): string {
   return [
     `An empty background plate for a vertical talking video: ${s.scene}.`,
-    "No people, no animals, no characters anywhere: the room is empty, waiting for a character to stand in front of it. Eye-level camera at about seated head height, the middle and lower part of the frame kept a little calmer so a character can stand there, details towards the sides and top.",
-    "Depth: things in front slightly larger, the far wall softer. Feels like a real, used place, not a showroom.",
+    "Drawn exactly like a simple cartoon comic background: clean black outlines of even weight, flat fills, light pastel colours, simple shapes with only the details named, no gradients, no glow, no photographic lighting, no painterly texture. Plain and slightly washed out, so a character in front stands out.",
+    "No people, no animals, no characters anywhere: the place is empty, waiting for a character to stand in front of it. Eye-level camera, the middle and lower part of the frame calm (ground or floor) so a character can stand there, details towards the sides and top.",
     "No text, letters, numbers, logos or signs that can be read.",
     ctx.style ? styleText(ctx.style) : "",
   ]
@@ -73,6 +85,12 @@ export async function drawSets(ctx: StudioContext, dir: string, opts: { only?: s
   }
   return out;
 }
+
+/**
+ * Sets are drawn once and then faded in code: less colour, less contrast,
+ * a touch lighter, so the character in front carries the picture.
+ */
+export const isSet = (file: string) => SETS.some((s) => file.replace(/\\/g, "/").endsWith(`/sets/${s.id}.png`));
 
 /** --bg takes a set id or a path to a photo. */
 export function resolveBackground(bg: string, dir: string): string {

@@ -2,8 +2,8 @@
 
     python split.py recording.m4a script.md out_dir [--passes 2] [--sr 16000]
 
-script.md: the lines to read, one per line; "1. ", "- " and similar prefixes are dropped, as are
-headings, blank lines and lines in brackets. The reader reads the whole list `passes` times.
+script.md: the lines to read. When it has a numbered list ("1. ..."), only those lines count;
+otherwise every line does, with "- " prefixes, headings, blank lines and lines in brackets dropped. The reader reads the whole list `passes` times.
 The recording is split at pauses; the pause length is searched until the clip count matches
 lines x passes. Writes out_dir/wavs/<NNN>.wav (mono, --sr), out_dir/metadata.csv
 (file_name,transcription, the layout `datasets` audiofolder reads) and out_dir/report.json.
@@ -25,8 +25,13 @@ FRAME = 0.02
 
 
 def script_lines(path: str) -> list[str]:
+    raw_lines = open(path, encoding="utf-8").read().splitlines()
+    # A numbered list ("1. ...") is the script; bullets around it are instructions for the reader.
+    numbered = [re.sub(r"^\d+[.)]\s*", "", s.strip()).strip().strip('"“”') for s in raw_lines if re.match(r"^\s*\d+[.)]\s", s)]
+    if numbered:
+        return [s for s in numbered if s]
     out = []
-    for raw in open(path, encoding="utf-8"):
+    for raw in raw_lines:
         s = raw.strip()
         if not s or s.startswith(("#", ">", "|", "```", "(", "[")) or set(s) <= set("-*_= "):
             continue

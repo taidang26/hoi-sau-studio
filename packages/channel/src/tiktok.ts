@@ -209,6 +209,8 @@ export function tiktokAuthorizeUrl(o: { clientKey: string; redirectUri: string; 
   url.searchParams.set("response_type", "code");
   url.searchParams.set("redirect_uri", o.redirectUri);
   url.searchParams.set("state", o.state);
+  // Always show the consent screen, so reconnecting can pick another account.
+  url.searchParams.set("disable_auto_auth", "1");
   return url.href;
 }
 

@@ -33,6 +33,7 @@ test("the login asks for upload only in draft mode, and the state names the loca
   assert.equal(url.searchParams.get("scope"), "user.info.basic,video.upload");
   assert.equal(url.searchParams.get("state"), "p8765.abc");
   assert.equal(url.searchParams.get("response_type"), "code");
+  assert.equal(url.searchParams.get("disable_auto_auth"), "1");
   assert.ok(tiktokScopes("direct").includes("video.publish"));
 });
 

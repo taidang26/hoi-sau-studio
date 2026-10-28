@@ -54,7 +54,7 @@ function loadDotEnv(): void {
   }
 }
 
-const unCaret = (s: string): string => s.replace(/\^(?=\s)/g, "");
+const unCaret = (s: string): string => s.replace(/\^(?=\s)/g, "").replace(/^\^|\^$/g, "");
 
 async function main(argv: string[]): Promise<void> {
   loadDotEnv();

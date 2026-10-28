@@ -92,13 +92,13 @@ export async function drawSets(ctx: StudioContext, dir: string, opts: { only?: s
   return out;
 }
 
-/** --bg takes a set id or a path to a photo. */
 /** The vanishing point of a drawn set, from its file name (series/sets/<id>.png); undefined for photos. */
 export function vanishingPointFor(file: string): { x: number; y: number } | undefined {
   const id = file.replace(/\\/g, "/").split("/").pop()?.replace(/\.png$/i, "");
   return SETS.find((s) => s.id === id)?.vp;
 }
 
+/** --bg takes a set id or a path to a photo. */
 export function resolveBackground(bg: string, dir: string): string {
   if (bg === "plain" || bg.startsWith("plain:")) return bg;
   const set = join(dir, `${bg}.png`);

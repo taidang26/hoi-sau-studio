@@ -3,7 +3,7 @@
  * whatever the channel or studio CLIs just wrote shows up on refresh.
  */
 
-import { createReadStream, existsSync, statSync } from "node:fs";
+import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { extname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -358,6 +358,42 @@ export function handler(opts: DashboardOptions) {
         return fail("/channels", e);
       }
     }
+    if (path === "/connect/tiktok") {
+      const brand = q.get("brand") ?? "hoi-sau";
+      if (!acc || opts.demo) return redirect(res, withNote(`/channels/${brand}`, "err", t("Đang xem dữ liệu mẫu nên không kết nối tài khoản thật.")));
+      try {
+        const port = Number(String(req.headers.host ?? "").split(":")[1]) || 80;
+        return redirect(res, acc.startTikTok(brand, port));
+      } catch (e) {
+        return fail(`/channels/${brand}`, e);
+      }
+    }
+    if (path === "/connect/tiktok/callback" && acc) {
+      const state = q.get("state") ?? "";
+      const brand = acc.tiktokLoginBrand(state) ?? "hoi-sau";
+      const denied = q.get("error_description") ?? q.get("error");
+      if (denied) return redirect(res, withNote(`/channels/${brand}`, "err", t("TikTok chưa cho phép: {m}", { m: denied })));
+      try {
+        const done = await acc.finishTikTok(state, q.get("code") ?? "");
+        const note = done.missing.length
+          ? t("Đã kết nối TikTok {name}, nhưng thiếu quyền {m}. Bấm Kết nối lại và cho phép hết.", { name: done.name, m: done.missing.join(", ") })
+          : t("Đã kết nối TikTok {name}.", { name: done.name });
+        return redirect(res, withNote(`/channels/${done.brand}`, done.missing.length ? "err" : "ok", note));
+      } catch (e) {
+        return fail(`/channels/${brand}`, e);
+      }
+    }
+    const ttd = req.method === "POST" ? path.match(/^\/channels\/([a-z0-9-]+)\/tiktok\/draft$/) : null;
+    if (ttd && acc && !opts.demo) {
+      try {
+        const link = ((await readForm(req)).get("url") ?? "").trim();
+        if (!isOwnMedia(link)) throw new Error(t("Chỉ gửi được video trên trang Hồi Sau (link https://hoisau.web.app/media/…)."));
+        await acc.sendTikTokDraft(ttd[1], { url: link });
+        return redirect(res, withNote(`/channels/${ttd[1]}`, "ok", t("Đã gửi vào hộp nháp TikTok. Mở app TikTok, thêm chú thích và nhạc rồi đăng.")));
+      } catch (e) {
+        return fail(`/channels/${ttd[1]}`, e);
+      }
+    }
     const thr = req.method === "POST" ? path.match(/^\/channels\/([a-z0-9-]+)\/threads$/) : null;
     if (thr && acc && !opts.demo) {
       try {
@@ -367,7 +403,7 @@ export function handler(opts: DashboardOptions) {
         return fail(`/channels/${thr[1]}`, e);
       }
     }
-    const cs = req.method === "POST" ? path.match(/^\/channels\/([a-z0-9-]+)\/(facebook|instagram|threads)\/status$/) : null;
+    const cs = req.method === "POST" ? path.match(/^\/channels\/([a-z0-9-]+)\/(facebook|instagram|threads|tiktok)\/status$/) : null;
     if (cs && acc && !opts.demo) {
       try {
         const status = (await readForm(req)).get("status") as "live" | "paused" | "planned";
@@ -377,7 +413,7 @@ export function handler(opts: DashboardOptions) {
         return fail(`/channels/${cs[1]}`, e);
       }
     }
-    if (req.method === "POST" && (thr || cs)) return redirect(res, withNote(`/channels/${(thr ?? cs)![1]}`, "err", t("Đang xem dữ liệu mẫu nên không đổi tài khoản thật.")));
+    if (req.method === "POST" && (thr || cs || ttd)) return redirect(res, withNote(`/channels/${(thr ?? cs ?? ttd)![1]}`, "err", t("Đang xem dữ liệu mẫu nên không đổi tài khoản thật.")));
 
     // Tư liệu.
     const rs = opts.research;
@@ -545,6 +581,18 @@ export function handler(opts: DashboardOptions) {
           return fail(`/studio/${apv[1]}`, e);
         }
       }
+      const tk = path.match(/^\/studio\/([a-z0-9-]+)\/tiktok$/);
+      if (tk) {
+        try {
+          if (!acc || opts.demo) throw new Error(t("Đang xem dữ liệu mẫu nên không kết nối tài khoản thật."));
+          const reel = join(st.opts.episodesDir, tk[1], "motion", "reel.mp4");
+          if (!existsSync(reel)) throw new Error(t("Tập này chưa có video."));
+          const sent = await acc.sendTikTokDraft("hoi-sau", { file: new Uint8Array(readFileSync(reel)) }, { id: tk[1] });
+          return redirect(res, withNote(`/studio/${tk[1]}`, "ok", t(sent.again ? "Video này đã ở hộp nháp TikTok rồi." : "Đã gửi vào hộp nháp TikTok. Mở app TikTok, thêm chú thích và nhạc rồi đăng.")));
+        } catch (e) {
+          return fail(`/studio/${tk[1]}`, e);
+        }
+      }
       const cmp = path.match(/^\/studio\/([a-z0-9-]+)\/compare$/);
       if (cmp && rs) {
         try {
@@ -696,6 +744,23 @@ function finishedPages(st: Studio, id: string): string[] {
   if (!letter) return [];
   const files = letter.page ? [letter.page] : letter.pages.map((p) => p.file);
   return files.map((f) => join(st.opts.episodesDir, id, f)).filter((f) => existsSync(f));
+}
+
+/** Videos on the series' own site only, so the dashboard never fetches an arbitrary address. */
+function isOwnMedia(link: string): boolean {
+  let u: URL;
+  try {
+    u = new URL(link);
+  } catch {
+    return false;
+  }
+  const own = new Set(["hoisau.web.app", "hoisau.dangtrantai.com"]);
+  try {
+    if (process.env.MEDIA_BASE_URL) own.add(new URL(process.env.MEDIA_BASE_URL).host);
+  } catch {
+    // A broken MEDIA_BASE_URL adds nothing.
+  }
+  return u.protocol === "https:" && own.has(u.host) && /\.(mp4|mov|webm)$/i.test(u.pathname);
 }
 
 function connectedNote(done: { page?: string; instagram?: string }): string {

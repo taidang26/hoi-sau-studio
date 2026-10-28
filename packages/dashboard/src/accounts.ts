@@ -1,7 +1,8 @@
 /**
  * Everything the channel CLI does with accounts, behind buttons: app keys
  * typed into a form, Facebook Login in the browser, a Threads token pasted
- * once, pulling comments and messages, pausing a channel. Values go to .env
+ * once, TikTok Login, a video sent to the TikTok inbox, pulling comments and
+ * messages, pausing a channel. Values go to .env
  * (never shown back, only whether each is set); statuses go to channels.yaml
  * with its comments kept.
  */
@@ -39,6 +40,17 @@ import {
   THREADS_BASE_URL,
   threadsProfile,
   brandTargets,
+  exchangeTikTokCode,
+  freshTikTokToken,
+  journalKey,
+  postTikTokVideo,
+  TIKTOK_DEFAULT_REDIRECT,
+  TikTokClient,
+  tiktokAuthorizeUrl,
+  tiktokEnvValues,
+  tiktokScopes,
+  tiktokState,
+  tiktokUser,
   type Brand,
   type ChannelStatus,
   type Comment,
@@ -56,6 +68,8 @@ export const SETTINGS = [
   { name: "META_API_KEY", label: "Khoá AI Muse (viết và vẽ)", secret: true, help: "Khoá Llama API dùng cho Muse Spark và Muse Image" },
   { name: "BACKUP_DIR", label: "Thư mục sao lưu", secret: false, help: "Nên dán đường dẫn một thư mục OneDrive hoặc Google Drive, để còn bản sao khi máy hỏng" },
   { name: "THREADS_APP_SECRET", label: "Khoá bí mật ứng dụng Threads", secret: true, help: "Ứng dụng Threads → Cài đặt → Thông tin cơ bản" },
+  { name: "TIKTOK_CLIENT_KEY", label: "Mã ứng dụng TikTok (Client key)", secret: false, help: "developers.tiktok.com → Manage apps → ứng dụng → Credentials" },
+  { name: "TIKTOK_CLIENT_SECRET", label: "Khoá bí mật TikTok (Client secret)", secret: true, help: "Cùng trang, cạnh Client key" },
 ] as const;
 
 export type SettingName = (typeof SETTINGS)[number]["name"];
@@ -74,6 +88,8 @@ export interface AccountsOptions {
   graphVersion?: string;
   /** Fake Graph API for demo and tests. */
   fetch?: FetchLike;
+  /** Fake TikTok for tests. */
+  tiktokFetch?: FetchLike;
   /** Sample data: nothing real is connected or changed on Meta. */
   demo?: boolean;
 }
@@ -82,6 +98,13 @@ interface PendingLogin {
   brand: string;
   redirectUri: string;
   at: number;
+}
+
+export interface TikTokLoginResult {
+  brand: string;
+  name: string;
+  /** Permissions the person did not allow. */
+  missing: string[];
 }
 
 export interface LoginResult {
@@ -97,6 +120,7 @@ const TEN_MINUTES = 10 * 60_000;
 export class Accounts {
   private readonly logins = new Map<string, PendingLogin>();
   private readonly choices = new Map<string, { brand: string; pages: ManagedPage[]; at: number }>();
+  private readonly tiktokLogins = new Map<string, PendingLogin>();
 
   constructor(readonly opts: AccountsOptions) {}
 
@@ -234,6 +258,99 @@ export class Accounts {
     const until = new Date(Date.now() + (long.expiresIn ?? 60 * 86_400) * 1000).toISOString();
     this.saveEnv({ [names.userId]: profile.id, [names.username]: profile.username, [names.token]: long.accessToken, [`${names.token}_EXPIRES`]: until });
     return profile.username;
+  }
+
+  // ── TikTok ────────────────────────────────────────────────────────────
+
+  private tiktokClient(token?: string): TikTokClient {
+    return new TikTokClient({ token, fetch: this.opts.tiktokFetch, backoffMs: this.opts.tiktokFetch ? 1 : undefined });
+  }
+
+  private tiktokApp() {
+    const clientKey = this.env.TIKTOK_CLIENT_KEY;
+    const clientSecret = this.env.TIKTOK_CLIENT_SECRET;
+    if (!clientKey || !clientSecret) throw new NeedsSetup(t("Cần Mã ứng dụng TikTok và Khoá bí mật TikTok trước khi kết nối TikTok."));
+    return { clientKey, clientSecret };
+  }
+
+  private tiktokChannel(brand: Brand) {
+    const c = brand.channels.find((x) => x.platform === "tiktok");
+    if (!c?.env.token || !c.env.userId) throw new Error(t("{name} chưa có kênh TikTok.", { name: brand.name }));
+    return { names: { token: c.env.token, userId: c.env.userId, username: c.env.username }, mode: c.mode ?? "draft" };
+  }
+
+  /**
+   * TikTok Login for one brand. TikTok only redirects to a registered HTTPS
+   * address: by default a page on the site that forwards to `localPort`.
+   */
+  startTikTok(brandId: string, localPort: number): string {
+    const brand = findBrand(this.brands(), brandId);
+    const { mode } = this.tiktokChannel(brand);
+    const app = this.tiktokApp();
+    const redirectUri = this.env.TIKTOK_REDIRECT_URI || TIKTOK_DEFAULT_REDIRECT;
+    const state = tiktokState(localPort, randomBytes(16).toString("hex"));
+    this.tiktokLogins.set(state, { brand: brand.id, redirectUri, at: Date.now() });
+    return tiktokAuthorizeUrl({ clientKey: app.clientKey, redirectUri, state, scopes: tiktokScopes(mode) });
+  }
+
+  tiktokLoginBrand(state: string): string | undefined {
+    return this.tiktokLogins.get(state)?.brand;
+  }
+
+  async finishTikTok(state: string, code: string): Promise<TikTokLoginResult> {
+    const login = this.tiktokLogins.get(state);
+    this.tiktokLogins.delete(state);
+    if (!login || Date.now() - login.at > TEN_MINUTES) throw new Error(t("Phiên đăng nhập đã hết hạn. Bấm Kết nối lại."));
+    const brand = findBrand(this.brands(), login.brand);
+    const { names, mode } = this.tiktokChannel(brand);
+    const tok = await exchangeTikTokCode(this.tiktokClient(), this.tiktokApp(), code, login.redirectUri);
+    const user = await tiktokUser(this.tiktokClient(tok.accessToken));
+    this.saveEnv(tiktokEnvValues(names, tok, user.displayName));
+    return { brand: brand.id, name: user.displayName, missing: tiktokScopes(mode).filter((x) => !tok.scopes.includes(x)) };
+  }
+
+  /**
+   * A video into the brand's TikTok inbox. The owner finishes the post in the
+   * app, so nothing goes public here. An episode video is journaled like any
+   * post, so it shows on the episode and is never sent twice.
+   */
+  async sendTikTokDraft(brandId: string, video: { url?: string; file?: Uint8Array }, episode?: { id: string }): Promise<{ publishId: string; again: boolean }> {
+    const brand = findBrand(this.brands(), brandId);
+    const { names } = this.tiktokChannel(brand);
+    const journal = new FileJournal(journalPath(this.opts.dataDir));
+    const key = episode && journalKey(episode.id, "tiktok", "reels-9x16", brand.id);
+    const before = key ? await journal.get(key) : undefined;
+    if (before?.state === "published") return { publishId: before.postId, again: true };
+    if (before?.state === "publishing") throw new Error(t("Video này đã gửi dở lúc {at}. Mở hộp nháp TikTok kiểm tra trước.", { at: before.startedAt }));
+    let app: { clientKey: string; clientSecret: string } | undefined;
+    try {
+      app = this.tiktokApp();
+    } catch {
+      app = undefined;
+    }
+    const token = await freshTikTokToken(this.env, names, app, this.tiktokClient(), (v) => this.saveEnv(v));
+    if (!token) throw new NeedsSetup(t("{name} chưa kết nối TikTok.", { name: brand.name }), `/channels/${brand.id}`);
+    const c = this.tiktokClient(token);
+    const bytes = video.file ?? (video.url ? await c.download(video.url) : undefined);
+    if (!bytes) throw new Error(t("Chưa có video."));
+    const res = await postTikTokVideo(c, bytes, {
+      mode: "draft",
+      ...(this.opts.tiktokFetch ? { pollIntervalMs: 1 } : {}),
+      beforePublish: async (id) => {
+        if (key) await journal.set(key, { state: "publishing", startedAt: new Date().toISOString(), containerId: id });
+      },
+    });
+    if (key) {
+      await journal.set(key, {
+        state: "published",
+        platform: "tiktok",
+        postId: res.publishId,
+        publishedAt: new Date().toISOString(),
+        inbox: true,
+        ...(brand.id === MAIN_BRAND ? {} : { brand: brand.id }),
+      });
+    }
+    return { publishId: res.publishId, again: false };
   }
 
   // ── Listening ─────────────────────────────────────────────────────────

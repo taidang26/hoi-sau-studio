@@ -43,6 +43,8 @@ export interface Episode {
   state: "publishing" | "published";
   postId?: string;
   permalink?: string;
+  /** TikTok draft waiting in the TikTok inbox. */
+  inbox?: boolean;
   at: string;
 }
 
@@ -184,6 +186,7 @@ export function parseJournal(journal: Record<string, JournalEntry>, brands: Bran
         state: e.state,
         postId: e.state === "published" ? e.postId : undefined,
         permalink: e.state === "published" ? e.permalink : undefined,
+        inbox: e.state === "published" && e.inbox ? true : undefined,
         at: e.state === "published" ? e.publishedAt : e.startedAt,
       };
     })

@@ -19,6 +19,10 @@ export interface CallbackOptions {
   /** The state sent in the dialog URL; anything else is rejected. */
   state: string;
   timeoutMs?: number;
+  /** Callback path. Default /callback. */
+  path?: string;
+  /** Who the person logged in with, for the page and errors. Default Facebook. */
+  provider?: string;
   /** Called once the server is listening. */
   onListening?: () => void;
 }
@@ -32,7 +36,8 @@ export function waitForLoginCode(o: CallbackOptions): Promise<string> {
   return new Promise((resolve, reject) => {
     const server = createServer((req, res) => {
       const url = new URL(req.url ?? "/", `http://localhost:${o.port}`);
-      if (url.pathname !== "/callback") {
+      const provider = o.provider ?? "Facebook";
+      if (url.pathname !== (o.path ?? "/callback")) {
         res.writeHead(404).end();
         return;
       }
@@ -45,8 +50,8 @@ export function waitForLoginCode(o: CallbackOptions): Promise<string> {
 
       const error = url.searchParams.get("error_description") ?? url.searchParams.get("error");
       if (error) {
-        return finish(400, "Chưa kết nối", "Facebook trả về lỗi. Quay lại terminal để xem chi tiết.", () =>
-          reject(new LoginError(`Facebook login was not completed: ${error}`)),
+        return finish(400, "Chưa kết nối", `${provider} trả về lỗi. Quay lại terminal để xem chi tiết.`, () =>
+          reject(new LoginError(`${provider} login was not completed: ${error}`)),
         );
       }
       if (url.searchParams.get("state") !== o.state) {
@@ -56,14 +61,14 @@ export function waitForLoginCode(o: CallbackOptions): Promise<string> {
       }
       const code = url.searchParams.get("code");
       if (!code) {
-        return finish(400, "Chưa kết nối", "Thiếu mã từ Facebook.", () => reject(new LoginError("No code in the callback.")));
+        return finish(400, "Chưa kết nối", `Thiếu mã từ ${provider}.`, () => reject(new LoginError("No code in the callback.")));
       }
       finish(200, "Đã kết nối", "Bạn có thể đóng tab này và quay lại terminal.", () => resolve(code));
     });
 
     const timer = setTimeout(() => {
       server.close();
-      reject(new LoginError("Timed out waiting for Facebook login."));
+      reject(new LoginError(`Timed out waiting for ${o.provider ?? "Facebook"} login.`));
     }, o.timeoutMs ?? 5 * 60_000);
 
     server.on("error", (e) => {

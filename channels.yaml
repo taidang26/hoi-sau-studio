@@ -12,6 +12,8 @@
 #   paused   set up, but the pipeline skips it
 #   planned  the account does not exist yet
 #
+# TikTok takes videos only; image episodes skip it.
+#
 # For the contest only Hồi Sau and Lolo's channels are live.
 
 brands:
@@ -30,6 +32,10 @@ brands:
       - platform: threads
         status: live
         env: { userId: THREADS_USER_ID, token: THREADS_TOKEN, username: THREADS_USERNAME }
+      - platform: tiktok
+        status: live
+        mode: draft   # videos land in the TikTok inbox; the owner adds sound and posts. direct needs TikTok's audit.
+        env: { userId: TIKTOK_OPEN_ID, token: TIKTOK_TOKEN, username: TIKTOK_NAME }
 
   - id: lolo
     name: Lolo

@@ -30,6 +30,15 @@
               "value": "no-store"
             }
           ]
+        },
+        {
+          "source": "/tiktok-callback",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-store"
+            }
+          ]
         }
       ]
     },

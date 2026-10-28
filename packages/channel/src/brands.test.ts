@@ -39,14 +39,14 @@ test("parseBrands rejects broken config", () => {
   assert.throws(() => parseBrands("brands: [{ id: A, kind: series }]"), /lowercase/);
   assert.throws(() => parseBrands("brands: [{ id: a, kind: character }]"), /character slug/);
   assert.throws(() => parseBrands("brands: [{ id: a, kind: series }, { id: a, kind: series }]"), /twice/);
-  assert.throws(() => parseBrands("brands: [{ id: a, kind: series, channels: [{ platform: tiktok, status: live }] }]"), /unknown platform/);
+  assert.throws(() => parseBrands("brands: [{ id: a, kind: series, channels: [{ platform: myspace, status: live }] }]"), /unknown platform/);
 });
 
 test("routeEpisode: every episode to Hồi Sau, plus the lead's brand when it has a live channel", () => {
   const ids = (lead: string, characters?: string[]) => routeEpisode(brands, { lead, characters }).map((r) => `${r.brand.id}:${r.platforms.join("+")}`);
-  assert.deepEqual(ids("cu-li", ["ca-noc"]), ["hoi-sau:facebook+instagram+threads", "lolo:facebook+instagram"]);
+  assert.deepEqual(ids("cu-li", ["ca-noc"]), ["hoi-sau:facebook+instagram+threads+tiktok", "lolo:facebook+instagram"]);
   // Poppy's channels are paused, so her episode goes only to Hồi Sau.
-  assert.deepEqual(ids("ca-noc", ["cu-li"]), ["hoi-sau:facebook+instagram+threads"]);
+  assert.deepEqual(ids("ca-noc", ["cu-li"]), ["hoi-sau:facebook+instagram+threads+tiktok"]);
 });
 
 test("channelStates and brandTargets report missing .env names and skip those platforms", () => {

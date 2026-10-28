@@ -5,7 +5,7 @@
  *                    Muse Spark writes, safety gate, MMS-TTS speaks (or --voice recordings 01.wav...), render 1080x1920
  *   npm run talk -- sync <slug> <sound|video> [--lyrics file.txt] [--vocals stem.wav] [--start s] [--duration s] [--mock]
  *                    lip-sync to an existing sound: Muse Voice Transcribe times the words, Muse Spark picks gestures
- *   npm run talk -- cut <slug> [--phrase "cartoon character"] [--force]  SAM 3.1 cuts the character out, for --bg photos
+ *   npm run talk -- cut <slug> [--phrase "cartoon character"] [--keep desk|none] [--force]  SAM 3.1 cuts the character (and desk) out
  *   npm run talk -- sets [--only office,cafe] [--force]                    Muse Image draws empty background sets in series/sets/
  *                    make/sync take --bg office|pantry|phong-tro|cafe or --bg photo.jpg: the cut-out character stands in front of it
  *   npm run talk -- demo                                                   offline: mock pictures, hummed voice
@@ -208,7 +208,7 @@ async function main() {
       const dir = talkDir(CHARACTERS, slug);
       const art = loadArt(dir);
       if (!art) throw new Error(`No talk pictures for ${slug} yet. Draw them: npm run talk -- art ${slug}`);
-      await cutTalkArt(Sam.fromEnv(), dir, art, (opt.phrase as string) || "cartoon character", { force: !!opt.force, log });
+      await cutTalkArt(Sam.fromEnv(), dir, art, (opt.phrase as string) || "cartoon character", { force: !!opt.force, keep: opt.keep === "none" ? undefined : (opt.keep as string) || "desk", log });
       console.log(dir);
       return;
     }

@@ -31,7 +31,7 @@ async function flatten(base: Buffer, layers: sharp.OverlayOptions[]): Promise<Ra
 }
 
 /** Where the cut-out character stands on a photo: bottom-centred, this share of the frame height (a waist-up cut is taller and touches the bottom). */
-export const ON_PHOTO = { height: 0.62, bottom: 0.04, cutHeight: 0.55 };
+export const ON_PHOTO = { height: 0.62, bottom: 0.04, cutHeight: 0.42 };
 
 /** A background photo filling the frame, a touch soft so the character reads first. */
 export const photoBackdrop = (photo: string) => sharp(photo).rotate().removeAlpha().resize(OUT.w, OUT.h, { fit: "cover" }).blur(1.5).png().toBuffer();
@@ -56,14 +56,31 @@ export async function onPhoto(png: Buffer, mask: Buffer, backdrop: Buffer): Prom
         if (x > right) right = x;
       }
   if (bottom <= top) return toFrame(png);
+  // RGBA by hand: sharp's joinChannel drops the band when written straight to PNG.
+  const rgb = await sharp(png).removeAlpha().resize(w0, h0).raw().toBuffer();
+  const px = Buffer.alloc(w0 * h0 * 4);
+  for (let i = 0; i < w0 * h0; i++) {
+    px[i * 4] = rgb[i * 3];
+    px[i * 4 + 1] = rgb[i * 3 + 1];
+    px[i * 4 + 2] = rgb[i * 3 + 2];
+    px[i * 4 + 3] = m[i];
+  }
+  const rgba = sharp(px, { raw: { width: w0, height: h0, channels: 4 } });
+  // The cut includes the desk in front (it spans the picture's width): keep the
+  // drawing's own framing, full frame width, standing on the bottom edge.
+  let deskRow = 0;
+  for (let x = 0; x < w0; x++) if (m[bottom * w0 + x] > 128) deskRow++;
+  if (deskRow > w0 * 0.8) {
+    const height = Math.round((h0 * OUT.w) / w0);
+    const whole = await rgba.resize(OUT.w, height).png().toBuffer();
+    return flatten(backdrop, [{ input: whole, left: 0, top: OUT.h - height }]);
+  }
   const box = { left, top, width: right - left + 1, height: bottom - top + 1 };
-  // A body cut straight across (drawn sitting behind a desk) runs off the bottom of the frame like a vlogger, with no shadow.
+  // A body cut straight across runs off the bottom of the frame like a vlogger, with no shadow.
   let base = 0;
   for (let x = left; x <= right; x++) if (m[bottom * w0 + x] > 128) base++;
   const cutOff = base > box.width * 0.4;
-  // Two steps: sharp extracts before it joins channels within one pipeline.
-  const rgba = await sharp(png).removeAlpha().joinChannel(m, { raw: { width: w0, height: h0, channels: 1 } }).png().toBuffer();
-  const cut = await sharp(rgba).extract(box).png().toBuffer();
+  const cut = await rgba.extract(box).png().toBuffer();
   let height = Math.round(OUT.h * (cutOff ? ON_PHOTO.cutHeight : ON_PHOTO.height));
   let width = Math.round((box.width * height) / box.height);
   // Raised arms can make a pose wider than the frame.

@@ -151,10 +151,10 @@ export async function drawTalkArt(ctx: StudioContext, slug: string, dir: string,
 
 /**
  * SAM 3.1 cuts the character out of every gesture picture, so it can stand
- * on a real photo. Mouth and blink frames share their gesture's cut: only the
- * face changes, inside the body.
+ * on a real photo or a drawn set, with the desk in front of it (`keep`).
+ * Mouth and blink frames share their gesture's cut: only the face changes.
  */
-export async function cutTalkArt(sam: Sam, dir: string, art: TalkArt, phrase: string, opts: { force?: boolean; log?: (s: string) => void } = {}): Promise<TalkArt> {
+export async function cutTalkArt(sam: Sam, dir: string, art: TalkArt, phrase: string, opts: { force?: boolean; log?: (s: string) => void; keep?: string } = {}): Promise<TalkArt> {
   for (const [id, ga] of Object.entries(art.gestures)) {
     if (ga.mask && existsSync(join(dir, ga.mask)) && !opts.force) continue;
     const png = readFileSync(join(dir, ga.file));
@@ -168,6 +168,12 @@ export async function cutTalkArt(sam: Sam, dir: string, art: TalkArt, phrase: st
     const mask = Buffer.alloc(img.width * img.height);
     const main = segs.reduce((a, b) => (b.area > a.area ? b : a));
     for (let i = 0; i < mask.length; i++) if (main.mask[i]) mask[i] = 255;
+    // Keep the desk in front too, so the character sits behind it in the new room instead of ending in a straight cut.
+    if (opts.keep) {
+      const extra = (await sam.segment(opts.keep, dataUrl(png), img.width, img.height)).filter((x) => (x.score ?? 1) >= 0.3);
+      for (const e of extra) for (let i = 0; i < mask.length; i++) if (e.mask[i]) mask[i] = 255;
+      if (!extra.length) opts.log?.(`${id}: no "${opts.keep}" found; the character alone is cut.`);
+    }
     const file = `${id}.mask.png`;
     writeFileSync(join(dir, file), await sharp(mask, { raw: { width: img.width, height: img.height, channels: 1 } }).blur(1.2).png().toBuffer());
     ga.mask = file;

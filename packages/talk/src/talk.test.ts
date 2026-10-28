@@ -110,4 +110,12 @@ test("a cut-out character stands bottom-centre on the photo", async () => {
   const mid = Math.round(OUT.h * (1 - ON_PHOTO.bottom - ON_PHOTO.height / 2));
   assert.ok(px(540, mid)[0] > 200 && px(540, mid)[2] < 60, "the character in the middle");
   assert.ok(px(60, mid)[2] > 120, "the photo at the side, not the drawn white");
+  // A see-through cut: outside the mask, inside the character's box, is the photo.
+  const holed = await sharp(Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="600"><rect width="400" height="600"/><circle cx="200" cy="350" r="100" fill="#fff"/></svg>')).png().toBuffer();
+  const out2 = await onPhoto(pic, holed, await photoBackdrop(photo));
+  const c = (x: number, y: number) => [...out2.data.subarray((y * out2.width + x) * 3, (y * out2.width + x) * 3 + 3)];
+  // The circle's bounding square corner (inside the box, outside the circle) shows the photo's blue, not white.
+  const r = Math.round(OUT.h * ON_PHOTO.height / 2);
+  const cy = Math.round(OUT.h * (1 - ON_PHOTO.bottom) - r);
+  assert.ok(c(Math.round(OUT.w / 2) - Math.round(r * 0.9), cy - Math.round(r * 0.9))[2] > 120, "transparent outside the mask");
 });

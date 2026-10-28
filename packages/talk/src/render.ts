@@ -10,10 +10,10 @@ import { join } from "node:path";
 import sharp from "sharp";
 import { ffmpeg } from "@hoi-sau/motion";
 import type { TalkArt } from "./art.js";
-import { CAPTION_BAND, CaptionCache, titleOverlay, type Overlay } from "./captions.js";
+import { CAPTION_BAND, CAPTION_ON_BACKDROP, CaptionCache, titleOverlay, type Overlay } from "./captions.js";
 import { pasteOval, readRgb, type Raster } from "./patch.js";
 import { vanishingPointFor } from "./sets.js";
-import { FPS, OUT, PICTURE, type Chunk, type Frame } from "./timeline.js";
+import { FPS, OUT, PICTURE, SAFE, SAFE_CX, type Chunk, type Frame } from "./timeline.js";
 import { wavBytes, type Voice } from "./voice.js";
 
 /**
@@ -32,7 +32,9 @@ async function flatten(base: Buffer, layers: sharp.OverlayOptions[]): Promise<Ra
 }
 
 /** Where the cut-out character stands on a photo: bottom-centred, this share of the frame height (a waist-up cut is taller and touches the bottom). */
-export const ON_PHOTO = { height: 0.44, bottom: 0.15, cutHeight: 0.36 };
+export const ON_PHOTO = { height: 0.44, bottom: 1 - SAFE.bottom / OUT.h, cutHeight: 0.36 };
+/** A standing character's head stays below the captions, which sit under the title on a backdrop. */
+const HEAD_MIN_Y = CAPTION_ON_BACKDROP.y + CAPTION_ON_BACKDROP.h;
 
 /** Blur at the nearest and the farthest point of the backdrop (gaussian sigma, output pixels). */
 export const BACKDROP_BLUR = { near: 0, far: 8 };
@@ -171,30 +173,34 @@ export async function onPhoto(png: Buffer, mask: Buffer, backdrop: Buffer): Prom
   for (let x = left; x <= right; x++) if (m[bottom * w0 + x] > 128) base++;
   const cutOff = base > box.width * 0.4;
   const cut = await rgba.extract(box).png().toBuffer();
-  let height = Math.round(OUT.h * (cutOff ? ON_PHOTO.cutHeight : ON_PHOTO.height));
+  // Standing: feet on the safe area's bottom line, head below the captions; shrunk if both cannot hold.
+  let height = cutOff ? Math.round(OUT.h * ON_PHOTO.cutHeight) : Math.min(Math.round(OUT.h * ON_PHOTO.height), SAFE.bottom - HEAD_MIN_Y);
   let width = Math.round((box.width * height) / box.height);
-  // Raised arms can make a pose wider than the frame.
-  if (width > OUT.w * 0.96) {
-    height = Math.round((height * OUT.w * 0.96) / width);
-    width = Math.round(OUT.w * 0.96);
+  // Raised arms can make a pose wider than the safe area.
+  const maxW = SAFE.right - SAFE.left;
+  if (width > maxW) {
+    height = Math.round((height * maxW) / width);
+    width = maxW;
   }
   const sized = await sharp(cut).resize(width, height).png().toBuffer();
-  const x = Math.round((OUT.w - width) / 2);
-  const y = cutOff ? OUT.h - height : Math.round(OUT.h * (1 - ON_PHOTO.bottom) - height);
+  // Centred on the safe area, which sits left of the platforms' button column.
+  const x = Math.round(SAFE_CX - width / 2);
+  const y = cutOff ? OUT.h - height : SAFE.bottom - height;
   if (cutOff) return flatten(backdrop, [{ input: sized, left: x, top: y }]);
   // Contact shadow: a dark core right under the feet inside a wider soft pool, so the character stands on the ground.
-  const sw = Math.round(width * 0.9), sh = Math.round(height * 0.09);
+  const sw = Math.round(width * 1.0), sh = Math.round(height * 0.16);
   // Drawn first, then blurred: in one sharp pipeline composite runs after blur, which left the edge hard.
   const shadow = await sharp(
     Buffer.from(
-      `<svg xmlns="http://www.w3.org/2000/svg" width="${sw}" height="${sh}"><ellipse cx="50%" cy="50%" rx="44%" ry="34%" fill="#1e140c" fill-opacity="0.3"/><ellipse cx="50%" cy="50%" rx="32%" ry="20%" fill="#1e140c" fill-opacity="0.45"/></svg>`,
+      `<svg xmlns="http://www.w3.org/2000/svg" width="${sw}" height="${sh}"><ellipse cx="50%" cy="50%" rx="42%" ry="30%" fill="#1e140c" fill-opacity="0.5"/><ellipse cx="50%" cy="50%" rx="30%" ry="18%" fill="#1e140c" fill-opacity="0.6"/></svg>`,
     ),
   )
-    .blur(8)
+    .blur(5)
     .png()
     .toBuffer();
   return flatten(backdrop, [
-    { input: shadow, left: x + Math.round((width - sw) / 2), top: y + height - Math.round(sh * 0.6) },
+    // Centred on the line the feet stand on, so most of it shows on the road around them.
+    { input: shadow, left: x + Math.round((width - sw) / 2), top: y + height - Math.round(sh * 0.4) },
     { input: sized, left: x, top: y },
   ]);
 }
@@ -263,7 +269,7 @@ export async function renderTalk(r: RenderInput): Promise<{ video: string; secon
   }
   const pics = new Pictures(r.art, r.artDir, r.background ? await backdropFor(r.background) : undefined);
   // On a backdrop the character stands in the middle, so the words sit on the ground under it, clear of the body.
-  const captions = new CaptionCache(r.chunks, r.background ? OUT.h - CAPTION_BAND.h - 40 : CAPTION_BAND.y);
+  const captions = new CaptionCache(r.chunks, r.background ? CAPTION_ON_BACKDROP.y : CAPTION_BAND.y);
   const title = r.title ? await titleOverlay(r.title) : undefined;
 
   const args = ["-hide_banner", "-loglevel", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", `${OUT.w}x${OUT.h}`, "-r", String(FPS), "-i", "pipe:0", "-i", wav];
@@ -305,6 +311,7 @@ export async function renderTalk(r: RenderInput): Promise<{ video: string; secon
   }
   ff.stdin.end();
   await done;
+  await safeAreaCheck(r.out, r.out.replace(/\.mp4$/, "") + ".safe.jpg", r.frames.length / FPS / 2);
   return { video: r.out, seconds: r.frames.length / FPS };
 }
 
@@ -312,5 +319,21 @@ export async function renderTalk(r: RenderInput): Promise<{ video: string; secon
 export async function silentCopy(video: string): Promise<string> {
   const out = video.replace(/\.mp4$/, "") + ".silent.mp4";
   await ffmpeg(["-i", video, "-an", "-c:v", "copy", "-movflags", "+faststart", out]);
+  return out;
+}
+
+/**
+ * A frame of the video with the platforms' safe area drawn on it: the
+ * rectangle everything that matters must stay inside, and the no-go strips
+ * (top bar, caption and channel name at the bottom, button column at the
+ * right) shaded, to check a render by eye.
+ */
+export async function safeAreaCheck(video: string, out: string, at: number): Promise<string> {
+  const frame = out.replace(/\.jpg$/, "") + ".frame.png";
+  await ffmpeg(["-y", "-ss", at.toFixed(2), "-i", video, "-frames:v", "1", frame]);
+  const { left, top, right, bottom } = SAFE;
+  const shade = (x: number, y: number, w: number, h: number) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="#d0021b" fill-opacity="0.28"/>`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${OUT.w}" height="${OUT.h}">${shade(0, 0, OUT.w, top)}${shade(0, bottom, OUT.w, OUT.h - bottom)}${shade(0, top, left, bottom - top)}${shade(right, top, OUT.w - right, bottom - top)}<rect x="${left}" y="${top}" width="${right - left}" height="${bottom - top}" fill="none" stroke="#d0021b" stroke-width="6" stroke-dasharray="24 12"/></svg>`;
+  await sharp(frame).composite([{ input: Buffer.from(svg) }]).jpeg({ quality: 88 }).toFile(out);
   return out;
 }

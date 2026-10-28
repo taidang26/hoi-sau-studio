@@ -95,7 +95,7 @@ test("typed lyrics land on the voiced parts of the sound", async () => {
 test("a cut-out character stands bottom-centre on the photo", async () => {
   const sharp = (await import("sharp")).default;
   const { onPhoto, photoBackdrop, ON_PHOTO } = await import("./render.js");
-  const { OUT } = await import("./timeline.js");
+  const { OUT, SAFE, SAFE_CX } = await import("./timeline.js");
   const { mkdtempSync, writeFileSync } = await import("node:fs");
   const { join } = await import("node:path");
   const { tmpdir } = await import("node:os");
@@ -120,7 +120,11 @@ test("a cut-out character stands bottom-centre on the photo", async () => {
   // The circle's bounding square corner (inside the box, outside the circle) shows the photo's blue, not white.
   const r = Math.round(OUT.h * ON_PHOTO.height / 2);
   const cy = Math.round(OUT.h * (1 - ON_PHOTO.bottom) - r);
-  assert.ok(c(Math.round(OUT.w / 2) - Math.round(r * 0.9), cy - Math.round(r * 0.9))[2] > 120, "transparent outside the mask");
+  assert.ok(c(Math.round(SAFE_CX) - Math.round(r * 0.9), cy - Math.round(r * 0.9))[2] > 120, "transparent outside the mask");
+  // Standing on the safe area's bottom line, centred on the safe area.
+  assert.equal(Math.round(OUT.h * (1 - ON_PHOTO.bottom)), SAFE.bottom);
+  assert.ok(c(Math.round(SAFE_CX), SAFE.bottom - 5)[0] > 200, "feet end on the safe line");
+  assert.ok(c(Math.round(SAFE_CX), SAFE.bottom + 40)[0] < 200, "nothing of the character below it");
 });
 
 test("set prompts keep the faded sketch look and leave out sparkles", () => {

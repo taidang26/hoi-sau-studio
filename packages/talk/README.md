@@ -40,6 +40,10 @@ Rules for every backdrop (drawn set or photo) a cut-out character stands on, so 
 - **The backdrop is warmer, grainier and darker at the corners than the character**, so the clean character is the brightest thing in the frame.
 - **Each drawn set records its vanishing point** (`vp` in `src/sets.ts`, shares of the 1080x1920 frame, estimated by eye). Photos and plain backdrops use (0.5, 0.45). A new set needs a camera at standing eye height looking down the street or room (one-point perspective), with a clear stretch of ground in front where the character stands.
 
+## Safe area
+
+TikTok, Reels and Shorts put their own bar at the top, the channel name and caption at the bottom and a button column on the right. Everything that matters stays inside `SAFE` (`src/timeline.ts`: x 60–940, y 250–1480 of 1080x1920): the title at its top, the captions under the title when the character stands on a backdrop (above its head) or at its bottom otherwise, and the whole standing character, centred on `SAFE_CX` with its feet on the safe area's bottom line. Each render writes `<slug>.safe.jpg`, a middle frame with the safe area drawn on it, to check by eye.
+
 ## Lip-sync to a sound
 
 ```bash

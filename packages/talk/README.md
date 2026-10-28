@@ -29,6 +29,17 @@ Output goes to `data/talk/<slug>-<time>/`: `script.json`, `safety.json`,
 channel package after you approve it. `TALK_PYTHON` (or `DANCE_PYTHON`) picks
 the Python that has torch.
 
+## Depth and grounding
+
+Rules for every backdrop (drawn set or photo) a cut-out character stands on, so it stands in the place instead of floating in front of it:
+
+- **Focus on the character's plane.** The character and the ground its feet stand on are fully sharp.
+- **Near sharp, far softer.** Blur grows with distance into the scene, towards the vanishing point (up to about sigma 8 at the end of the street and the sky); the ground at the bottom and the walls at the sides stay sharp. Never one uniform blur over the whole backdrop.
+- **Feet on the ground plane.** The feet are below the horizon (the vanishing point's height), on the road or floor, at a size that fits the perspective there.
+- **Always a contact shadow** under the feet: soft, clearly darker than the ground, a little wider than the feet.
+- **The backdrop is warmer, grainier and darker at the corners than the character**, so the clean character is the brightest thing in the frame.
+- **Each drawn set records its vanishing point** (`vp` in `src/sets.ts`, shares of the 1080x1920 frame, estimated by eye). Photos and plain backdrops use (0.5, 0.45). A new set needs a camera at standing eye height looking down the street or room (one-point perspective), with a clear stretch of ground in front where the character stands.
+
 ## Lip-sync to a sound
 
 ```bash

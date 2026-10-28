@@ -12,6 +12,7 @@ import { ffmpeg } from "@hoi-sau/motion";
 import type { TalkArt } from "./art.js";
 import { CAPTION_BAND, CaptionCache, titleOverlay, type Overlay } from "./captions.js";
 import { pasteOval, readRgb, type Raster } from "./patch.js";
+import { vanishingPointFor } from "./sets.js";
 import { FPS, OUT, PICTURE, type Chunk, type Frame } from "./timeline.js";
 import { wavBytes, type Voice } from "./voice.js";
 
@@ -33,14 +34,50 @@ async function flatten(base: Buffer, layers: sharp.OverlayOptions[]): Promise<Ra
 /** Where the cut-out character stands on a photo: bottom-centred, this share of the frame height (a waist-up cut is taller and touches the bottom). */
 export const ON_PHOTO = { height: 0.44, bottom: 0.15, cutHeight: 0.36 };
 
-/** A background photo filling the frame, out of focus so the character reads first. */
-/** Gaussian sigma for the backdrop, in output pixels. */
-export const BACKDROP_BLUR = 6;
+/** Blur at the nearest and the farthest point of the backdrop (gaussian sigma, output pixels). */
+export const BACKDROP_BLUR = { near: 0, far: 8 };
+/** Where a photo or plain backdrop recedes to when nothing better is known (shares of the frame). */
+export const VANISHING_POINT = { x: 0.5, y: 0.45 };
+/** The ground line the character's feet stand on, as a share of the frame height. */
+export const FEET_Y = 1 - ON_PHOTO.bottom;
 
-export async function photoBackdrop(photo: string): Promise<Buffer> {
-  // Out of focus like a shallow camera, so the sharp cut-out character carries the frame.
-  const plate = await sharp(photo).rotate().removeAlpha().resize(OUT.w, OUT.h, { fit: "cover" }).blur(BACKDROP_BLUR).png().toBuffer();
-  return finishBackdrop(plate);
+/** A background photo or drawn set filling the frame, focused like a camera on the character standing in front of it. */
+export async function photoBackdrop(photo: string, vp = vanishingPointFor(photo) ?? VANISHING_POINT): Promise<Buffer> {
+  const plate = await sharp(photo).rotate().removeAlpha().resize(OUT.w, OUT.h, { fit: "cover" }).png().toBuffer();
+  return finishBackdrop(await depthBlur(plate, { vp }));
+}
+
+/**
+ * How near each point of a one-point-perspective backdrop is, 0 (far) to 1
+ * (as near as the character): the ground from the character's feet down and
+ * the walls at the sides are near; the end of the street (the vanishing
+ * point) and the sky above it are far. The ground the feet stand on is as
+ * sharp as the character, so it stands there instead of floating.
+ */
+export function nearness(x: number, y: number, vp = VANISHING_POINT, feetY = FEET_Y): number {
+  const side = Math.abs(x - vp.x) / Math.max(vp.x, 1 - vp.x);
+  const ground = y > vp.y ? (y - vp.y) / Math.max(0.05, feetY - vp.y) : 0;
+  return Math.min(1, Math.max(side, ground));
+}
+
+/** The backdrop sharp where it is near and more out of focus the farther it is (see nearness). */
+export async function depthBlur(plate: Buffer, opts: { near?: number; far?: number; vp?: { x: number; y: number } } = {}): Promise<Buffer> {
+  const near = opts.near ?? BACKDROP_BLUR.near, far = opts.far ?? BACKDROP_BLUR.far;
+  const sigmas = [near, near + (far - near) * 0.15, near + (far - near) * 0.4, far];
+  // A sigma under 0.3 means no blur: the plate as drawn.
+  const layers = await Promise.all(sigmas.map((s) => (s < 0.3 ? sharp(plate).removeAlpha().raw().toBuffer() : sharp(plate).removeAlpha().blur(s).raw().toBuffer())));
+  const out = Buffer.alloc(OUT.w * OUT.h * 3);
+  for (let y = 0; y < OUT.h; y++)
+    for (let x = 0; x < OUT.w; x++) {
+      // Wanted blur: far at nearness 0, falling off quickly towards the near ground.
+      const want = near + (far - near) * (1 - nearness(x / OUT.w, y / OUT.h, opts.vp)) ** 2;
+      let i = 0;
+      while (i < sigmas.length - 2 && want > sigmas[i + 1]) i++;
+      const t = Math.min(1, Math.max(0, (want - sigmas[i]) / (sigmas[i + 1] - sigmas[i])));
+      const k = (y * OUT.w + x) * 3;
+      for (let c = 0; c < 3; c++) out[k + c] = Math.round(layers[i][k + c] * (1 - t) + layers[i + 1][k + c] * t);
+    }
+  return sharp(out, { raw: { width: OUT.w, height: OUT.h, channels: 3 } }).png().toBuffer();
 }
 
 /**
@@ -86,7 +123,7 @@ export function plainBackdrop(color = "#CFE3EE"): Promise<Buffer> {
 }
 
 /** --bg plain or plain:#hex gives a plain backdrop; anything else is a picture file. */
-export const backdropFor = (bg: string) => (bg === "plain" || bg.startsWith("plain:") ? plainBackdrop(bg.slice(6) || undefined) : photoBackdrop(bg));
+export const backdropFor = (bg: string) => (bg === "plain" || bg.startsWith("plain:") ? plainBackdrop(bg.slice(6) || undefined) : photoBackdrop(bg, vanishingPointFor(bg) ?? VANISHING_POINT));
 
 /**
  * The character cut out with its SAM mask and stood on the photo, with a soft
@@ -145,13 +182,19 @@ export async function onPhoto(png: Buffer, mask: Buffer, backdrop: Buffer): Prom
   const x = Math.round((OUT.w - width) / 2);
   const y = cutOff ? OUT.h - height : Math.round(OUT.h * (1 - ON_PHOTO.bottom) - height);
   if (cutOff) return flatten(backdrop, [{ input: sized, left: x, top: y }]);
-  const shadow = await sharp({ create: { width: Math.round(width * 0.8), height: Math.round(height * 0.06), channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
-    .composite([{ input: Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${Math.round(width * 0.8)}" height="${Math.round(height * 0.06)}"><ellipse cx="50%" cy="50%" rx="48%" ry="40%" fill="black" fill-opacity="0.35"/></svg>`) }])
+  // Contact shadow: a dark core right under the feet inside a wider soft pool, so the character stands on the ground.
+  const sw = Math.round(width * 0.9), sh = Math.round(height * 0.09);
+  // Drawn first, then blurred: in one sharp pipeline composite runs after blur, which left the edge hard.
+  const shadow = await sharp(
+    Buffer.from(
+      `<svg xmlns="http://www.w3.org/2000/svg" width="${sw}" height="${sh}"><ellipse cx="50%" cy="50%" rx="44%" ry="34%" fill="#1e140c" fill-opacity="0.3"/><ellipse cx="50%" cy="50%" rx="32%" ry="20%" fill="#1e140c" fill-opacity="0.45"/></svg>`,
+    ),
+  )
     .blur(8)
     .png()
     .toBuffer();
   return flatten(backdrop, [
-    { input: shadow, left: x + Math.round(width * 0.1), top: y + height - Math.round(height * 0.04) },
+    { input: shadow, left: x + Math.round((width - sw) / 2), top: y + height - Math.round(sh * 0.6) },
     { input: sized, left: x, top: y },
   ]);
 }

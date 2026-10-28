@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import sharp from "sharp";
 import { align, pasteOval, type Raster } from "./patch.js";
 import { mockScript, scriptProblems, syllables } from "./script.js";
 import { blinkTrack, chunkWords, wordTimes } from "./timeline.js";
@@ -128,4 +129,29 @@ test("set prompts keep the faded sketch look and leave out sparkles", () => {
     assert.match(p, /faded watercolour/);
     assert.match(p, /No sparkles/);
   }
+});
+
+test("depth of field: the near ground and side walls stay sharp, the end of the street blurs", async () => {
+  const { depthBlur, nearness, VANISHING_POINT } = await import("./render.js");
+  assert.equal(nearness(0.5, 1), 1, "ground at the bottom is near");
+  assert.equal(nearness(0.5, 0.85), 1, "the ground the feet stand on is as sharp as the character");
+  assert.equal(nearness(0, 0.3), 1, "a side wall is near");
+  assert.equal(nearness(VANISHING_POINT.x, VANISHING_POINT.y), 0, "the end of the street is far");
+  assert.equal(nearness(0.5, 0.1), 0, "the sky above it is far");
+  // Fine stripes everywhere: they survive where the plate is sharp and wash out where it is blurred.
+  const { OUT } = await import("./timeline.js");
+  const stripes = Buffer.alloc(OUT.w * OUT.h * 3);
+  for (let y = 0; y < OUT.h; y++) for (let x = 0; x < OUT.w; x++) stripes.fill(x % 4 < 2 ? 0 : 255, (y * OUT.w + x) * 3, (y * OUT.w + x) * 3 + 3);
+  const plate = await sharp(stripes, { raw: { width: OUT.w, height: OUT.h, channels: 3 } }).png().toBuffer();
+  const out = await sharp(await depthBlur(plate)).raw().toBuffer();
+  const contrast = (y: number) => {
+    let lo = 255, hi = 0;
+    for (let x = OUT.w / 2 - 8; x < OUT.w / 2 + 8; x++) (lo = Math.min(lo, out[(y * OUT.w + x) * 3])), (hi = Math.max(hi, out[(y * OUT.w + x) * 3]));
+    return hi - lo;
+  };
+  assert.ok(contrast(OUT.h - 20) > 150, "near ground keeps its detail");
+  assert.ok(contrast(Math.round(OUT.h * VANISHING_POINT.y)) < 30, "far end is out of focus");
+  const { vanishingPointFor } = await import("./sets.js");
+  assert.deepEqual(vanishingPointFor("C:\\x\\series\\sets\\hem-ha-noi.png"), { x: 0.58, y: 0.72 });
+  assert.equal(vanishingPointFor("photo.jpg"), undefined);
 });

@@ -13,18 +13,22 @@ export interface TalkSet {
   id: string;
   vi: string;
   scene: string;
+  /** Where the scene recedes to, as shares of the 1080x1920 frame (estimated by eye on the drawn set). */
+  vp?: { x: number; y: number };
 }
 
 export const SETS: TalkSet[] = [
   {
     id: "hem-ha-noi",
     vi: "ngõ Hà Nội",
+    vp: { x: 0.58, y: 0.72 },
     scene:
       "a quiet residential alley in Hanoi in the morning: narrow tube houses of different heights with balconies and rooftop water tanks, a big tangle of black electric wires across the sky between concrete poles, a leafy tree on one side, pink bougainvillea over a gate, two motorbikes parked by a wall, a clean concrete street in front",
   },
   {
     id: "van-phong-that",
     vi: "văn phòng Việt",
+    vp: { x: 0.64, y: 0.52 },
     scene:
       "the inside of a real small Vietnamese office in the afternoon: rows of plain desks with monitors and office chairs further back, a window with blinds and city buildings outside, a water dispenser, a potted plant, a few files on shelves",
   },
@@ -89,6 +93,12 @@ export async function drawSets(ctx: StudioContext, dir: string, opts: { only?: s
 }
 
 /** --bg takes a set id or a path to a photo. */
+/** The vanishing point of a drawn set, from its file name (series/sets/<id>.png); undefined for photos. */
+export function vanishingPointFor(file: string): { x: number; y: number } | undefined {
+  const id = file.replace(/\\/g, "/").split("/").pop()?.replace(/\.png$/i, "");
+  return SETS.find((s) => s.id === id)?.vp;
+}
+
 export function resolveBackground(bg: string, dir: string): string {
   if (bg === "plain" || bg.startsWith("plain:")) return bg;
   const set = join(dir, `${bg}.png`);

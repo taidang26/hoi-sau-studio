@@ -7,10 +7,15 @@
 import sharp from "sharp";
 import { BOLD_FONT_PATH, escapeXml, loadFont, measure, svgToPng } from "@hoi-sau/svg-text";
 import type { Chunk } from "./timeline.js";
-import { OUT } from "./timeline.js";
+import { OUT, SAFE, SAFE_CX } from "./timeline.js";
 
-export const CAPTION_BAND = { y: 1420, h: 220 };
-export const TITLE_BAND = { y: 20, h: 200 };
+/** All bands sit inside the platforms' safe area (SAFE): nothing is covered by their buttons or caption block. */
+export const TITLE_BAND = { y: SAFE.top, h: 180 };
+/** Over the desk in the vlogger shot, just above the platforms' bottom block. */
+export const CAPTION_BAND = { y: SAFE.bottom - 220, h: 220 };
+/** On a backdrop the character stands in the middle, so the words go right under the title, above its head. */
+export const CAPTION_ON_BACKDROP = { y: TITLE_BAND.y + TITLE_BAND.h, h: 200 };
+const TEXT_W = SAFE.right - SAFE.left - 40;
 
 export interface Overlay {
   data: Buffer;
@@ -32,16 +37,16 @@ export function captionSvg(chunk: Chunk, current: number): string {
   let size = 66;
   const space = () => size * 0.28;
   const width = () => words.reduce((n, w) => n + measure(font, w, size), 0) + space() * (words.length - 1);
-  while (width() > OUT.w - 160 && size > 44) size -= 2;
+  while (width() > TEXT_W && size > 40) size -= 2;
   const total = width();
-  let x = (OUT.w - total) / 2;
-  const cy = CAPTION_BAND.h / 2;
+  let x = SAFE_CX - total / 2;
+  const cy = 110;
   const spans = words.map((w, i) => {
     const t = `<text x="${x.toFixed(1)}" y="${(cy + size * 0.36).toFixed(1)}" font-family="${FONT()}" font-weight="700" font-size="${size}" fill="${i === current ? "#FFE14D" : "#FFFFFF"}" stroke="#111111" stroke-width="${(size * 0.14).toFixed(1)}" stroke-linejoin="round" paint-order="stroke">${escapeXml(w)}</text>`;
     x += measure(font, w, size) + space();
     return t;
   });
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${OUT.w}" height="${CAPTION_BAND.h}">${spans.join("")}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${OUT.w}" height="220">${spans.join("")}</svg>`;
 }
 
 export function wrapTitle(text: string, size: number, maxWidth: number): string[] {
@@ -74,17 +79,17 @@ function balanceTwo(text: string, size: number, font: ReturnType<typeof loadFont
 export function titleSvg(title: string): string {
   const font = loadFont(BOLD_FONT_PATH);
   let size = 48;
-  let lines = wrapTitle(title, size, OUT.w - 200);
-  while (lines.length > 2 && size > 34) lines = wrapTitle(title, (size -= 4), OUT.w - 200);
+  let lines = wrapTitle(title, size, TEXT_W - 40);
+  while (lines.length > 2 && size > 34) lines = wrapTitle(title, (size -= 4), TEXT_W - 40);
   if (lines.length === 2) lines = balanceTwo(title, size, font);
   const lh = size * 1.25;
   const w = Math.max(...lines.map((l) => measure(font, l, size))) + 60;
   const h = lh * lines.length + 36;
   const top = (TITLE_BAND.h - h) / 2;
   const text = lines
-    .map((l, i) => `<text x="${OUT.w / 2}" y="${(top + 18 + lh * i + size * 0.95).toFixed(1)}" text-anchor="middle" font-family="${FONT()}" font-weight="700" font-size="${size}" fill="#111111">${escapeXml(l)}</text>`)
+    .map((l, i) => `<text x="${SAFE_CX}" y="${(top + 18 + lh * i + size * 0.95).toFixed(1)}" text-anchor="middle" font-family="${FONT()}" font-weight="700" font-size="${size}" fill="#111111">${escapeXml(l)}</text>`)
     .join("");
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${OUT.w}" height="${TITLE_BAND.h}"><rect x="${((OUT.w - w) / 2).toFixed(1)}" y="${top.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" rx="22" fill="#FFFFFF" stroke="#111111" stroke-width="4"/>${text}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${OUT.w}" height="${TITLE_BAND.h}"><rect x="${(SAFE_CX - w / 2).toFixed(1)}" y="${top.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" rx="22" fill="#FFFFFF" stroke="#111111" stroke-width="4"/>${text}</svg>`;
 }
 
 export class CaptionCache {

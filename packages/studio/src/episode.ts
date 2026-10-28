@@ -20,7 +20,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import sharp from "sharp";
-import { BUBBLE_KINDS, composePanel, imageSize, snugBubble, svgToPng, type BubbleKind, type DialogueLine } from "@hoi-sau/svg-text";
+import { BOLD_FONT_PATH, BUBBLE_KINDS, composePanel, escapeXml, renderSpeech, imageSize, snugBubble, svgToPng, type BubbleKind, type DialogueLine } from "@hoi-sau/svg-text";
 import {
   AUDIENCE_DATA_RULE,
   BANNED_RULE,
@@ -68,6 +68,8 @@ export interface EpisodeSpec {
   credits: Array<{ name: string; comment: string }>;
   /** "carousel" (default): 4–6 panels posted one by one. "strip3": exactly three panels, the rule of three, posted one by one too. "single": one panel that carries the whole joke. */
   format?: EpisodeFormat;
+  /** A one-line quote card: this text sits in a band above the panel, the drawing and short lines below it. */
+  headline?: string;
   /** Where the direction came from; also the first line of provenance.jsonl. */
   source?: EpisodeSource;
   createdAt: string;
@@ -201,6 +203,44 @@ export async function fitPost(image: Buffer, size = POST_SIZE): Promise<Buffer> 
   }
 }
 
+/** Paper card for a quote: the headline in a band on top, the lettered panel framed below. Same size as the panel. */
+export function headlineCard(panel: Buffer, size: { width: number; height: number }, headline: string): string {
+  const { width: W, height: H } = size;
+  const band = Math.round(H * 0.27);
+  const margin = Math.round(W * 0.05);
+  const ph = H - band - margin;
+  const pw = Math.round((ph * W) / H);
+  const px = Math.round((W - pw) / 2);
+  const text = renderSpeech(headline, { x: margin, y: Math.round(H * 0.03), width: W - 2 * margin, height: band - Math.round(H * 0.05), shape: "rect", draw: false }, {
+    fontPath: BOLD_FONT_PATH,
+    color: "#1d1d1f",
+    maxFontSize: Math.round(W * 0.06),
+    minFontSize: Math.round(W * 0.036),
+  }).svg;
+  const href = `data:image/png;base64,${panel.toString("base64")}`;
+  return (
+    `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">` +
+    `<rect width="${W}" height="${H}" fill="#f5f3ee"/>` +
+    text +
+    `<image href="${escapeXml(href)}" xlink:href="${escapeXml(href)}" x="${px}" y="${band}" width="${pw}" height="${ph}"/>` +
+    `<rect x="${px}" y="${band}" width="${pw}" height="${ph}" fill="none" stroke="#1d1d1f" stroke-width="${Math.max(3, Math.round(W / 270))}"/>` +
+    "</svg>"
+  );
+}
+
+/** Sets or clears the headline of an existing episode, through the pipeline so approval sees it. Re-run from letter after. */
+export function setHeadline(id: string, headline: string | undefined, dir?: string, safety: SafetyPolicy = loadSafety()): EpisodeSpec {
+  const ep = readStep<EpisodeSpec>(id, "episode", dir);
+  if (!ep) throw new Error(`no episode ${id}`);
+  if (headline) {
+    const early = ruleCheck([{ where: "headline", text: headline }], safety);
+    if (early.length) throw new Error(`headline refused by the safety rules:\n${early.map((i) => `  - ${i.topic} (${i.detail})`).join("\n")}`);
+  }
+  const next = { ...ep, headline: headline?.trim() || undefined };
+  writeStep(id, "episode", next, dir);
+  return next;
+}
+
 // ── storage ────────────────────────────────────────────────────────────────
 
 export const episodeDir = (id: string, dir = EPISODES_DIR) => join(dir, id);
@@ -221,7 +261,7 @@ function writeStep(id: string, step: string, value: unknown, dir?: string): void
 export function createEpisode(spec: Omit<EpisodeSpec, "createdAt">, dir?: string, safety: SafetyPolicy = loadSafety()): EpisodeSpec {
   if (!/^[a-z0-9-]+$/.test(spec.id)) throw new Error("episode id: lowercase letters, digits and dashes only");
   // Cheap early stop: an injected or banned direction never reaches the writer. The safety step checks it all again.
-  const early = ruleCheck([{ where: "direction", text: spec.direction }, ...spec.credits.flatMap((c, i) => [{ where: `credit ${i + 1}`, text: `${c.name}: ${c.comment}` }])], safety);
+  const early = ruleCheck([{ where: "direction", text: spec.direction }, ...(spec.headline ? [{ where: "headline", text: spec.headline }] : []), ...spec.credits.flatMap((c, i) => [{ where: `credit ${i + 1}`, text: `${c.name}: ${c.comment}` }])], safety);
   if (early.length) throw new Error(`episode ${spec.id} refused by the safety rules:\n${early.map((i) => `  - ${i.where}: ${i.topic} (${i.detail})`).join("\n")}`);
   if (existsSync(file(spec.id, "episode", dir))) throw new Error(`episode ${spec.id} already exists`);
   if (spec.format && !EPISODE_FORMATS.includes(spec.format)) throw new Error(`format must be one of ${EPISODE_FORMATS.join(", ")}`);
@@ -336,6 +376,7 @@ export function episodeTexts(id: string, dir?: string): EpisodeText[] {
   const out: EpisodeText[] = [];
   const add = (where: string, text: string | undefined | null) => text?.trim() && out.push({ where, text });
   add("direction", ep?.direction);
+  add("headline", ep?.headline);
   ep?.credits.forEach((c, i) => (add(`credit ${i + 1} name`, c.name), add(`credit ${i + 1} comment`, c.comment)));
   if (premise) {
     for (const k of ["title", "logline", "setup", "twist", "hook", "trigger"] as const) add(`premise.${k}`, premise[k]);
@@ -578,7 +619,7 @@ export async function runStep(ctx: StudioContext, id: string, step: EpisodeStep)
       const raw = await ctx.spark.json<Script>(
         "script",
         scriptSchema(panelRange(ep, ctx.bible)),
-        writerMessages(ctx, ep, ep.format === "single" ? "Write the script for one single panel that tells the whole joke: the setting shows the trigger, the characters' poses and faces show the twist, and at most two short bubbles (12 words each) finish it. Write everyday spoken Northern (Hà Nội) Vietnamese: blunt, clipped, colloquial. The last bubble is the punchline and must land on its own; never explain the joke or state its moral. Keep dialogue in each character's voice, never breaking their never_says rules. Characters rarely call each other by name." : "Write the panel script: one panel per beat. Let the pictures carry the joke: at least one panel has no dialogue, and the punchline must read from the drawing alone. Write everyday spoken Northern (Hà Nội) Vietnamese: blunt, clipped, colloquial; never explain the joke or state its moral. Keep dialogue short and in each character's voice, never breaking their never_says rules. Characters rarely call each other by name.", { premise: need("premise"), beats: need("beats") }),
+        writerMessages(ctx, ep, (ep.headline ? `A headline band above the panel already reads: "${ep.headline}". The picture illustrates it; the bubbles must not repeat or explain it, they add the punch. ` : "") + (ep.format === "single" ? "Write the script for one single panel that tells the whole joke: the setting shows the trigger, the characters' poses and faces show the twist, and at most two short bubbles (12 words each) finish it. Write everyday spoken Northern (Hà Nội) Vietnamese: blunt, clipped, colloquial. The last bubble is the punchline and must land on its own; never explain the joke or state its moral. Keep dialogue in each character's voice, never breaking their never_says rules. Characters rarely call each other by name." : "Write the panel script: one panel per beat. Let the pictures carry the joke: at least one panel has no dialogue, and the punchline must read from the drawing alone. Write everyday spoken Northern (Hà Nội) Vietnamese: blunt, clipped, colloquial; never explain the joke or state its moral. Keep dialogue short and in each character's voice, never breaking their never_says rules. Characters rarely call each other by name."), { premise: need("premise"), beats: need("beats") }),
       );
       return writeStep(id, "script", sanitizeScript(raw, ep, ctx.bible), dir);
     }
@@ -680,7 +721,8 @@ export async function runStep(ctx: StudioContext, id: string, step: EpisodeStep)
         const lines = bubbleLayout(script.panels[r.n - 1], board.panels[r.n - 1], size.width, size.height);
         const { svg, overflow } = composePanel({ data, ...size }, lines);
         const name = `${String(r.n).padStart(2, "0")}.png`;
-        writeFileSync(join(out, name), svgToPng(svg));
+        const png = svgToPng(svg);
+        writeFileSync(join(out, name), ep.headline && r.n === 1 ? svgToPng(headlineCard(png, size, ep.headline)) : png);
         writeFileSync(join(out, `${String(r.n).padStart(2, "0")}.svg`), svg);
         pages.push({ n: r.n, file: `final/${name}`, overflow: overflow.length });
       }

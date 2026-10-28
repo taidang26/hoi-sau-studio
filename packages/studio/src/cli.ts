@@ -11,7 +11,8 @@
  *   npm run studio -- sheet <slug|all> [--mock]  Muse Image consistency test
  *   npm run studio -- sheet approve <slug>       lock that sheet as the model sheet
  *   npm run studio -- character new "<idea>" [--mock]
- *   npm run studio -- episode new <id> --lead <slug> [--with a,b] [--format strip3|single] --direction "…" [--credit "name: comment"]
+ *   npm run studio -- episode headline <id> "…"   (quote band above a single panel)
+ *   npm run studio -- episode new <id> --lead <slug> [--with a,b] [--format strip3|single] [--headline "câu trích"] --direction "…" [--credit "name: comment"]
  *   npm run studio -- episode new <id> --lead <slug> [--with a,b] --from-listen data/listen/<id>.json
  *   npm run studio -- episode run <id> [--from step] [--to step] [--mock]
  *   npm run studio -- episode approve <id> [--post post.json] [--despite-warnings]
@@ -33,7 +34,7 @@ import { listCharacters, loadProfile } from "./profile.js";
 import { createCharacter, writeProfile } from "./create.js";
 import { approveEpisode, checkForApproval } from "./approve.js";
 import { whoAmI } from "./provenance.js";
-import { createEpisode, doneSteps, episodeDir, EPISODE_FORMATS, EPISODE_STEPS, type EpisodeFormat, type EpisodeStep, listEpisodes, readStep, runEpisode } from "./episode.js";
+import { createEpisode, doneSteps, setHeadline, episodeDir, EPISODE_FORMATS, EPISODE_STEPS, type EpisodeFormat, type EpisodeStep, listEpisodes, readStep, runEpisode } from "./episode.js";
 import { approveSheet, openStudio } from "./studio.js";
 import { approveStyle, loadStyle, runStyleTest, styleReference, styleText } from "./style.js";
 import { loadOffice, officePlanSvg } from "./office.js";
@@ -157,6 +158,13 @@ async function main(argv: string[]): Promise<void> {
     return;
   }
 
+  if (cmd === "episode" && args[0] === "headline") {
+    const [, id, ...words] = args;
+    if (!id) throw new Error('usage: episode headline <id> "câu trên đầu tranh" (empty clears it)');
+    const ep = setHeadline(id, words.join(" "));
+    console.log(ep.headline ? `${id}: headline set. Run: episode run ${id} --from safety` : `${id}: headline cleared`);
+    return;
+  }
   if (cmd === "episode" && args[0] === "new") {
     const id = args[1];
     const lead = opt("--lead");
@@ -174,6 +182,7 @@ async function main(argv: string[]): Promise<void> {
       characters: (opt("--with") ?? "").split(",").filter(Boolean),
       direction,
       ...(format ? { format } : {}),
+      ...(opt("--headline") ? { headline: opt("--headline") } : {}),
       credits: opts["--credit"]
         ? opts["--credit"].map((c) => {
             const [name, ...comment] = c.split(":");

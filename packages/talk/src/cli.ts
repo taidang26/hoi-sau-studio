@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- *   npm run talk -- art <slug> [--mock] [--only explain,shock] [--force]   draw the talk pictures once (Muse Image + SAM 3.1)
+ *   npm run talk -- art <slug> [--pose sit|stand] [--mock] [--only explain,shock] [--force]   draw the talk pictures once (Muse Image + SAM 3.1)
+ *                    --pose stand: waist-up on a plain wall, no desk (art in characters/<slug>/talk-stand); cut/sync/make take --pose too
  *   npm run talk -- make <slug> [--topic "..."] [--like sample-transcript.json] [--seconds 30] [--script file.json] [--voice dir] [--music file] [--mock]
  *                    Muse Spark writes, safety gate, MMS-TTS speaks (or --voice recordings 01.wav...), render 1080x1920
  *   npm run talk -- sync <slug> <sound|video> [--lyrics file.txt] [--vocals stem.wav] [--start s] [--duration s] [--mock]
@@ -17,7 +18,7 @@ import { fileURLToPath } from "node:url";
 import { probeVideo, reelsProblems } from "@hoi-sau/motion";
 import { openStudio } from "@hoi-sau/studio";
 import { Sam } from "@hoi-sau/dance";
-import { cutTalkArt, drawTalkArt, loadArt, talkDir } from "./art.js";
+import { cutTalkArt, drawTalkArt, loadArt, talkDir, type Pose } from "./art.js";
 import { drawSets, resolveBackground, setsDir } from "./sets.js";
 import { GESTURES } from "./gestures.js";
 import { renderTalk, silentCopy } from "./render.js";
@@ -68,6 +69,7 @@ interface MakeOptions {
   music?: string;
   out: string;
   artDir: string;
+  pose?: Pose;
   log: (s: string) => void;
 }
 
@@ -117,11 +119,11 @@ function sampleText(file: string): string {
   }
 }
 
-async function ensureArt(slug: string, o: { mock: boolean; artDir: string; log: (s: string) => void }) {
+async function ensureArt(slug: string, o: { mock: boolean; artDir: string; pose?: Pose; log: (s: string) => void }) {
   let art = loadArt(o.artDir);
   if (!art || GESTURES.some((g) => !art!.gestures[g.id])) {
     o.log("drawing the talk pictures first (once per character)");
-    art = await drawTalkArt(openStudio({ mock: o.mock, log: o.log }), slug, o.artDir, { sam: o.mock ? undefined : Sam.fromEnv(), log: o.log });
+    art = await drawTalkArt(openStudio({ mock: o.mock, log: o.log }), slug, o.artDir, { sam: o.mock ? undefined : Sam.fromEnv(), pose: o.pose, log: o.log });
   }
   return art;
 }
@@ -136,6 +138,7 @@ interface SyncOptions {
   duration?: number;
   out: string;
   artDir: string;
+  pose?: Pose;
   log: (s: string) => void;
 }
 
@@ -192,13 +195,14 @@ async function main() {
   const [cmd, ...rest] = process.argv.slice(2);
   const { pos, opt } = flags(rest);
   const log = (s: string) => console.error(s);
+  const pose: Pose = opt.pose === "stand" ? "stand" : "sit";
   switch (cmd) {
     case "art": {
       const slug = pos[0];
       if (!slug) throw new Error("Usage: talk art <slug> [--mock] [--only a,b] [--force]");
       const mock = !!opt.mock;
-      const dir = mock ? join(ROOT, "data-demo", "talk", "art", slug) : talkDir(CHARACTERS, slug);
-      await drawTalkArt(openStudio({ mock, log }), slug, dir, { sam: mock ? undefined : Sam.fromEnv(), only: opt.only ? String(opt.only).split(",") : undefined, force: !!opt.force, log });
+      const dir = mock ? join(ROOT, "data-demo", "talk", "art", slug) : talkDir(CHARACTERS, slug, pose);
+      await drawTalkArt(openStudio({ mock, log }), slug, dir, { sam: mock ? undefined : Sam.fromEnv(), only: opt.only ? String(opt.only).split(",") : undefined, force: !!opt.force, pose, log });
       console.log(dir);
       return;
     }
@@ -210,10 +214,10 @@ async function main() {
     case "cut": {
       const slug = pos[0];
       if (!slug) throw new Error('Usage: talk cut <slug> [--phrase "cartoon character"] [--force]');
-      const dir = talkDir(CHARACTERS, slug);
+      const dir = talkDir(CHARACTERS, slug, pose);
       const art = loadArt(dir);
       if (!art) throw new Error(`No talk pictures for ${slug} yet. Draw them: npm run talk -- art ${slug}`);
-      await cutTalkArt(Sam.fromEnv(), dir, art, (opt.phrase as string) || "cartoon character", { force: !!opt.force, keep: opt.keep === "none" ? undefined : (opt.keep as string) || "desk", log });
+      await cutTalkArt(Sam.fromEnv(), dir, art, (opt.phrase as string) || "cartoon character", { force: !!opt.force, keep: opt.keep === "none" || (pose === "stand" && !opt.keep) ? undefined : (opt.keep as string) || "desk", log });
       console.log(dir);
       return;
     }
@@ -229,7 +233,8 @@ async function main() {
         start: opt.start ? Number(opt.start) : undefined,
         duration: opt.duration ? Number(opt.duration) : undefined,
         out: opt.out ? fromCwd(opt.out as string) : join(ROOT, mock ? "data-demo" : "data", "talk", `${slug}-sync-${stamp()}`),
-        artDir: mock ? join(ROOT, "data-demo", "talk", "art", slug) : talkDir(CHARACTERS, slug),
+        artDir: mock ? join(ROOT, "data-demo", "talk", "art", slug) : talkDir(CHARACTERS, slug, pose),
+        pose,
         log,
       });
       return;
@@ -249,7 +254,8 @@ async function main() {
         voice: opt.voice ? fromCwd(opt.voice as string) : undefined,
         music: opt.music ? fromCwd(opt.music as string) : undefined,
         out: opt.out ? fromCwd(opt.out as string) : join(ROOT, mock ? "data-demo" : "data", "talk", `${slug}-${stamp()}`),
-        artDir: mock ? join(ROOT, "data-demo", "talk", "art", slug) : talkDir(CHARACTERS, slug),
+        artDir: mock ? join(ROOT, "data-demo", "talk", "art", slug) : talkDir(CHARACTERS, slug, pose),
+        pose,
         log,
       });
       return;

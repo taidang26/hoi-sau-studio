@@ -34,7 +34,10 @@ export interface TalkArt {
   gestures: Record<string, GestureArt>;
 }
 
-export const talkDir = (charactersDir: string, slug: string) => join(charactersDir, slug, "talk");
+/** sit: behind a desk (the original set); stand: waist-up on a plain wall, cut out with no desk for outdoor sets. */
+export type Pose = "sit" | "stand";
+
+export const talkDir = (charactersDir: string, slug: string, pose: Pose = "sit") => join(charactersDir, slug, pose === "stand" ? "talk-stand" : "talk");
 
 export function loadArt(dir: string): TalkArt | undefined {
   const f = join(dir, "talk.json");
@@ -45,14 +48,24 @@ const dataUrl = (png: Buffer) => `data:image/png;base64,${png.toString("base64")
 
 const KEEP = "Keep everything else exactly as it is: the same character, the same size and position in the frame, the same camera, background, lighting, colours and line style. Do not add text.";
 
-export function basePrompt(ctx: StudioContext, slug: string): string {
+const FRAMING: Record<Pose, string[]> = {
+  sit: [
+    "Medium shot from the waist up: the character sits behind the edge of an office desk, centred, facing the viewer and talking to the camera like a vlogger, arms relaxed and resting on the desk, mouth closed, calm friendly face. The head is in the middle of the picture and the body fills the lower half.",
+    "Behind: a bright, tidy Vietnamese office corner, simple and softly out of focus, a window with daylight and a plant. The top fifth of the picture is plain wall with nothing on it.",
+  ],
+  stand: [
+    "Medium shot from the waist up: the character stands, centred, facing the viewer and talking to the camera like a vlogger, arms relaxed at the sides, mouth closed, calm friendly face. Nothing in front of the character: no desk, no table, no props. The body continues out of the bottom edge of the picture. The head is a little above the middle of the picture, with empty space above it.",
+    "Behind: one flat, plain, very light grey wall, evenly lit, with nothing on it and no shadow, so the character can be cut out cleanly.",
+  ],
+};
+
+export function basePrompt(ctx: StudioContext, slug: string, pose: Pose = "sit"): string {
   const p = ctx.profiles.get(slug);
   if (!p) throw new Error(`No character "${slug}".`);
   return [
     `Vertical picture for a short talking video. ${p.name}: ${p.look.description}`,
     `Signature features: ${p.look.signature.join("; ")}. Draw exactly these and nothing extra.`,
-    "Medium shot from the waist up: the character sits behind the edge of an office desk, centred, facing the viewer and talking to the camera like a vlogger, arms relaxed and resting on the desk, mouth closed, calm friendly face. The head is in the middle of the picture and the body fills the lower half.",
-    "Behind: a bright, tidy Vietnamese office corner, simple and softly out of focus, a window with daylight and a plant. The top fifth of the picture is plain wall with nothing on it.",
+    ...FRAMING[pose],
     "No text, letters, logos, captions or speech bubbles anywhere.",
     ctx.style ? styleText(ctx.style) : p.look.style,
   ].join(" ");
@@ -84,6 +97,7 @@ export interface DrawOptions {
   only?: string[];
   /** Redraw pictures that already exist. */
   force?: boolean;
+  pose?: Pose;
   log?: (s: string) => void;
 }
 
@@ -97,7 +111,7 @@ export async function drawTalkArt(ctx: StudioContext, slug: string, dir: string,
 
   if (!art.base.response || !existsSync(join(dir, art.base.file))) {
     log?.("drawing the base shot");
-    const res = await generateSoftly(ctx.image, { prompt: basePrompt(ctx, slug), size: TALK_SIZE, references: refs }, log);
+    const res = await generateSoftly(ctx.image, { prompt: basePrompt(ctx, slug, opts.pose), size: TALK_SIZE, references: refs }, log);
     writeFileSync(join(dir, "base.png"), res.image);
     art.base = { response: res.id, file: "base.png" };
     art.gestures = {};

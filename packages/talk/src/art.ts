@@ -34,7 +34,7 @@ export interface TalkArt {
   gestures: Record<string, GestureArt>;
 }
 
-/** sit: behind a desk (the original set); stand: waist-up on a plain wall, cut out with no desk for outdoor sets. */
+/** sit: behind a desk (the original set); stand: full body on a plain wall, cut out with no desk, so it stands on a set's floor with a contact shadow. */
 export type Pose = "sit" | "stand";
 
 export const talkDir = (charactersDir: string, slug: string, pose: Pose = "sit") => join(charactersDir, slug, pose === "stand" ? "talk-stand" : "talk");
@@ -54,7 +54,7 @@ const FRAMING: Record<Pose, string[]> = {
     "Behind: a bright, tidy Vietnamese office corner, simple and softly out of focus, a window with daylight and a plant. The top fifth of the picture is plain wall with nothing on it.",
   ],
   stand: [
-    "Medium shot from the waist up: the character stands, centred, facing the viewer and talking to the camera like a vlogger, arms relaxed at the sides, mouth closed, calm friendly face. Nothing in front of the character: no desk, no table, no props. The body continues out of the bottom edge of the picture. The head is a little above the middle of the picture, with empty space above it.",
+    "Full body, head to feet: the character stands on the floor, centred, facing the viewer and talking to the camera like a vlogger, arms relaxed at the sides, mouth closed, calm friendly face. Both feet are in the picture with a little floor below them; nothing is cut off at the bottom edge. Nothing in front of the character: no desk, no table, no props. Empty space above the head.",
     "Behind: one flat, plain, very light grey wall, evenly lit, with nothing on it and no shadow, so the character can be cut out cleanly.",
   ],
 };

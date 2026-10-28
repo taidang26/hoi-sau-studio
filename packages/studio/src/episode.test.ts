@@ -184,6 +184,14 @@ test("speakers on opposite sides each keep their bubble on their own side, whoev
   assert.ok(left.tail!.x < 540 && right.tail!.x > 540);
 });
 
+test("a speaker at the centre and one at the left still each keep their own side", () => {
+  const sp = { dialogue: [{ speaker: "a", text: "Biết sai chưa?!" }, { speaker: "b", text: "Mắng nửa tiếng, nghỉ nửa tiếng. Lãi!", kind: "thought" }] } as ScriptPanel;
+  const bp = { shot: "wide", angle: "eye level", composition: "", staging: [{ character: "a", position: "center" }, { character: "b", position: "left" }] } as BoardPanel;
+  const [centre, left] = bubbleLayout(sp, bp, 1080, 1350).map((l) => l.bubble);
+  assert.ok(left.x + left.width <= centre.x, "left speaker's bubble sits left of the centre speaker's");
+  assert.ok(left.tail!.x < centre.tail!.x);
+});
+
 test("lettering is big enough to read on a phone, and a long line still fits", () => {
   const sp = {
     dialogue: [

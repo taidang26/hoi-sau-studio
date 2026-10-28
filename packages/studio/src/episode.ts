@@ -566,13 +566,17 @@ export function bubbleLayout(sp: ScriptPanel, bp: BoardPanel, width: number, hei
     const two = sp.dialogue.length > 1;
     // Speakers on opposite sides each keep a bubble on their own side, narrower so both fit.
     const sides = sp.dialogue.map((o) => bp.staging.find((s) => s.character === o.speaker)?.position ?? "center");
-    const apart = two && sides.includes("left") && sides.includes("right") && pos !== "center";
+    // Two speakers in different spots: the one further left takes the left edge, the other the right.
+    const RANK = { left: 0, center: 1, right: 2 } as const;
+    const other = sides[i === 0 ? 1 : 0];
+    const apart = two && other !== undefined && other !== pos;
+    const leftSide = apart && RANK[pos] < RANK[other];
     // Bangers is condensed, so shouts get a larger size to read as loud.
     const size = kind === "shout" ? Math.round(fontSize * 1.25) : fontSize;
     const { width: w, height: h } = snugBubble(d.text, kind, { fontSize: size, maxWidth: width * (apart ? 0.44 : two ? 0.52 : 0.62) });
     // Lean towards the reading order: the first of two sits left of its speaker, the second right.
     const lean = two ? (i === 0 ? -0.06 : 0.06) : 0;
-    let x = apart ? (pos === "left" ? margin : width - margin - w) : Math.min(Math.max((head.x + lean) * width - w / 2, margin), width - margin - w);
+    let x = apart ? (leftSide ? margin : width - margin - w) : Math.min(Math.max((head.x + lean) * width - w / 2, margin), width - margin - w);
     let y = height * 0.03 + (two && i > 0 ? height * 0.05 : 0);
     const prev = placed[i - 1];
     if (prev && x < prev.x + prev.w + margin * 0.5 && prev.x < x + w + margin * 0.5) {

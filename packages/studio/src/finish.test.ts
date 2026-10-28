@@ -134,3 +134,9 @@ test("recolourPanel pads the panel, finds it in the edit and returns it at its o
   const meta = await sharp(out.image).metadata();
   assert.deepEqual([meta.width, meta.height], [512, 640]);
 });
+
+test("storyNumbers: short numbers the story puts on props, not times or percentages", async () => {
+  const { storyNumbers } = await import("./episode.js");
+  assert.deepEqual(storyNumbers("Rico waves a queue ticket with 02 at 9:05, 50% done, number 02 again"), ["02"]);
+  assert.deepEqual(storyNumbers("Lolo sleeps at the desk"), []);
+});

@@ -82,7 +82,7 @@ export function heldPhrases(p: Profile): string[] {
 
 /** The recolour that matched the reference comics best (soft shading, one muted tone behind, light from the scene). */
 export const RECOLOUR_PROMPT =
-  "Recolour this exact comic panel, keeping every line, shape, character, pose and composition: soft airbrushed shading on the characters' round forms (gently darker towards the edges, soft highlight on top), warm blush on the cheeks, a limited palette, the background simplified to one muted flat tone that contrasts with the characters (or softly out of focus), gentle light coming from the light sources in the scene. No new objects, no text.";
+  "Recolour this exact comic panel, keeping every line, shape, character, pose and composition: soft airbrushed shading on the characters' round forms (gently darker towards the edges, soft highlight on top), warm blush on the cheeks, a limited palette, the background simplified to one muted flat tone that contrasts with the characters (or softly out of focus), gentle light coming from the light sources in the scene. No new objects, no new text; keep any number already drawn on a prop.";
 
 const KEEP_FRAMING = "Exactly the same framing and crop as the reference: do not zoom in or crop; every character stays the same size, in the same place, fully in frame.";
 

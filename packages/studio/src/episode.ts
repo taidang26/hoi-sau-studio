@@ -709,15 +709,17 @@ export async function runStep(ctx: StudioContext, id: string, step: EpisodeStep)
     case "review": {
       const script = need<Script>("script");
       const { renders } = need<{ renders: PanelRender[] }>("panels");
+      const board = readStep<Storyboard>(id, "storyboard", dir);
       const reviews: PanelReview[] = [];
       for (const r of renders) {
         let current = r;
-        let verdict = await reviewPanel(ctx, ep, script.panels[r.n - 1], current, dir);
+        const numbers = storyNumbers(`${script.panels[r.n - 1].action} ${board?.panels[r.n - 1]?.composition ?? ""}`);
+        let verdict = await reviewPanel(ctx, ep, script.panels[r.n - 1], current, dir, numbers);
         let redrawn = false;
         for (let attempt = 0; !verdict.pass && attempt < (ctx.maxRedraws ?? 1) + (isDuplicate(verdict) ? 1 : 0); attempt++) {
           log(`${id}: redraw panel ${r.n}: ${verdict.fix}`);
           const res = await generateSoftly(ctx.image, {
-            prompt: `Edit this panel. Change only this: ${verdict.fix}. Keep everything else exactly the same: composition, background, other characters, colours. No text.`,
+            prompt: `Edit this panel. Change only this: ${verdict.fix}. Keep everything else exactly the same: composition, background, other characters, colours. ${numbers.length ? `No text, except keep the number ${numbers.join(", ")} on its prop as drawn.` : "No text."}`,
             previousResponseId: current.responseId,
             size: panelSize(ep, r.n),
           });
@@ -793,7 +795,13 @@ export async function runStep(ctx: StudioContext, id: string, step: EpisodeStep)
   }
 }
 
-async function reviewPanel(ctx: StudioContext, ep: EpisodeSpec, sp: ScriptPanel, r: PanelRender, dir?: string): Promise<Omit<PanelReview, "n" | "redrawn">> {
+/**
+ * Numbers the story needs drawn on a prop ("a queue ticket with 02"): the
+ * review lets them through and redraws keep them, so the joke is not erased.
+ */
+export const storyNumbers = (text: string): string[] => [...new Set(text.match(/(?<![\d.,:%])\d{1,4}(?![\d.,:%])/g) ?? [])];
+
+async function reviewPanel(ctx: StudioContext, ep: EpisodeSpec, sp: ScriptPanel, r: PanelRender, dir?: string, numbers: string[] = []): Promise<Omit<PanelReview, "n" | "redrawn">> {
   const data = readFileSync(join(episodeDir(ep.id, dir), r.file));
   const content: ChatMessage["content"] = [
     {
@@ -806,10 +814,11 @@ async function reviewPanel(ctx: StudioContext, ep: EpisodeSpec, sp: ScriptPanel,
           return `${p.name} must have: ${p.look.signature.join("; ")}.${p.look.icon ? ` Its identifying item must be clearly visible: ${p.look.icon}.` : ""} Palette: ${p.look.palette.map((s) => s.hex).join(", ")}.`;
         }),
         "Fail the panel if a signature feature is wrong or missing, a character is off-model, there is drawn text, a speech bubble or a thought cloud, a human figure anywhere (every coworker is an animal), or anything unsafe. The first image is the panel; any others are the locked model sheets.",
+        numbers.length ? `The story needs the number ${numbers.join(", ")} drawn on a prop: that is not drawn text, keep it.` : "",
         "Count every cast character: each one must be drawn exactly once. Fail the panel if any of them appears twice or more (for example a second copy in the foreground or background).",
         `Also give, for every cast character you can see (by slug: ${sp.characters.map((c) => `${c} = ${ctx.profiles.get(c)!.name}`).join(", ")}), where the centre of their head is in the panel, as shares of its width and height (0 is left or top, 1 is right or bottom). Speech tails will aim there.`,
         `Unsafe means anything on this list, even in the background: ${safetyOf(ctx).topics.map((t) => t.describe).join("; ")}.`,
-      ].join("\n"),
+      ].filter(Boolean).join("\n"),
     },
     { type: "image_url", image_url: { url: `data:${imageSize(data).mime};base64,${data.toString("base64")}` } },
     ...sp.characters.flatMap((c) => {

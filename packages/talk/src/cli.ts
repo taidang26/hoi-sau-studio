@@ -2,8 +2,8 @@
 /**
  *   npm run talk -- art <slug> [--pose sit|stand] [--mock] [--only explain,shock] [--force]   draw the talk pictures once (Muse Image + SAM 3.1)
  *                    --pose stand: waist-up on a plain wall, no desk (art in characters/<slug>/talk-stand); cut/sync/make take --pose too
- *   npm run talk -- make <slug> [--topic "..."] [--like sample-transcript.json] [--seconds 30] [--script file.json] [--voice dir] [--music file] [--mock]
- *                    Muse Spark writes, safety gate, MMS-TTS speaks (or --voice recordings 01.wav...), render 1080x1920
+ *   npm run talk -- make <slug> [--topic "..."] [--like sample-transcript.json] [--seconds 30] [--script file.json] [--voice dir] [--music file] [--tts seamless|mms] [--mock]
+ *                    Muse Spark writes, safety gate, SeamlessM4T v2 speaks (--tts mms: MMS-TTS; or --voice recordings 01.wav...), render 1080x1920
  *   npm run talk -- sync <slug> <sound|video> [--lyrics file.txt] [--vocals stem.wav] [--start s] [--duration s] [--mock]
  *                    lip-sync to an existing sound: Muse Voice Transcribe times the words, Muse Spark picks gestures
  *   npm run talk -- cut <slug> [--phrase "cartoon character"] [--keep desk|none] [--force]  SAM 3.1 cuts the character (and desk) out
@@ -24,9 +24,9 @@ import { GESTURES } from "./gestures.js";
 import { renderTalk, silentCopy } from "./render.js";
 import { gateMouth, linesFromWords, readSound, soundVoice, stageLines, timeLyrics, toWords, voicedRegions } from "./sync.js";
 import { MuseTranscribe, type TimedWord } from "./transcribe.js";
-import { checkScript, writeScript, type TalkScript } from "./script.js";
+import { checkScript, PACE, writeScript, type TalkScript } from "./script.js";
 import { buildTimeline, FPS } from "./timeline.js";
-import { mouthTrack, voiceFor } from "./voice.js";
+import { mouthTrack, ttsArg, voiceFor, type Tts } from "./voice.js";
 
 const ROOT = fileURLToPath(new URL("../../..", import.meta.url));
 const CHARACTERS = join(ROOT, "characters");
@@ -66,6 +66,7 @@ interface MakeOptions {
   seconds: number;
   script?: string;
   voice?: string;
+  tts: Tts;
   music?: string;
   out: string;
   artDir: string;
@@ -77,14 +78,14 @@ async function make(slug: string, o: MakeOptions) {
   const ctx = openStudio({ mock: o.mock, log: o.log });
   mkdirSync(o.out, { recursive: true });
   const art = await ensureArt(slug, o);
-  const script: TalkScript = o.script ? JSON.parse(readFileSync(o.script, "utf8")) : await writeScript(ctx, slug, { topic: o.topic, like: o.like ? sampleText(o.like) : undefined, seconds: o.seconds, mock: o.mock });
+  const script: TalkScript = o.script ? JSON.parse(readFileSync(o.script, "utf8")) : await writeScript(ctx, slug, { topic: o.topic, like: o.like ? sampleText(o.like) : undefined, seconds: o.seconds, pace: PACE[o.tts], mock: o.mock });
   writeFileSync(join(o.out, "script.json"), JSON.stringify(script, null, 2) + "\n");
   const verdict = await checkScript(ctx, slug, script);
   writeFileSync(join(o.out, "safety.json"), JSON.stringify(verdict, null, 2) + "\n");
   if (!verdict.pass) throw new Error(`Safety gate failed: ${verdict.issues.map((i) => `${i.where}: ${i.topic}`).join("; ")}. See ${join(o.out, "safety.json")}.`);
   o.log(`script: ${script.lines.length} lines, gestures ${script.lines.map((l) => l.gesture).join(" ")}`);
 
-  const voice = await voiceFor(script.lines.map((l) => l.text), o.out, { mock: o.mock, recorded: o.voice });
+  const voice = await voiceFor(script.lines.map((l) => l.text), o.out, { mock: o.mock, recorded: o.voice, tts: o.tts });
   const frames = Math.ceil((voice.pcm.length / voice.rate) * FPS);
   const { frames: timeline, chunks } = buildTimeline({
     lines: script.lines,
@@ -252,6 +253,7 @@ async function main() {
         seconds: Number(opt.seconds ?? 30),
         script: opt.script ? fromCwd(opt.script as string) : undefined,
         voice: opt.voice ? fromCwd(opt.voice as string) : undefined,
+        tts: ttsArg(opt.tts),
         music: opt.music ? fromCwd(opt.music as string) : undefined,
         out: opt.out ? fromCwd(opt.out as string) : join(ROOT, mock ? "data-demo" : "data", "talk", `${slug}-${stamp()}`),
         artDir: mock ? join(ROOT, "data-demo", "talk", "art", slug) : talkDir(CHARACTERS, slug, pose),

@@ -7,6 +7,7 @@
 import { S, type Profile, type StudioContext } from "@hoi-sau/studio";
 import { gateEpisode, loadSafety, SAFETY_SCHEMA, type Llm, type SafetyVerdict } from "@hoi-sau/story";
 import { GESTURES } from "./gestures.js";
+import type { Tts } from "./voice.js";
 
 export interface TalkLine {
   text: string;
@@ -24,6 +25,9 @@ export interface TalkScript {
 /** Vietnamese words are single syllables: about 3.3 a second at a calm talking pace. */
 export const SYLLABLES_PER_SECOND = 3.3;
 
+/** How fast each voice actually speaks after the cartoon shaping, so the script fills the seconds asked for. */
+export const PACE: Record<Tts, number> = { seamless: 4.2, mms: SYLLABLES_PER_SECOND };
+
 export const syllables = (text: string) => text.split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w)).length;
 
 export const scriptSchema = (lines: [number, number]) =>
@@ -33,8 +37,8 @@ export const scriptSchema = (lines: [number, number]) =>
     caption: S.str("Caption dưới bài đăng, 1 đến 2 câu, kèm 2 hashtag"),
   });
 
-export function scriptPrompt(p: Profile, opts: { topic?: string; like?: string; seconds: number }): { system: string; user: string } {
-  const target = Math.round(opts.seconds * SYLLABLES_PER_SECOND);
+export function scriptPrompt(p: Profile, opts: { topic?: string; like?: string; seconds: number; pace?: number }): { system: string; user: string } {
+  const target = Math.round(opts.seconds * (opts.pace ?? SYLLABLES_PER_SECOND));
   return {
     system: [
       `Bạn viết lời cho video ngắn dọc (Reels/TikTok) của ${p.name}, một nhân vật hoạt hình trong truyện hài văn phòng Việt Nam. ${p.name} nói thẳng vào camera như vlogger, kể một chuyện văn phòng có thật với ai cũng gặp.`,
@@ -61,10 +65,10 @@ export function scriptPrompt(p: Profile, opts: { topic?: string; like?: string; 
   };
 }
 
-export function scriptProblems(s: TalkScript, seconds: number): string[] {
+export function scriptProblems(s: TalkScript, seconds: number, pace = SYLLABLES_PER_SECOND): string[] {
   const out: string[] = [];
   const total = s.lines.reduce((n, l) => n + syllables(l.text), 0);
-  const target = seconds * SYLLABLES_PER_SECOND;
+  const target = seconds * pace;
   if (total < target * 0.6) out.push(`only ${total} words, about ${Math.round(target)} needed`);
   if (total > target * 1.35) out.push(`${total} words is too long for ${seconds} s`);
   const ids = new Set(GESTURES.map((g) => g.id));
@@ -73,13 +77,15 @@ export function scriptProblems(s: TalkScript, seconds: number): string[] {
   return out;
 }
 
-export async function writeScript(ctx: StudioContext, slug: string, opts: { topic?: string; like?: string; seconds?: number; mock?: boolean } = {}): Promise<TalkScript> {
+export async function writeScript(ctx: StudioContext, slug: string, opts: { topic?: string; like?: string; seconds?: number; pace?: number; mock?: boolean } = {}): Promise<TalkScript> {
   const p = ctx.profiles.get(slug);
   if (!p) throw new Error(`No character "${slug}".`);
   const seconds = opts.seconds ?? 30;
   if (opts.mock) return mockScript();
-  const { system, user } = scriptPrompt(p, { topic: opts.topic, like: opts.like, seconds });
-  const n = Math.round(seconds / 3.5);
+  const pace = opts.pace ?? SYLLABLES_PER_SECOND;
+  const { system, user } = scriptPrompt(p, { topic: opts.topic, like: opts.like, seconds, pace });
+  // About 11.5 syllables a line.
+  const n = Math.round((seconds * pace) / 11.5);
   let feedback = "";
   for (let attempt = 0; attempt < 3; attempt++) {
     const s = await ctx.spark.json<TalkScript>("talk_script", scriptSchema([Math.max(5, n - 2), n + 3]), [
@@ -87,7 +93,7 @@ export async function writeScript(ctx: StudioContext, slug: string, opts: { topi
       { role: "user", content: user + feedback },
     ]);
     s.lines = s.lines.map((l) => ({ ...l, text: l.text.trim() })).filter((l) => l.text);
-    const problems = scriptProblems(s, seconds);
+    const problems = scriptProblems(s, seconds, pace);
     if (!problems.length) return s;
     ctx.log?.(`script needs another try: ${problems.join("; ")}`);
     feedback = `\nBản trước chưa đạt: ${problems.join("; ")}. Viết lại.`;

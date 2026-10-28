@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import sharp from "sharp";
 import { align, pasteOval, type Raster } from "./patch.js";
-import { mockScript, scriptProblems, syllables } from "./script.js";
+import { mockScript, PACE, scriptProblems, syllables } from "./script.js";
 import { blinkTrack, chunkWords, wordTimes } from "./timeline.js";
-import { hummedLine, joinLines, mouthTrack, RATE, wavBytes } from "./voice.js";
+import { hummedLine, joinLines, mouthTrack, RATE, ttsArg, voiceShape, wavBytes } from "./voice.js";
 import { setPrompt, SETS } from "./sets.js";
 
 test("words share the line's time, with a pause after punctuation", () => {
@@ -186,4 +186,26 @@ test("depth of field: the near ground and side walls stay sharp, the end of the 
   assert.deepEqual([framed.info.width, framed.info.height], [OUT.w, OUT.h]);
   const k = ((OUT.h - 5) * OUT.w + (OUT.w - 5)) * 3;
   assert.ok(framed.data[k] > 200 && framed.data[k + 1] < 60, "bottom-right corner kept");
+});
+
+test("--tts defaults to SeamlessM4T with the cartoon pitch and speed", () => {
+  assert.equal(ttsArg(undefined), "seamless");
+  assert.equal(ttsArg("mms"), "mms");
+  assert.throws(() => ttsArg("elevenlabs"), /seamless or mms/);
+  assert.deepEqual(voiceShape("seamless"), { pitch: 1.12, tempo: 1.05 });
+  assert.deepEqual(voiceShape("mms"), { pitch: 1.12, tempo: 1 });
+  assert.deepEqual(voiceShape("seamless", { tempo: 1 }), { pitch: 1.12, tempo: 1 });
+});
+
+test("joined lines keep one span per line in order", () => {
+  const v = joinLines([hummedLine("một hai"), hummedLine("ba bốn năm")]);
+  assert.equal(v.spans.length, 2);
+  assert.ok(v.spans[0].end <= v.spans[1].start);
+});
+
+test("a Seamless script needs more words for the same seconds", () => {
+  const line = (n: number) => ({ text: Array(n).fill("chữ").join(" "), gesture: "explain" });
+  const s = { title: "t", caption: "c", lines: [line(15), { ...line(15), gesture: "shrug" }, { ...line(15), gesture: "think" }, line(15), line(15), line(15)] };
+  assert.deepEqual(scriptProblems(s, 25, PACE.mms), []);
+  assert.match(scriptProblems(s, 25 * 1.5, PACE.seamless).join(), /only/);
 });

@@ -1,5 +1,5 @@
 /**
- * The voice track. Lines are spoken one by one (Meta's MMS-TTS, or recordings
+ * The voice track. Lines are spoken one by one (Meta's SeamlessM4T v2 or MMS-TTS, or recordings
  * named 01.wav, 02.wav... in the same order), trimmed, pitched for the
  * character, and joined with short pauses. The mouth opens and closes with
  * the loudness of that track.
@@ -21,7 +21,23 @@ export interface Voice {
   spans: Array<{ start: number; end: number }>;
 }
 
-const TTS = fileURLToPath(new URL("../tts/tts.py", import.meta.url));
+/** Which Meta model speaks: SeamlessM4T v2 by default, MMS-TTS as the lighter fallback. */
+export type Tts = "seamless" | "mms";
+const TTS: Record<Tts, { script: string; name: string; pitch: number; tempo: number }> = {
+  seamless: { script: fileURLToPath(new URL("../tts/seamless.py", import.meta.url)), name: "SeamlessM4T v2", pitch: 1.12, tempo: 1.05 },
+  mms: { script: fileURLToPath(new URL("../tts/tts.py", import.meta.url)), name: "MMS-TTS", pitch: 1.12, tempo: 1 },
+};
+
+export function ttsArg(v: unknown): Tts {
+  if (v === undefined || v === true) return "seamless";
+  if (v === "seamless" || v === "mms") return v;
+  throw new Error(`--tts takes seamless or mms, not ${String(v)}.`);
+}
+
+/** The cartoon voice: pitch and speed applied to a generated line (a recording keeps its own). */
+export function voiceShape(tts: Tts, opts: { pitch?: number; tempo?: number } = {}): { pitch: number; tempo: number } {
+  return { pitch: opts.pitch ?? TTS[tts].pitch, tempo: opts.tempo ?? TTS[tts].tempo };
+}
 
 export const lineId = (i: number) => String(i + 1).padStart(2, "0");
 
@@ -29,15 +45,17 @@ export function python(): string {
   return process.env.TALK_PYTHON || process.env.DANCE_PYTHON || (process.platform === "win32" ? "python" : "python3");
 }
 
-/** MMS-TTS speaks every line into `dir`/<01..>.wav. */
-export async function speakLines(texts: string[], dir: string, opts: { rate?: number } = {}): Promise<void> {
+/** SeamlessM4T v2 or MMS-TTS speaks every line into `dir`/<01..>.wav. */
+export async function speakLines(texts: string[], dir: string, opts: { rate?: number; tts?: Tts } = {}): Promise<void> {
+  const tts = TTS[opts.tts ?? "seamless"];
   mkdirSync(dir, { recursive: true });
   const list = join(dir, "lines.json");
   writeFileSync(list, JSON.stringify(texts.map((text, i) => ({ id: lineId(i), text })), null, 2));
   await new Promise<void>((ok, fail) => {
-    const p = spawn(python(), [TTS, list, dir, "--rate", String(opts.rate ?? 1)], { stdio: "inherit" });
+    const args = opts.tts === "mms" ? ["--rate", String(opts.rate ?? 1)] : [];
+    const p = spawn(python(), [tts.script, list, dir, ...args], { stdio: "inherit" });
     p.on("error", (e) => fail(new Error(`Could not start Python (${e.message}). pip install -r packages/talk/tts/requirements.txt, or set TALK_PYTHON.`)));
-    p.on("close", (code) => (code === 0 ? ok() : fail(new Error(`MMS-TTS exited with ${code}.`))));
+    p.on("close", (code) => (code === 0 ? ok() : fail(new Error(`${tts.name} exited with ${code}.`))));
   });
 }
 
@@ -146,16 +164,28 @@ export function hummedLine(text: string, rate = RATE): Int16Array {
   return pcm;
 }
 
-export async function voiceFor(texts: string[], dir: string, opts: { mock?: boolean; recorded?: string; pitch?: number; tempo?: number; rate?: number }): Promise<Voice> {
+export async function voiceFor(texts: string[], dir: string, opts: { mock?: boolean; recorded?: string; pitch?: number; tempo?: number; rate?: number; tts?: Tts }): Promise<Voice> {
   if (opts.mock) return joinLines(texts.map((t) => hummedLine(t)));
   const src = opts.recorded ?? join(dir, "lines");
-  if (!opts.recorded) await speakLines(texts, src, { rate: opts.rate });
+  let tts = opts.tts ?? "seamless";
+  if (!opts.recorded) {
+    try {
+      await speakLines(texts, src, { rate: opts.rate, tts });
+    } catch (e) {
+      if (tts !== "seamless") throw e;
+      // SeamlessM4T needs ~9 GB of weights plus sentencepiece; MMS-TTS still speaks without them.
+      console.warn(`${(e as Error).message} Falling back to MMS-TTS.`);
+      tts = "mms";
+      await speakLines(texts, src, { rate: opts.rate, tts });
+    }
+  }
+  const shape = opts.recorded ? { pitch: 1, tempo: 1 } : voiceShape(tts, opts);
   const lines: Int16Array[] = [];
   for (const [i] of texts.entries()) {
     const wav = join(src, `${lineId(i)}.wav`);
     if (!existsSync(wav)) throw new Error(`${wav} is missing.`);
     // A recorded voice keeps its own pitch.
-    lines.push(await readLine(wav, opts.recorded ? 1 : opts.pitch ?? 1.12, opts.tempo ?? 1));
+    lines.push(await readLine(wav, shape.pitch, shape.tempo));
   }
   return joinLines(lines);
 }

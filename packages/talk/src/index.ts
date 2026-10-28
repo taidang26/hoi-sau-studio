@@ -1,7 +1,7 @@
 /**
  * Talking-character videos: the character speaks to camera for ~30 s, Meta
  * models only (Muse Spark script, Muse Image pictures, SAM 3.1 face parts,
- * MMS-TTS voice), with jump cuts, blinks, a talking mouth and word captions.
+ * SeamlessM4T v2 or MMS-TTS voice), with jump cuts, blinks, a talking mouth and word captions.
  */
 
 export * from "./art.js";

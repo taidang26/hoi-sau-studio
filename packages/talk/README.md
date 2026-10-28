@@ -9,7 +9,7 @@ only.
 | Monologue, one gesture per line, title and post caption | Muse Spark (`talk_script` schema), then the series safety gate |
 | Base shot and six gestures (explain, point, shrug, think, shock, defend) | Muse Image, each gesture a chained edit of the base so framing and background stay put |
 | Mouth-open and blink frames | Muse Image edits; SAM 3.1 finds the mouth and eyes and only those are pasted in, lined up and feathered |
-| Voice | MMS-TTS (`facebook/mms-tts-vie`, Meta, open weights, runs locally), pitched up for the character; or your own recordings |
+| Voice | SeamlessM4T v2 (`facebook/seamless-m4t-v2-large`, Meta, open weights, runs locally, fp16 on the GPU), pitched ×1.12 and sped ×1.05 for the character; `--tts mms` (or a failed Seamless run) uses the lighter MMS-TTS (`facebook/mms-tts-vie`); or your own recordings |
 
 The video: jump cuts between gestures with the camera switching wide/close,
 punch-ins on shock lines, a slow drift, blinks every few seconds, the mouth

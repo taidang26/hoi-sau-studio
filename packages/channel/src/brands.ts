@@ -13,6 +13,7 @@ import { parse } from "yaml";
 import type { GraphClient } from "./graph.js";
 import type { Format, Platform } from "./index.js";
 import type { Targets } from "./publish.js";
+import { TIKTOK_MODES, type TikTokClient, type TikTokMode } from "./tiktok.js";
 
 export const BRANDS_FILE = fileURLToPath(new URL("../../../channels.yaml", import.meta.url));
 
@@ -25,9 +26,9 @@ export interface ChannelEnv {
   /** Facebook: the Page id and Page token. */
   pageId?: string;
   token?: string;
-  /** Instagram and Threads account id. */
+  /** Instagram and Threads account id; TikTok open_id. */
   userId?: string;
-  /** Threads handle, used to tell the brand's own replies apart. */
+  /** Threads handle, used to tell the brand's own replies apart; TikTok display name. */
   username?: string;
 }
 
@@ -36,6 +37,8 @@ export interface Channel {
   status: ChannelStatus;
   /** Names of .env variables, never their values. */
   env: ChannelEnv;
+  /** TikTok only: draft (into the TikTok inbox, the default) or direct. */
+  mode?: TikTokMode;
 }
 
 export interface Brand {
@@ -50,7 +53,7 @@ export interface Brand {
   channels: Channel[];
 }
 
-const PLATFORMS: Platform[] = ["facebook", "instagram", "threads"];
+const PLATFORMS: Platform[] = ["facebook", "instagram", "threads", "tiktok"];
 const STATUSES: ChannelStatus[] = ["live", "paused", "planned"];
 
 export class BrandsError extends Error {
@@ -77,7 +80,10 @@ export function parseBrands(text: string): Brand[] {
     const channels = (b.channels ?? []).map((c, j) => {
       if (!PLATFORMS.includes(c.platform)) throw new BrandsError(`${where}.channels[${j}]: unknown platform ${c.platform}.`);
       if (!STATUSES.includes(c.status)) throw new BrandsError(`${where}.channels[${j}]: status must be live, paused or planned.`);
-      return { platform: c.platform, status: c.status, env: { ...c.env } };
+      if (c.mode !== undefined && (c.platform !== "tiktok" || !TIKTOK_MODES.includes(c.mode))) {
+        throw new BrandsError(`${where}.channels[${j}]: mode is only for tiktok, and is draft or direct.`);
+      }
+      return { platform: c.platform, status: c.status, env: { ...c.env }, ...(c.mode ? { mode: c.mode } : {}) };
     });
     return { id: b.id, name: b.name ?? b.id, kind: b.kind, character: b.character, tagline: b.tagline, posts, channels };
   });
@@ -150,7 +156,9 @@ export function requiredEnv(brand: Brand, channel: Channel): string[] {
       ? [channel.env.pageId, channel.env.token]
       : channel.platform === "instagram"
         ? [channel.env.userId, fb.pageId, fb.token]
-        : [channel.env.userId, channel.env.token, channel.env.username];
+        : channel.platform === "tiktok"
+          ? [channel.env.userId, channel.env.token, channel.env.token && `${channel.env.token}_REFRESH`]
+          : [channel.env.userId, channel.env.token, channel.env.username];
   return names.filter((n): n is string => Boolean(n));
 }
 
@@ -184,12 +192,13 @@ export function routeEpisode(brands: Brand[], ep: EpisodeCast): { brand: Brand; 
 /**
  * Publish targets for a brand from .env. Platforms with missing variables are
  * left out and listed in `skipped`, so one missing token never blocks the rest.
+ * TikTok is only included when `opts.tiktok` makes its client.
  */
 export function brandTargets(
   brand: Brand,
   env: Record<string, string | undefined>,
   client: (token: string, platform: Platform) => GraphClient,
-  opts: { includePaused?: boolean } = {},
+  opts: { includePaused?: boolean; tiktok?: (token: string) => TikTokClient } = {},
 ): { targets?: Targets; platforms: Platform[]; skipped: { platform: Platform; reason: string }[] } {
   const skipped: { platform: Platform; reason: string }[] = [];
   const platforms: Platform[] = [];
@@ -204,6 +213,9 @@ export function brandTargets(
   const ig = brand.channels.find((c) => c.platform === "instagram")?.env;
   const th = brand.channels.find((c) => c.platform === "threads")?.env;
   const threadsToken = th?.token && env[th.token];
+  const tt = brand.channels.find((c) => c.platform === "tiktok");
+  const tiktokToken = tt?.env.token && env[tt.env.token];
+  const tiktokId = tt?.env.userId && env[tt.env.userId];
   const targets: Targets | undefined =
     pageId && pageToken
       ? {
@@ -211,10 +223,18 @@ export function brandTargets(
           pageId,
           igUserId: (ig?.userId && env[ig.userId]) || undefined,
           threads: threadsToken && th?.userId && env[th.userId] ? { client: client(threadsToken, "threads"), userId: env[th.userId]! } : undefined,
+          tiktok:
+            tiktokToken && tiktokId && opts.tiktok
+              ? { client: opts.tiktok(tiktokToken), openId: tiktokId, mode: tt!.mode ?? "draft" }
+              : undefined,
         }
       : undefined;
   // Without a Page token there is no client for Facebook or Instagram.
-  return { targets, platforms: targets ? platforms.filter((p) => p !== "threads" || targets.threads) : [], skipped };
+  return {
+    targets,
+    platforms: targets ? platforms.filter((p) => (p !== "threads" || targets.threads) && (p !== "tiktok" || targets.tiktok)) : [],
+    skipped,
+  };
 }
 
 /** Journal key of one post. The main brand keeps the key it had before brands existed. */

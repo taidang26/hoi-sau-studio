@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
  * hoisau-channel: accounts, publishing, comments and inbox from the terminal.
+ * TikTok has its own login (tiktok-login) and posts episode videos as drafts.
  * Run `npm run channel -- help` for the command list.
  *
  * Settings come from .env in the working directory; channels.yaml says which
@@ -62,6 +63,20 @@ import {
   threadsInsights,
   threadsProfile,
   waitForLoginCode,
+  TIKTOK_CALLBACK_PATH,
+  TIKTOK_DEFAULT_REDIRECT,
+  TikTokClient,
+  TikTokError,
+  exchangeTikTokCode,
+  freshTikTokToken,
+  platformTakes,
+  postTikTokVideo,
+  tiktokAuthorizeUrl,
+  tiktokEnvValues,
+  tiktokScopes,
+  tiktokState,
+  tiktokUser,
+  type TikTokEnvNames,
   type Brand,
   type ChannelEnv,
   type Comment,
@@ -72,6 +87,7 @@ import {
   type Targets,
 } from "./index.js";
 import { demoGraph } from "./demo.js";
+import { demoTikTok } from "./tiktok-demo.js";
 
 // ------------------------------------------------------------------- .env
 
@@ -150,6 +166,12 @@ function client(token?: string, baseUrl?: string): GraphClient {
 }
 
 const threadsClient = (token?: string) => client(token, THREADS_BASE_URL);
+
+let fakeTikTok: ReturnType<typeof demoTikTok> | undefined;
+const tiktokClient = (token?: string) => {
+  if (mock) fakeTikTok ??= demoTikTok();
+  return new TikTokClient({ token, fetch: fakeTikTok?.fetch, backoffMs: mock ? 1 : undefined });
+};
 const clientFor = (token: string, platform: Platform) => (platform === "threads" ? threadsClient(token) : client(token));
 
 // ----------------------------------------------------------------- brands
@@ -175,7 +197,7 @@ const optionalEnvNames = (platform: Platform, brand = currentBrand()) =>
 
 /** The brand's accounts. Paused channels are included when asked (old posts, a manual publish). */
 function accounts(brand: Brand, includePaused: boolean) {
-  const found = brandTargets(brand, process.env, clientFor, { includePaused });
+  const found = brandTargets(brand, process.env, clientFor, { includePaused, tiktok: tiktokClient });
   if (!found.targets) {
     const fb = optionalEnvNames("facebook", brand);
     throw new Error(
@@ -355,15 +377,103 @@ async function publish(file: string, only: Platform[]) {
 
   const log = journal();
   for (const { brand } of routes) {
+    if (platformTakes("tiktok", post.format)) await tiktokToken(brand);
     const { targets, platforms, skipped } = accounts(brand, only.length > 0);
     for (const s of skipped) {
       if (only.length === 0 || only.includes(s.platform)) console.log(`${brand.id} ${s.platform}: skipped, ${s.reason}`);
     }
     for (const platform of only.length ? only.filter((p) => platforms.includes(p)) : platforms) {
-      const res = await publishEpisode(platform, post, targets, log, { brand: brand.id, ...(mock ? { pollIntervalMs: 1 } : {}) });
-      console.log(`${brand.id} ${platform}: ${res.permalink ?? res.postId}`);
+      if (!platformTakes(platform, post.format)) {
+        console.log(`${brand.id} ${platform}: skipped, takes videos only`);
+        continue;
+      }
+      const res = await publishEpisode(platform, post, targets, log, {
+        brand: brand.id,
+        tiktokPrivacy: process.env.TIKTOK_PRIVACY || undefined,
+        ...(mock ? { pollIntervalMs: 1 } : {}),
+      });
+      if (res.inbox) console.log(`${brand.id} ${platform}: in the TikTok inbox. Open TikTok, add the caption and sound, post. Caption:\n${captionOf(post, platform)}`);
+      else console.log(`${brand.id} ${platform}: ${res.permalink ?? res.postId}`);
     }
   }
+}
+
+const captionOf = (post: EpisodePost, platform: Platform) => post.captions?.[platform] ?? post.caption;
+
+// ----------------------------------------------------------------- TikTok
+
+function tiktokNames(brand = currentBrand()): TikTokEnvNames & { mode: "draft" | "direct" } {
+  const channel = brand.channels.find((c) => c.platform === "tiktok");
+  if (!channel?.env.token || !channel.env.userId) throw new Error(`Brand ${brand.id} has no tiktok channel with token and userId in channels.yaml.`);
+  return { token: channel.env.token, userId: channel.env.userId, username: channel.env.username, mode: channel.mode ?? "draft" };
+}
+
+const tiktokApp = () =>
+  process.env.TIKTOK_CLIENT_KEY && process.env.TIKTOK_CLIENT_SECRET
+    ? { clientKey: process.env.TIKTOK_CLIENT_KEY, clientSecret: process.env.TIKTOK_CLIENT_SECRET }
+    : undefined;
+
+/** Refreshes the brand's TikTok token in .env when it is about to expire. No TikTok channel: nothing to do. */
+async function tiktokToken(brand: Brand): Promise<string | undefined> {
+  const channel = brand.channels.find((c) => c.platform === "tiktok");
+  if (!channel?.env.token || !channel.env.userId || channel.status === "planned") return undefined;
+  return freshTikTokToken(process.env, tiktokNames(brand), tiktokApp(), tiktokClient(), saveEnv);
+}
+
+/** TikTok Login in the browser. TikTok only redirects to HTTPS, so a page on the site forwards the code here. */
+async function tiktokLogin(portArg?: string) {
+  const app = tiktokApp();
+  if (!app) throw new Error("TIKTOK_CLIENT_KEY and TIKTOK_CLIENT_SECRET are not set. See .env.example.");
+  const names = tiktokNames();
+  const port = Number(portArg ?? process.env.TIKTOK_LOGIN_PORT ?? 8765);
+  const redirectUri = process.env.TIKTOK_REDIRECT_URI || TIKTOK_DEFAULT_REDIRECT;
+  const state = tiktokState(port, randomBytes(16).toString("hex"));
+  const url = tiktokAuthorizeUrl({ clientKey: app.clientKey, redirectUri, state, scopes: tiktokScopes(names.mode) });
+
+  const code = mock
+    ? "demo-code"
+    : await waitForLoginCode({
+        port,
+        state,
+        path: TIKTOK_CALLBACK_PATH,
+        provider: "TikTok",
+        onListening: () => {
+          console.log("Opening TikTok in your browser. Log in with the brand's TikTok account and allow every item, then come back here.");
+          console.log(`If nothing opens, visit:\n${url}\n`);
+          openBrowser(url);
+        },
+      });
+  const tok = await exchangeTikTokCode(tiktokClient(), app, code, redirectUri);
+  const user = await tiktokUser(tiktokClient(tok.accessToken));
+  await saveEnv(tiktokEnvValues(names, tok, user.displayName));
+  console.log(`TikTok "${user.displayName}" connected (${names.mode} mode). Token saved to .env; it renews itself until ${tok.refreshExpiresAt.slice(0, 10)}.`);
+  const missing = tiktokScopes(names.mode).filter((s) => !tok.scopes.includes(s));
+  if (missing.length) console.warn(`Not granted: ${missing.join(", ")}. Run tiktok-login again and allow every item.`);
+}
+
+async function tiktokCheck() {
+  const brand = currentBrand();
+  const names = tiktokNames(brand);
+  const token = await tiktokToken(brand);
+  if (!token) throw new Error("TikTok is not connected. Run: npm run channel -- tiktok-login");
+  const user = await tiktokUser(tiktokClient(token));
+  const until = Date.parse(process.env[`${names.token}_REFRESH_EXPIRES`] ?? "");
+  const days = Number.isFinite(until) ? Math.floor((until - Date.now()) / DAY_MS) : undefined;
+  console.log(`TikTok "${user.displayName}": OK, ${names.mode} mode${days === undefined ? "" : `, login valid for ${days} more days`}.`);
+}
+
+/**
+ * Any video file or link straight into the TikTok inbox, e.g. a talking-character clip
+ * that is not an episode. A draft is not public: the owner posts it from the app.
+ */
+async function tiktokDraft(source: string) {
+  const brand = currentBrand();
+  const token = await tiktokToken(brand);
+  if (!token) throw new Error("TikTok is not connected. Run: npm run channel -- tiktok-login");
+  const c = tiktokClient(token);
+  const video = /^https:\/\//.test(source) ? await c.download(source) : new Uint8Array(await readFile(source));
+  const res = await postTikTokVideo(c, video, { mode: "draft", ...(mock ? { pollIntervalMs: 1 } : {}) });
+  console.log(`In the TikTok inbox of ${brand.name} (${res.publishId}). Open TikTok to add the caption and sound, then post.`);
 }
 
 function listBrands() {
@@ -469,7 +579,7 @@ async function pullInsights() {
         ? await facebookInsights(t.page, post.postId, reachMetrics)
         : post.platform === "instagram"
           ? await instagramInsights(t.page, post.postId, format === "reels-9x16")
-          : t.threads
+          : post.platform === "threads" && t.threads
             ? await threadsInsights(t.threads.client, post.postId)
             : undefined;
     if (!numbers) continue;
@@ -519,9 +629,21 @@ const commands: Record<string, Command> = {
     run: ([token]) => threadsSetup(token),
   },
   "threads-refresh": { usage: "threads-refresh", help: "extend the Threads token by another 60 days", run: threadsRefresh },
+  "tiktok-login": {
+    usage: "tiktok-login [port]",
+    help: "log in with TikTok in the browser and save the account and its tokens to .env",
+    run: ([port]) => tiktokLogin(port),
+  },
+  "tiktok-check": { usage: "tiktok-check", help: "TikTok login works, renewing the 24-hour token if needed", run: tiktokCheck },
+  "tiktok-draft": {
+    usage: "tiktok-draft <video.mp4 | https link>",
+    help: "send any video to the TikTok inbox as a draft, to post from the app",
+    args: 1,
+    run: ([source]) => tiktokDraft(source),
+  },
   check: { usage: "check", help: "Page token validity and permissions, Threads token days left", run: check },
   publish: {
-    usage: "publish <episode.json> [facebook|instagram|threads]...",
+    usage: "publish <episode.json> [facebook|instagram|threads|tiktok]...",
     help: "post the episode to its brands (or --brand), on every live platform or the ones named",
     args: 1,
     run: ([file, ...platforms]) => publish(file, platforms as Platform[]),
@@ -573,6 +695,8 @@ function explain(error: unknown): string {
     return "A token has expired or was revoked. Get a fresh one and run setup (or threads-setup) again.";
   }
   if (error instanceof GraphError && error.kind === "permission") return `Not allowed: ${error.message}`;
+  if (error instanceof TikTokError && error.kind === "token") return "The TikTok login has expired or was revoked. Run tiktok-login again.";
+  if (error instanceof TikTokError) return `TikTok: ${error.message}${error.logId ? ` (log ${error.logId})` : ""}`;
   return error instanceof Error ? error.message : String(error);
 }
 

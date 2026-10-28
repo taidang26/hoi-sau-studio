@@ -16,6 +16,7 @@ export const LIMITS = {
   facebook: { caption: 63206, carouselMin: 2, carouselMax: 10 },
   instagram: { caption: 2200, hashtags: 30, carouselMin: 2, carouselMax: 10 },
   threads: { caption: 500, carouselMin: 2, carouselMax: 20 },
+  tiktok: { caption: 2200 },
 } as const;
 
 type Rule = (platform: Platform, post: EpisodePost, caption: string) => RuleViolation | RuleViolation[] | undefined;
@@ -39,6 +40,11 @@ const rules: Rule[] = [
 
   (platform, post) => {
     const count = post.mediaUrls.length;
+    if (platform === "tiktok") {
+      if (post.format !== "reels-9x16") return { code: "TIKTOK_VIDEO_ONLY", message: "TikTok takes vertical videos only." };
+      if (count !== 1) return { code: "REELS_ONE_VIDEO", message: "A TikTok post takes exactly one video." };
+      return;
+    }
     switch (post.format) {
       case "carousel-4x5": {
         const { carouselMin: min, carouselMax: max } = LIMITS[platform];

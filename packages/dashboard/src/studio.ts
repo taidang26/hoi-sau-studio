@@ -384,7 +384,7 @@ ${flash(undefined, error)}
 
 interface PostFile {
   title?: string;
-  captions?: Partial<Record<"facebook" | "instagram" | "threads", string>>;
+  captions?: Partial<Record<"facebook" | "instagram" | "threads" | "tiktok", string>>;
 }
 
 /** Reels video, cover and captions written by packages/pipeline into episodes/<id>/motion and post.json. */
@@ -400,10 +400,11 @@ function motionSection(st: Studio, id: string): string {
   const caps = post?.captions
     ? Object.entries(post.captions)
         .filter(([, x]) => x)
-        .map(([p, x]) => `<div class="caption"><span class="tag ${esc(p)}">${esc(p === "facebook" ? "Facebook" : p === "instagram" ? "Instagram" : "Threads")}</span><p>${esc(x)}</p></div>`)
+        .map(([p, x]) => `<div class="caption"><span class="tag ${esc(p)}">${esc(p === "facebook" ? "Facebook" : p === "instagram" ? "Instagram" : p === "tiktok" ? "TikTok" : "Threads")}</span><p>${esc(x)}</p></div>`)
         .join("")
     : "";
-  return `<section class="card"><h2>${esc(t("Video và bài đăng"))}</h2><div class="motion">${video}<div>${motion?.duration ? `<p class="muted small">${esc(t("Video dọc · {s} giây", { s: motion.duration.toFixed(1) }))}${has("motion/subs.srt") ? ` · <a href="${media(id, "motion/subs.srt")}">${esc(t("phụ đề"))}</a>` : ""}</p>` : ""}${caps || `<p class="muted">${esc(t("Chưa có nội dung bài đăng."))}</p>`}</div></div></section>`;
+  const tiktok = has("motion/reel.mp4") ? `<form class="inline" method="post" action="/studio/${esc(id)}/tiktok"><button class="btn">♪ ${esc(t("Gửi vào nháp TikTok"))}</button></form>` : "";
+  return `<section class="card"><h2>${esc(t("Video và bài đăng"))}</h2><div class="motion">${video}<div>${tiktok}${motion?.duration ? `<p class="muted small">${esc(t("Video dọc · {s} giây", { s: motion.duration.toFixed(1) }))}${has("motion/subs.srt") ? ` · <a href="${media(id, "motion/subs.srt")}">${esc(t("phụ đề"))}</a>` : ""}</p>` : ""}${caps || `<p class="muted">${esc(t("Chưa có nội dung bài đăng."))}</p>`}</div></div></section>`;
 }
 
 const media = (id: string, file: string) => `/studio-media/${encodeURIComponent(id)}/${file.split("/").map(encodeURIComponent).join("/")}`;

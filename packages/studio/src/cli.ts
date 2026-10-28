@@ -54,9 +54,12 @@ function loadDotEnv(): void {
   }
 }
 
+const unCaret = (s: string): string => s.replace(/\^(?=\s)/g, "");
+
 async function main(argv: string[]): Promise<void> {
   loadDotEnv();
-  const [cmd, ...rest] = argv;
+  // npm.cmd on Windows passes quoted text through cmd.exe, which can leave its escape caret before each space.
+  const [cmd, ...rest] = process.platform === "win32" ? argv.map(unCaret) : argv;
   // --flag value pairs; a flag followed by another flag (or nothing) is boolean.
   const opts: Record<string, string[]> = {};
   const args: string[] = [];

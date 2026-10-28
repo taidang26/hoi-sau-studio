@@ -39,11 +39,6 @@ export function run(bin: string, args: string[], cwd?: string): Promise<{ stdout
 }
 
 /**
- * Runs ffmpeg in `cwd`. Filters refer to text and font files by bare names in
- * that directory, so no path (with a Windows drive colon) ever needs
- * filtergraph escaping.
- */
-/**
  * Settings for an mp4 a phone downloads: H.264 High at about 1.1 Mbps at most
  * (flat comic pictures look the same as at crf 18 and the file is half the
  * size), a keyframe every 2 s, AAC 128k, and the index at the front so it
@@ -52,6 +47,11 @@ export function run(bin: string, args: string[], cwd?: string): Promise<{ stdout
  */
 export const DELIVERY = ["-profile:v", "high", "-pix_fmt", "yuv420p", "-crf", "23", "-maxrate", "1100k", "-bufsize", "2200k", "-g", "60", "-keyint_min", "30", "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart"];
 
+/**
+ * Runs ffmpeg in `cwd`. Filters refer to text and font files by bare names in
+ * that directory, so no path (with a Windows drive colon) ever needs
+ * filtergraph escaping.
+ */
 export const ffmpeg = (args: string[], cwd?: string) =>
   run(ffmpegPath(), ["-hide_banner", "-loglevel", "error", "-y", ...args], cwd);
 

@@ -70,14 +70,16 @@ npm run channel -- publish post.json --brand poppy instagram   # one brand and p
 
 | Job | Model |
 | --- | --- |
-| Character bible, premise, beats, panel script, storyboard, canon | Muse Spark |
-| Panel review against the model sheet | Muse Spark (vision) |
-| Model sheets, panels, single-detail redraws | Muse Image |
-| Scoring and grouping comments at volume | Muse Spark Open (open weights, on Baseten or Modal) |
+| Character bible, premise, beats, panel script, storyboard, canon, recap | Muse Spark |
+| Script safety gate before drawing | Muse Spark + rules |
+| Panel review against the model sheet; reading reference images | Muse Spark (vision) |
+| Series style, model and pose sheets, brand art, panels, single-detail redraws | Muse Image |
+| Scoring comments, character replies | Muse Spark Open (open weights, on Baseten or Modal) |
 | Coach lessons from what worked | Muse Spark |
+| Motion comic subtitles | Muse Voice Transcribe (in progress) |
 | Publishing, comments, inbox, insights | Facebook Pages API, Instagram Graph API, Threads API, Messenger Platform |
 
-Call sites, status and fallbacks: [docs/meta-tools.md](docs/meta-tools.md).
+Every call by step, with its command and file: [docs/meta-tools.md](docs/meta-tools.md).
 
 ### Vietnamese text layer
 

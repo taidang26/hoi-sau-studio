@@ -9,7 +9,7 @@ only.
 | Monologue, one gesture per line, title and post caption | Muse Spark (`talk_script` schema), then the series safety gate |
 | Base shot and six gestures (explain, point, shrug, think, shock, defend) | Muse Image, each gesture a chained edit of the base so framing and background stay put |
 | Mouth-open and blink frames | Muse Image edits; SAM 3.1 finds the mouth and eyes and only those are pasted in, lined up and feathered |
-| Voice | SeamlessM4T v2 (`facebook/seamless-m4t-v2-large`, Meta, open weights, runs locally, fp16 on the GPU), pitched ×1.12 and sped ×1.05 for the character; `--tts mms` (or a failed Seamless run) uses the lighter MMS-TTS (`facebook/mms-tts-vie`); or your own recordings |
+| Voice | SeamlessM4T v2 (`facebook/seamless-m4t-v2-large`, Meta, open weights, runs locally, fp16 on the GPU), pitched ×1.12 and sped ×1.05 for the character; `--tts mms` (or a failed Seamless run) uses the lighter MMS-TTS (`facebook/mms-tts-vie`); or your own recordings; or `--tts mms-hn`, MMS-TTS fine-tuned on our own Hà Nội recordings (see below) |
 
 The video: jump cuts between gestures with the camera switching wide/close,
 punch-ins on shock lines, a slow drift, blinks every few seconds, the mouth
@@ -56,3 +56,15 @@ line and writes the title and caption, the safety gate reads the words, and
 the mouth moves only inside spoken words. Besides `<slug>.mp4` it writes
 `<slug>.silent.mp4`: post that one and pick the same sound in the app's sound
 library, so a sound you don't own is not muted.
+
+## Our own Hà Nội voice (`--tts mms-hn`)
+
+`facebook/mms-tts-vie` fine-tuned on about 7 minutes of the owner reading a
+70-line office script twice (see `voice/bai-doc-thu-giong.md` in the project).
+`tts/split.py` cuts the recording into one clip per line; the fine-tune itself
+runs with [finetune-hf-vits](https://github.com/ylacombe/finetune-hf-vits).
+Point `TALK_HN_MODEL` at the trained folder (`config.json`, `model.safetensors`,
+tokenizer files); the weights are not committed.
+
+**Licence:** the base model is CC BY-NC 4.0 and the fine-tune inherits it, so
+this voice is for the hackathon and other non-commercial use only.

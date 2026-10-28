@@ -4,7 +4,7 @@ import sharp from "sharp";
 import { align, fillHoles, pasteOval, type Raster } from "./patch.js";
 import { mockScript, PACE, scriptProblems, syllables } from "./script.js";
 import { blinkTrack, chunkWords, wordTimes } from "./timeline.js";
-import { hummedLine, joinLines, mouthTrack, RATE, ttsArg, voiceShape, wavBytes } from "./voice.js";
+import { hummedLine, joinLines, mouthTrack, RATE, ttsArg, ttsEnv, voiceShape, wavBytes } from "./voice.js";
 import { setPrompt, SETS } from "./sets.js";
 
 test("words share the line's time, with a pause after punctuation", () => {
@@ -191,7 +191,7 @@ test("depth of field: the near ground and side walls stay sharp, the end of the 
 test("--tts defaults to SeamlessM4T with the cartoon pitch and speed", () => {
   assert.equal(ttsArg(undefined), "seamless");
   assert.equal(ttsArg("mms"), "mms");
-  assert.throws(() => ttsArg("elevenlabs"), /seamless or mms/);
+  assert.throws(() => ttsArg("elevenlabs"), /seamless, mms, mms-hn/);
   assert.deepEqual(voiceShape("seamless"), { pitch: 1.12, tempo: 1.05 });
   assert.deepEqual(voiceShape("mms"), { pitch: 1.12, tempo: 1 });
   assert.deepEqual(voiceShape("seamless", { tempo: 1 }), { pitch: 1.12, tempo: 1 });
@@ -224,4 +224,12 @@ test("cut holes: a missed jacket patch is filled, the wall between arm and body 
   assert.equal(fillHoles(mask, { data, width: w, height: h }), 1);
   assert.equal(mask[4 * w + 4], 255);
   assert.equal(mask[7 * w + 7], 0);
+});
+
+test("--tts mms-hn reads the fine-tuned voice's folder from TALK_HN_MODEL", () => {
+  assert.equal(ttsArg("mms-hn"), "mms-hn");
+  assert.throws(() => ttsEnv("mms-hn", {}), /TALK_HN_MODEL/);
+  assert.equal(ttsEnv("mms-hn", { TALK_HN_MODEL: "C:/dv/vits-hn-out" }).TALK_TTS_MODEL, "C:/dv/vits-hn-out");
+  assert.equal(ttsEnv("mms", { X: "1" }).TALK_TTS_MODEL, undefined);
+  assert.deepEqual(voiceShape("mms-hn"), { pitch: 1, tempo: 1 });
 });

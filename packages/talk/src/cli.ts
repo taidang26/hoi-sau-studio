@@ -2,8 +2,8 @@
 /**
  *   npm run talk -- art <slug> [--pose sit|stand] [--mock] [--only explain,shock] [--force]   draw the talk pictures once (Muse Image + SAM 3.1)
  *                    --pose stand: waist-up on a plain wall, no desk (art in characters/<slug>/talk-stand); cut/sync/make take --pose too
- *   npm run talk -- make <slug> [--topic "..."] [--like sample-transcript.json] [--seconds 30] [--script file.json] [--voice dir] [--music file] [--tts seamless|mms] [--mock]
- *                    Muse Spark writes, safety gate, SeamlessM4T v2 speaks (--tts mms: MMS-TTS; or --voice recordings 01.wav...), render 1080x1920
+ *   npm run talk -- make <slug> [--topic "..."] [--like sample-transcript.json] [--seconds 30] [--script file.json] [--voice dir] [--music file] [--tts seamless|mms|mms-hn] [--mock]
+ *                    Muse Spark writes, safety gate, SeamlessM4T v2 speaks (--tts mms: MMS-TTS; mms-hn: our Hà Nội fine-tune in TALK_HN_MODEL; or --voice recordings 01.wav...), render 1080x1920
  *   npm run talk -- sync <slug> <sound|video> [--lyrics file.txt] [--vocals stem.wav] [--start s] [--duration s] [--mock]
  *                    lip-sync to an existing sound: Muse Voice Transcribe times the words, Muse Spark picks gestures
  *   npm run talk -- cut <slug> [--phrase "cartoon character"] [--keep desk|none] [--force]  SAM 3.1 cuts the character (and desk) out

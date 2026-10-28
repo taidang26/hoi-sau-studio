@@ -26,7 +26,7 @@ export interface TalkScript {
 export const SYLLABLES_PER_SECOND = 3.3;
 
 /** How fast each voice actually speaks after the cartoon shaping, so the script fills the seconds asked for. */
-export const PACE: Record<Tts, number> = { seamless: 4.2, mms: SYLLABLES_PER_SECOND };
+export const PACE: Record<Tts, number> = { seamless: 4.2, mms: SYLLABLES_PER_SECOND, "mms-hn": SYLLABLES_PER_SECOND };
 
 export const syllables = (text: string) => text.split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w)).length;
 

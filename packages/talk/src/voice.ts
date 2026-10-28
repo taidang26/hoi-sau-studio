@@ -21,17 +21,33 @@ export interface Voice {
   spans: Array<{ start: number; end: number }>;
 }
 
-/** Which Meta model speaks: SeamlessM4T v2 by default, MMS-TTS as the lighter fallback. */
-export type Tts = "seamless" | "mms";
+/**
+ * Which Meta model speaks: SeamlessM4T v2 by default, MMS-TTS as the lighter
+ * fallback, or `mms-hn`: MMS-TTS fine-tuned on our own Hà Nội recordings, read
+ * from the folder in TALK_HN_MODEL (weights are not in the repo).
+ */
+export type Tts = "seamless" | "mms" | "mms-hn";
+const MMS = fileURLToPath(new URL("../tts/tts.py", import.meta.url));
 const TTS: Record<Tts, { script: string; name: string; pitch: number; tempo: number }> = {
   seamless: { script: fileURLToPath(new URL("../tts/seamless.py", import.meta.url)), name: "SeamlessM4T v2", pitch: 1.12, tempo: 1.05 },
-  mms: { script: fileURLToPath(new URL("../tts/tts.py", import.meta.url)), name: "MMS-TTS", pitch: 1.12, tempo: 1 },
+  mms: { script: MMS, name: "MMS-TTS", pitch: 1.12, tempo: 1 },
+  // Our own voice is kept as recorded: the ×1.12 cartoon pitch is what made Seamless sound warped.
+  "mms-hn": { script: MMS, name: "MMS-TTS (Hà Nội fine-tune)", pitch: 1, tempo: 1 },
 };
+const TTS_IDS = Object.keys(TTS) as Tts[];
 
 export function ttsArg(v: unknown): Tts {
   if (v === undefined || v === true) return "seamless";
-  if (v === "seamless" || v === "mms") return v;
-  throw new Error(`--tts takes seamless or mms, not ${String(v)}.`);
+  if (TTS_IDS.includes(v as Tts)) return v as Tts;
+  throw new Error(`--tts takes ${TTS_IDS.join(", ")}, not ${String(v)}.`);
+}
+
+/** Extra environment for the speaking script: the fine-tuned voice's folder. */
+export function ttsEnv(tts: Tts, env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  if (tts !== "mms-hn") return env;
+  const dir = env.TALK_HN_MODEL;
+  if (!dir) throw new Error("--tts mms-hn needs TALK_HN_MODEL: the folder of the fine-tuned MMS-TTS model (config.json, model.safetensors).");
+  return { ...env, TALK_TTS_MODEL: dir };
 }
 
 /** The cartoon voice: pitch and speed applied to a generated line (a recording keeps its own). */
@@ -48,12 +64,13 @@ export function python(): string {
 /** SeamlessM4T v2 or MMS-TTS speaks every line into `dir`/<01..>.wav. */
 export async function speakLines(texts: string[], dir: string, opts: { rate?: number; tts?: Tts } = {}): Promise<void> {
   const tts = TTS[opts.tts ?? "seamless"];
+  const env = ttsEnv(opts.tts ?? "seamless");
   mkdirSync(dir, { recursive: true });
   const list = join(dir, "lines.json");
   writeFileSync(list, JSON.stringify(texts.map((text, i) => ({ id: lineId(i), text })), null, 2));
   await new Promise<void>((ok, fail) => {
-    const args = opts.tts === "mms" ? ["--rate", String(opts.rate ?? 1)] : [];
-    const p = spawn(python(), [tts.script, list, dir, ...args], { stdio: "inherit" });
+    const args = tts.script === MMS ? ["--rate", String(opts.rate ?? 1)] : [];
+    const p = spawn(python(), [tts.script, list, dir, ...args], { stdio: "inherit", env });
     p.on("error", (e) => fail(new Error(`Could not start Python (${e.message}). pip install -r packages/talk/tts/requirements.txt, or set TALK_PYTHON.`)));
     p.on("close", (code) => (code === 0 ? ok() : fail(new Error(`${tts.name} exited with ${code}.`))));
   });

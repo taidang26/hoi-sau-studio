@@ -200,7 +200,7 @@ export async function fillBands(png: Buffer): Promise<Buffer> {
       (n++, (s += v), (ss += v * v));
     }
     // Only dark, even lines: a plain light wall at the edge of a panel is picture, not margin.
-    return s / n < 40 && Math.sqrt(Math.max(0, ss / n - (s / n) ** 2)) < 6;
+    return s / n < 40 && Math.sqrt(Math.max(0, ss / n - (s / n) ** 2)) < 10;
   };
   const col = (x: number) => Array.from({ length: Math.ceil(h / 4) }, (_, i) => [x, Math.min(h - 1, i * 4)] as [number, number]);
   const row = (y: number) => Array.from({ length: Math.ceil(w / 4) }, (_, i) => [Math.min(w - 1, i * 4), y] as [number, number]);
@@ -210,6 +210,41 @@ export async function fillBands(png: Buffer): Promise<Buffer> {
   while (r < maxX && band(col(w - 1 - r))) r++;
   while (t < maxY && band(row(t))) t++;
   while (b < maxY && band(row(h - 1 - b))) b++;
+  // The edit sometimes paints the margin one flat colour instead (a gold strip). A flat
+  // edge counts as margin when it stops before 6% and the picture just inside differs
+  // from it; a flat wall runs on past 6%, so it stays picture.
+  const rgb = (x: number, y: number) => {
+    const k = (y * w + x) * 3;
+    return [data[k], data[k + 1], data[k + 2]];
+  };
+  const flat = (pts: Array<[number, number]>) => {
+    const [r0, g0, b0] = rgb(...pts[Math.floor(pts.length / 2)]);
+    const near = pts.filter(([x, y]) => {
+      const [r1, g1, b1] = rgb(x, y);
+      return Math.abs(r1 - r0) + Math.abs(g1 - g0) + Math.abs(b1 - b0) < 16;
+    }).length;
+    return near / pts.length > 0.97;
+  };
+  // Apart along at least half the edge: a wall the strip's colour shows through in places, and a
+  // costume of the same colour may touch the edge.
+  const apart = (a: Array<[number, number]>, b2: Array<[number, number]>) => {
+    let n = 0;
+    a.forEach(([x, y], i) => {
+      const [r0, g0, b0] = rgb(x, y), [r1, g1, b1] = rgb(...b2[i]);
+      if (Math.abs(r1 - r0) + Math.abs(g1 - g0) + Math.abs(b1 - b0) > 40) n++;
+    });
+    return n / a.length > 0.5;
+  };
+  const flatBand = (line: (i: number) => Array<[number, number]>, max: number) => {
+    let n = 0;
+    while (n < max && flat(line(n))) n++;
+    // The edge of the strip is soft, so the picture is read a few lines further in.
+    return n > 0 && n < max && apart(line(n - 1), line(Math.min(max, n + 6))) ? Math.min(max, n + 2) : 0;
+  };
+  l ||= flatBand(col, maxX);
+  r ||= flatBand((i) => col(w - 1 - i), maxX);
+  t ||= flatBand(row, maxY);
+  b ||= flatBand((i) => row(h - 1 - i), maxY);
   if (!(l || r || t || b)) return png;
   const out = Buffer.from(data);
   const copy = (x: number, y: number, sx: number, sy: number) => {

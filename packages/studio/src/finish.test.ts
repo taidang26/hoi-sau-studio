@@ -153,3 +153,16 @@ test("fillBands paints over dark margin bands and keeps the size; a plain light 
   assert.ok(px[(300 * 512 + 2) * 3] > 150, "band filled with the wall colour");
   assert.equal(await fillBands(art), art);
 });
+
+test("fillBands also paints over a flat coloured margin strip, as a recolour leaves it", async () => {
+  const { fillBands } = await import("./finish.js");
+  // Picture right up to the edge (stripes), then a flat 12 px gold strip on the left.
+  const stripes = Array.from({ length: 64 }, (_, i) => `<rect x="0" y="${i * 10}" width="512" height="5" fill="#223344"/>`).join("");
+  const art = await sharp(Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="512" height="640"><rect width="512" height="640" fill="#efe6d8"/>${stripes}</svg>`)).png().toBuffer();
+  const strip = await sharp({ create: { width: 12, height: 640, channels: 3, background: "#e8a837" } }).png().toBuffer();
+  const out = await fillBands(await sharp(art).composite([{ input: strip, left: 0, top: 0 }]).png().toBuffer());
+  const px = await sharp(out).removeAlpha().raw().toBuffer();
+  const at = (x: number, y: number) => [...px.subarray((y * 512 + x) * 3, (y * 512 + x) * 3 + 3)];
+  assert.deepEqual(at(3, 2), at(12, 2), "strip takes the picture's colour on that row");
+  assert.deepEqual(at(3, 7), at(12, 7));
+});

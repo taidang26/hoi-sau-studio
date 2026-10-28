@@ -47,7 +47,7 @@ import { addCanon, SERIES_DIR, type CanonFact, type SeriesBible } from "./bible.
 import { generateSoftly, type MuseImage } from "./muse-image.js";
 import { type ChatMessage, type MuseSpark, S } from "./muse-spark.js";
 import { CHARACTERS_DIR, nameVi, type Profile } from "./profile.js";
-import { finishPanel, recolourPanel, type Segmenter } from "./finish.js";
+import { fillBands, finishPanel, recolourPanel, type Segmenter } from "./finish.js";
 import { iconLine } from "./prompts.js";
 import { type SeriesStyle, styleReference, styleText } from "./style.js";
 import { officeBrief, officePanelText, type Office } from "./office.js";
@@ -751,7 +751,8 @@ export async function runStep(ctx: StudioContext, id: string, step: EpisodeStep)
             log(`${id}: recolour panel ${r.n}`);
             writeFileSync(recoloured, (await recolourPanel(ctx.image, drawn, panelSize(ep, r.n), (m) => log(`${id}: recolour ${r.n}: ${m}`))).image);
           }
-          drawn = readFileSync(recoloured);
+          // A recolour saved before a margin fix gets the same clean-up.
+          drawn = await fillBands(readFileSync(recoloured));
         }
         if (ctx.segmenter) {
           const cast = board.panels[r.n - 1].staging.map((s) => ctx.profiles.get(s.character)).filter((p): p is Profile => !!p);

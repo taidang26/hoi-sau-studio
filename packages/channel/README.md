@@ -33,8 +33,8 @@ Threads (separate login, token lasts about 60 days):
 
 TikTok (its own app at developers.tiktok.com, not Meta):
 
-1. At [developers.tiktok.com](https://developers.tiktok.com/apps) create an app (type Web). Website, Terms and Privacy: `https://hoisau.web.app`, `/terms`, `/privacy`.
-2. Add the products **Login Kit** and **Content Posting API**. Scopes: `user.info.basic`, `video.upload` (plus `video.publish` for direct mode). Register the redirect URI `https://hoisau.web.app/tiktok-callback`: TikTok only redirects to HTTPS, and that page forwards the code to the login waiting on localhost (the port rides in the state).
+1. At [developers.tiktok.com](https://developers.tiktok.com/apps) create an app (type Web). Website, Terms and Privacy: `https://hoisau.dangtrantai.com`, `/terms`, `/privacy` (verify the URL prefix `https://hoisau.dangtrantai.com/` under URL properties).
+2. Add the products **Login Kit** and **Content Posting API**. Scopes: `user.info.basic`, `video.upload` (plus `video.publish` for direct mode). Register the redirect URI `https://hoisau.dangtrantai.com/tiktok-callback`: TikTok only redirects to HTTPS, and that page forwards the code to the login waiting on localhost (the port rides in the state).
 3. Until TikTok reviews the app, use its **Sandbox** and add the brand's TikTok account as a target user.
 4. Put `TIKTOK_CLIENT_KEY` and `TIKTOK_CLIENT_SECRET` in `.env` (or the dashboard's Settings), then `npm run channel -- tiktok-login` (or **Kết nối TikTok** on the Kênh page). The access token lasts 24 hours and renews itself from the 365-day refresh token before each upload.
 

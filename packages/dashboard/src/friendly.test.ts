@@ -210,7 +210,7 @@ test("TikTok: connect through the site's forwarding page, then send a video from
   const port = new URL(base).port;
   const login = new URL((await fetch(`${base}/connect/tiktok?brand=hoi-sau`, { redirect: "manual" })).headers.get("location")!);
   assert.equal(login.host, "www.tiktok.com");
-  assert.equal(login.searchParams.get("redirect_uri"), "https://hoisau.web.app/tiktok-callback");
+  assert.equal(login.searchParams.get("redirect_uri"), "https://hoisau.dangtrantai.com/tiktok-callback");
   const state = login.searchParams.get("state")!;
   assert.ok(state.startsWith(`p${port}.`));
 

@@ -28,7 +28,7 @@ const video = (bytes: number) => new Uint8Array(bytes);
 
 test("the login asks for upload only in draft mode, and the state names the local port", () => {
   const state = tiktokState(8765, "abc");
-  const url = new URL(tiktokAuthorizeUrl({ clientKey: "ck", redirectUri: "https://hoisau.web.app/tiktok-callback", state, scopes: tiktokScopes("draft") }));
+  const url = new URL(tiktokAuthorizeUrl({ clientKey: "ck", redirectUri: "https://hoisau.dangtrantai.com/tiktok-callback", state, scopes: tiktokScopes("draft") }));
   assert.equal(url.origin + url.pathname, "https://www.tiktok.com/v2/auth/authorize/");
   assert.equal(url.searchParams.get("scope"), "user.info.basic,video.upload");
   assert.equal(url.searchParams.get("state"), "p8765.abc");
@@ -38,7 +38,7 @@ test("the login asks for upload only in draft mode, and the state names the loca
 
 test("code exchange is a form post without a token; values land under the channel's .env names", async () => {
   const mock = demoTikTok();
-  const tok = await exchangeTikTokCode(clientOf(mock), app, "c0de", "https://hoisau.web.app/tiktok-callback");
+  const tok = await exchangeTikTokCode(clientOf(mock), app, "c0de", "https://hoisau.dangtrantai.com/tiktok-callback");
   const call = mock.calls[0];
   assert.equal(call.path, "/v2/oauth/token/");
   assert.equal((call.body as Record<string, string>).grant_type, "authorization_code");

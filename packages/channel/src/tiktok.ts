@@ -19,7 +19,7 @@ import { sleep, type FetchLike } from "./graph.js";
 export const TIKTOK_API = "https://open.tiktokapis.com";
 export const TIKTOK_AUTHORIZE_URL = "https://www.tiktok.com/v2/auth/authorize/";
 /** Static page on the site that hands the code to the login running on localhost (TikTok only accepts HTTPS redirects). */
-export const TIKTOK_DEFAULT_REDIRECT = "https://hoisau.web.app/tiktok-callback";
+export const TIKTOK_DEFAULT_REDIRECT = "https://hoisau.dangtrantai.com/tiktok-callback";
 /** Path the CLI and the dashboard both listen on. */
 export const TIKTOK_CALLBACK_PATH = "/connect/tiktok/callback";
 

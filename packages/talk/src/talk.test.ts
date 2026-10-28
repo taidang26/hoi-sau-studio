@@ -4,7 +4,7 @@ import { align, pasteOval, type Raster } from "./patch.js";
 import { mockScript, scriptProblems, syllables } from "./script.js";
 import { blinkTrack, chunkWords, wordTimes } from "./timeline.js";
 import { hummedLine, joinLines, mouthTrack, RATE, wavBytes } from "./voice.js";
-import { isSet } from "./sets.js";
+import { setPrompt, SETS } from "./sets.js";
 
 test("words share the line's time, with a pause after punctuation", () => {
   const w = wordTimes("Dạ, em đang làm", 1, 3);
@@ -121,8 +121,10 @@ test("a cut-out character stands bottom-centre on the photo", async () => {
   assert.ok(c(Math.round(OUT.w / 2) - Math.round(r * 0.9), cy - Math.round(r * 0.9))[2] > 120, "transparent outside the mask");
 });
 
-test("drawn sets are recognised on any OS and faded, photos are not", () => {
-  assert.ok(isSet("C:\\Work\\series\\sets\\ngo.png"));
-  assert.ok(isSet("/x/series/sets/van-phong.png"));
-  assert.ok(!isSet("/x/photos/ngo.png"));
+test("set prompts keep the faded sketch look and leave out sparkles", () => {
+  for (const s of SETS) {
+    const p = setPrompt(s);
+    assert.match(p, /faded watercolour/);
+    assert.match(p, /No sparkles/);
+  }
 });

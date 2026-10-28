@@ -12,7 +12,6 @@ import { ffmpeg } from "@hoi-sau/motion";
 import type { TalkArt } from "./art.js";
 import { CaptionCache, titleOverlay, type Overlay } from "./captions.js";
 import { pasteOval, readRgb, type Raster } from "./patch.js";
-import { isSet } from "./sets.js";
 import { FPS, OUT, PICTURE, type Chunk, type Frame } from "./timeline.js";
 import { wavBytes, type Voice } from "./voice.js";
 
@@ -38,19 +37,6 @@ export const ON_PHOTO = { height: 0.62, bottom: 0.04, cutHeight: 0.42 };
 export const photoBackdrop = (photo: string) => sharp(photo).rotate().removeAlpha().resize(OUT.w, OUT.h, { fit: "cover" }).blur(1.5).png().toBuffer();
 
 /**
- * A drawn set, faded the way cartoon talk channels do: half the colour, lower
- * contrast, lifted towards white. Not blurred, so the lines stay drawn.
- */
-export const fadedBackdrop = (file: string, fade = 0.35) =>
-  sharp(file)
-    .removeAlpha()
-    .resize(OUT.w, OUT.h, { fit: "cover", position: "top" })
-    .modulate({ saturation: 0.6 })
-    .linear(1 - fade, 255 * fade)
-    .png()
-    .toBuffer();
-
-/**
  * A plain backdrop made in code, no image model: one soft colour, a little
  * light behind the character's head, a faint dot pattern and a gentle
  * vignette, so it reads as a deliberate studio wall rather than empty.
@@ -70,9 +56,8 @@ export function plainBackdrop(color = "#CFE3EE"): Promise<Buffer> {
   return sharp(Buffer.from(svg)).png().toBuffer();
 }
 
-/** --bg plain or plain:#hex gives a plain backdrop, a drawn set is faded, anything else is a photo. */
-export const backdropFor = (bg: string) =>
-  bg === "plain" || bg.startsWith("plain:") ? plainBackdrop(bg.slice(6) || undefined) : isSet(bg) ? fadedBackdrop(bg) : photoBackdrop(bg);
+/** --bg plain or plain:#hex gives a plain backdrop; anything else is a picture file. */
+export const backdropFor = (bg: string) => (bg === "plain" || bg.startsWith("plain:") ? plainBackdrop(bg.slice(6) || undefined) : photoBackdrop(bg));
 
 /**
  * The character cut out with its SAM mask and stood on the photo, with a soft

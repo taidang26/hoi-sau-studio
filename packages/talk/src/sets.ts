@@ -1,13 +1,13 @@
 /**
- * Background sets the cut-out characters stand in front of: empty rooms drawn
- * once by Muse Image in the series style, full of specific, lived-in details,
- * shared by every character so the channel has one recognisable world.
+ * Background sets the cut-out characters stand in front of: real Vietnamese
+ * places drawn once by Muse Image as faded watercolour sketches, shared by
+ * every character so the channel has one recognisable world.
  * Real photos (--bg photo.jpg) work the same way.
  */
 
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { generateSoftly, styleReference, styleText, type StudioContext } from "@hoi-sau/studio";
+import { generateSoftly, type StudioContext } from "@hoi-sau/studio";
 
 export interface TalkSet {
   id: string;
@@ -17,16 +17,16 @@ export interface TalkSet {
 
 export const SETS: TalkSet[] = [
   {
-    id: "ngo",
+    id: "hem-ha-noi",
     vi: "ngõ Hà Nội",
     scene:
-      "a quiet Hanoi residential alley in daylight seen from the middle of the lane: narrow tube houses of different heights with small balconies and roll-up shutters, a concrete electric pole with a thick tangle of black power cables sagging across the sky, a big green tree on one side, pink bougainvillea spilling over a wall, two parked motorbikes, a plastic stool by a doorway, pale sky",
+      "a quiet residential alley in Hanoi in the morning: narrow tube houses of different heights with balconies and rooftop water tanks, a big tangle of black electric wires across the sky between concrete poles, a leafy tree on one side, pink bougainvillea over a gate, two motorbikes parked by a wall, a clean concrete street in front",
   },
   {
-    id: "van-phong",
+    id: "van-phong-that",
     vi: "văn phòng Việt",
     scene:
-      "a plain small Vietnamese office in daylight: a row of simple desks with monitors, office chairs, a water dispenser, a potted plant, a whiteboard (no readable words), a wall clock, a window with Hanoi tube houses and power cables outside",
+      "the inside of a real small Vietnamese office in the afternoon: rows of plain desks with monitors and office chairs further back, a window with blinds and city buildings outside, a water dispenser, a potted plant, a few files on shelves",
   },
   {
     id: "office",
@@ -56,22 +56,24 @@ export const SETS: TalkSet[] = [
 
 export const setsDir = (seriesDir: string) => join(seriesDir, "sets");
 
-export function setPrompt(ctx: StudioContext, s: TalkSet): string {
+/**
+ * Painted the way cartoon talk channels paint their streets: thin loose ink,
+ * faded watercolour, hazy and pale, so the bold character in front carries
+ * the picture. The series style is left out on purpose: its sparkles and
+ * motion lines are what made earlier sets look generated.
+ */
+export function setPrompt(s: TalkSet): string {
   return [
-    `An empty background plate for a vertical talking video: ${s.scene}.`,
-    "Drawn exactly like a simple cartoon comic background: clean black outlines of even weight, flat fills, light pastel colours, simple shapes with only the details named, no gradients, no glow, no photographic lighting, no painterly texture. Plain and slightly washed out, so a character in front stands out.",
-    "No people, no animals, no characters anywhere: the place is empty, waiting for a character to stand in front of it. Eye-level camera, the middle and lower part of the frame calm (ground or floor) so a character can stand there, details towards the sides and top.",
-    "No text, letters, numbers, logos or signs that can be read.",
-    ctx.style ? styleText(ctx.style) : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
+    `Background plate for a vertical cartoon talking video: ${s.scene}.`,
+    "Style: hand-drawn comic illustration with thin, slightly loose ink lines and flat, muted, washed-out colours like a faded watercolour; soft hazy daylight, low contrast, the far background paler and simpler (atmospheric perspective). Calm and real, like a sketch of an actual place.",
+    "No sparkles, no stars, no motion lines, no puffs, no stickers, no decorations, no cute props. No people, no animals, no characters. No readable text, letters, signs or logos.",
+    "Eye-level camera at standing head height, one-point perspective down the middle, the centre of the frame calm so a character can stand in front.",
+  ].join(" ");
 }
 
 export async function drawSets(ctx: StudioContext, dir: string, opts: { only?: string[]; force?: boolean; log?: (s: string) => void } = {}): Promise<string[]> {
   mkdirSync(dir, { recursive: true });
   const out: string[] = [];
-  const style = styleReference(ctx.style);
   for (const s of SETS.filter((x) => !opts.only || opts.only.includes(x.id))) {
     const file = join(dir, `${s.id}.png`);
     if (existsSync(file) && !opts.force) {
@@ -79,18 +81,12 @@ export async function drawSets(ctx: StudioContext, dir: string, opts: { only?: s
       continue;
     }
     opts.log?.(`drawing set ${s.id}`);
-    const res = await generateSoftly(ctx.image, { prompt: setPrompt(ctx, s), size: "1024x1536", references: style ? [style] : undefined }, opts.log);
+    const res = await generateSoftly(ctx.image, { prompt: setPrompt(s), size: "1024x1536" }, opts.log);
     writeFileSync(file, res.image);
     out.push(file);
   }
   return out;
 }
-
-/**
- * Sets are drawn once and then faded in code: less colour, less contrast,
- * a touch lighter, so the character in front carries the picture.
- */
-export const isSet = (file: string) => SETS.some((s) => file.replace(/\\/g, "/").endsWith(`/sets/${s.id}.png`));
 
 /** --bg takes a set id or a path to a photo. */
 export function resolveBackground(bg: string, dir: string): string {

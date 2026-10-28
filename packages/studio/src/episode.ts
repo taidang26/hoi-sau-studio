@@ -700,7 +700,17 @@ export async function runStep(ctx: StudioContext, id: string, step: EpisodeStep)
         if (i === 0 && styleRef) refs.unshift(styleRef);
         const prompt = episodePanelPrompt(ctx, ep, sp, bp, premise.cameo);
         log(`${id}: panel ${i + 1}${refs.length ? ` (+${refs.length} reference)` : ""}`);
-        const res = await generateSoftly(ctx.image, { prompt, size: panelSize(ep, i + 1), previousResponseId: previous, references: refs }, (m) => log(`${id}: panel ${i + 1}: ${m}`));
+        let res;
+        try {
+          res = await generateSoftly(ctx.image, { prompt, size: panelSize(ep, i + 1), previousResponseId: previous, references: refs }, (m) => log(`${id}: panel ${i + 1}: ${m}`));
+        } catch (e) {
+          if (!previous || !EXPIRED.test((e as Error).message)) throw e;
+          // Muse Image forgot the chain: start a new one from the style, this panel's cast sheets and the panel before.
+          log(`${id}: panel ${i + 1}: Muse Image no longer has the previous panel; sending the pictures again.`);
+          const before = readFileSync(join(episodeDir(id, dir), renders[i - 1].file));
+          const again = [...(styleRef ? [styleRef] : []), ...[...new Set(bp.staging.map((s) => s.character))].flatMap((c) => characterRefs(ctx, c)), `data:image/${imageSize(before).mime.split("/")[1]};base64,${before.toString("base64")}`];
+          res = await generateSoftly(ctx.image, { prompt, size: panelSize(ep, i + 1), references: again }, (m) => log(`${id}: panel ${i + 1}: ${m}`));
+        }
         const name = `panel-${i + 1}.${imageSize(res.image).mime.split("/")[1]}`;
         writeFileSync(join(out, name), res.image);
         renders.push({ n: i + 1, file: `panels/${name}`, responseId: res.id, prompt, history: [] });

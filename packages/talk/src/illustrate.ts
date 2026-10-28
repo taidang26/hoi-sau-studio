@@ -18,6 +18,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import sharp from "sharp";
+import { DELIVERY } from "@hoi-sau/motion";
 import { characterRefs, generateSoftly, S, styleReference, styleText, type ChatMessage, type StudioContext } from "@hoi-sau/studio";
 import type { Sam } from "@hoi-sau/dance";
 import { BOLD_FONT_PATH, escapeXml, loadFont, measure, svgToPng } from "@hoi-sau/svg-text";
@@ -429,7 +430,7 @@ export async function renderIllustrated(plan: Plan, words: Word[], dir: string, 
   list.push(list[list.length - 1].split("\n")[0]);
   const listFile = join(dir, "frames.txt");
   writeFileSync(listFile, list.join("\n"));
-  const r = spawnSync(process.env.FFMPEG_PATH || "ffmpeg", ["-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", listFile, "-i", plan.clip, "-map", "0:v", "-map", "1:a", "-vf", "fps=30,format=yuv420p", "-c:v", "libx264", "-crf", "18", "-preset", "medium", "-c:a", "aac", "-b:a", "160k", "-t", String(plan.end), "-movflags", "+faststart", out], { encoding: "utf8" });
+  const r = spawnSync(process.env.FFMPEG_PATH || "ffmpeg", ["-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", listFile, "-i", plan.clip, "-map", "0:v", "-map", "1:a", "-vf", "fps=30,format=yuv420p", "-c:v", "libx264", "-preset", "medium", ...DELIVERY, "-t", String(plan.end), out], { encoding: "utf8" });
   if (r.status !== 0) throw new Error(`ffmpeg failed: ${r.stderr}`);
   opts.log?.(`${out}: ${cache.size} distinct frames`);
   return out;

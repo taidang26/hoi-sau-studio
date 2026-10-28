@@ -11,7 +11,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { basename, isAbsolute, join, resolve } from "node:path";
 import { type CameraMove, isPreset, type MovePreset, preset, zoompanExprs } from "./camera.js";
-import { ffmpeg, ffprobePath, MotionError, run, stageFont } from "./ffmpeg.js";
+import { DELIVERY, ffmpeg, ffprobePath, MotionError, run, stageFont } from "./ffmpeg.js";
 import { toSrt, type Cue } from "./srt.js";
 import { drawTextFilters, type TextBlock } from "./text.js";
 
@@ -350,9 +350,9 @@ export async function renderMotionComic(spec: MotionSpec, outDir: string): Promi
       "-filter_complex", `${joinGraph(clips, f, fps)};${audioGraph}`,
       "-map", "[v]", "-map", "[a]",
       ...encodeArgs(ctx),
-      "-profile:v", "high", "-g", String(fps * 2),
-      "-c:a", "aac", "-b:a", "128k", "-ar", "48000", "-ac", "2",
-      "-t", String(total), "-movflags", "+faststart",
+      ...(ctx.draft ? ["-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart"] : DELIVERY),
+      "-g", String(fps * 2), "-ar", "48000", "-ac", "2",
+      "-t", String(total),
       video,
     ],
     workDir,

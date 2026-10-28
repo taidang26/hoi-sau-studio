@@ -5,7 +5,7 @@
 
 export * from "./camera.js";
 export * from "./episode.js";
-export { canDecodeSvg, ffmpeg, findFont, MotionError } from "./ffmpeg.js";
+export { canDecodeSvg, DELIVERY, ffmpeg, findFont, MotionError } from "./ffmpeg.js";
 export * from "./probe.js";
 export * from "./render.js";
 export { toSrt, type Cue } from "./srt.js";

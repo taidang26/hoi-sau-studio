@@ -8,7 +8,7 @@ import { spawn } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import sharp from "sharp";
-import { ffmpeg } from "@hoi-sau/motion";
+import { DELIVERY, ffmpeg } from "@hoi-sau/motion";
 import type { TalkArt } from "./art.js";
 import { CAPTION_BAND, CAPTION_ON_BACKDROP, CaptionCache, titleOverlay, type Overlay } from "./captions.js";
 import { pasteOval, readRgb, type Raster } from "./patch.js";
@@ -296,7 +296,7 @@ export async function renderTalk(r: RenderInput): Promise<{ video: string; secon
     args.push("-filter_complex", `[2:a]volume=${r.musicVolume ?? 0.12}[m];[1:a][m]amix=inputs=2:duration=first:dropout_transition=0,aresample=48000[a]`);
     audio = "[a]";
   }
-  args.push("-map", "0:v", "-map", audio, "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", "-shortest", r.out);
+  args.push("-map", "0:v", "-map", audio, "-c:v", "libx264", "-preset", "medium", ...DELIVERY, "-shortest", r.out);
   const ff = spawn(process.env.FFMPEG_PATH || "ffmpeg", args, { stdio: ["pipe", "ignore", "pipe"], windowsHide: true });
   let stderr = "";
   ff.stderr.on("data", (d) => (stderr += d));

@@ -59,11 +59,24 @@ export function wrapTitle(text: string, size: number, maxWidth: number): string[
   return lines;
 }
 
+/** Two lines of about equal width, so one word never hangs alone on the second line. */
+function balanceTwo(text: string, size: number, font: ReturnType<typeof loadFont>): string[] {
+  const words = text.split(/\s+/).filter(Boolean);
+  let best = [words.join(" ")], widest = Infinity;
+  for (let i = 1; i < words.length; i++) {
+    const pair = [words.slice(0, i).join(" "), words.slice(i).join(" ")];
+    const w = Math.max(...pair.map((l) => measure(font, l, size)));
+    if (w < widest) (widest = w), (best = pair);
+  }
+  return best;
+}
+
 export function titleSvg(title: string): string {
   const font = loadFont(BOLD_FONT_PATH);
   let size = 48;
   let lines = wrapTitle(title, size, OUT.w - 200);
   while (lines.length > 2 && size > 34) lines = wrapTitle(title, (size -= 4), OUT.w - 200);
+  if (lines.length === 2) lines = balanceTwo(title, size, font);
   const lh = size * 1.25;
   const w = Math.max(...lines.map((l) => measure(font, l, size))) + 60;
   const h = lh * lines.length + 36;

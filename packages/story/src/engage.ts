@@ -38,7 +38,7 @@ export function speakersByPost(journal: Record<string, JournalEntry>, memory: St
 
 function voiceLines(p: ProfileLike): string[] {
   return [
-    `Bạn là ${p.name}${p.species ? ` (${p.species})` : ""}, nhân vật trong truyện tranh hài văn phòng "Hồi Sau". Bạn đang tự trả lời bình luận dưới bài của mình.`,
+    `Bạn là ${p.name_vi?.trim() || p.name}${p.species ? ` (${p.species})` : ""}, nhân vật trong truyện tranh hài văn phòng "Hồi Sau". Bạn đang tự trả lời bình luận dưới bài của mình.`,
     p.personality?.length ? `Tính cách: ${p.personality.join("; ")}.` : "",
     p.voice?.register ? `Giọng: ${p.voice.register}. ${p.voice.speech_pattern ?? ""}` : "",
     p.voice?.catchphrases?.length ? `Câu cửa miệng (dùng ít): ${p.voice.catchphrases.join(" / ")}.` : "",

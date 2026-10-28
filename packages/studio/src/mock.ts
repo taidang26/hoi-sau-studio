@@ -68,7 +68,7 @@ export function mockSparkTransport(opts: { failReview?: number[] } = {}): { tran
     })();
     const lead = cast[0] ?? { slug: "lead", name: "Nhân vật", expressions: ["default"], voice: { catchphrases: ["Ơ kìa"] } };
     const other = cast[1] ?? lead;
-    // Four panels, unless the schema allows fewer (strip3 asks for exactly three).
+    // Four panels, unless the schema allows fewer (strip3 asks for exactly three, single for one).
     const props = body.response_format?.json_schema?.schema?.properties ?? {};
     const n = Math.min(4, props.beats?.maxItems ?? props.panels?.maxItems ?? 4);
     const idx = [...Array(n).keys()];
@@ -77,7 +77,7 @@ export function mockSparkTransport(opts: { failReview?: number[] } = {}): { tran
     else if (name === "premise")
       out = { title: `${lead.name} và cái deadline`, logline: `${lead.name} nhận việc gấp lúc 4h50 chiều.`, setup: "Sếp giao việc cuối ngày.", twist: `${other.name} hoá ra đã làm xong từ sáng.`, hook: "Ai sẽ báo sếp?", cameo: null };
     else if (name === "beats")
-      out = { beats: (n === 3 ? (["setup", "escalation", "punchline"] as const) : (["setup", "escalation", "twist", "hook"] as const)).map((purpose, i) => ({ purpose, what_happens: `Nhịp ${i + 1}: ${purpose}` })) };
+      out = { beats: (n === 1 ? (["punchline"] as const) : n === 3 ? (["setup", "escalation", "punchline"] as const) : (["setup", "escalation", "twist", "hook"] as const)).map((purpose, i) => ({ purpose, what_happens: `Nhịp ${i + 1}: ${purpose}` })) };
     else if (name === "script")
       out = {
         title: `${lead.name} và cái deadline`,
@@ -110,8 +110,8 @@ export function mockSparkTransport(opts: { failReview?: number[] } = {}): { tran
     } else if (name === "review") {
       reviews++;
       out = opts.failReview?.includes(reviews)
-        ? { pass: false, issues: [{ character: lead.slug, feature: "palette", problem: "fur colour drifted" }], fix: "restore the fur colour from the model sheet" }
-        : { pass: true, issues: [], fix: "" };
+        ? { pass: false, issues: [{ character: lead.slug, feature: "palette", problem: "fur colour drifted" }], fix: "restore the fur colour from the model sheet", heads: [] }
+        : { pass: true, issues: [], fix: "", heads: [] };
     } else if (name === "safety") {
       // Flags texts with an obviously unsafe word; the rule half of the gate does the rest.
       const texts: Array<{ where: string; text: string }> = JSON.parse(text.match(/TEXTS_JSON: (\[.*\])/)?.[1] ?? "[]");
@@ -139,6 +139,7 @@ function mockCharacter(idea: string) {
     want: "Một lần đến đúng giờ mà có người chứng kiến",
     fear: "Thang máy dừng ở từng tầng",
     contradiction: "Đến muộn nhưng luôn là người về muộn nhất",
+    edge: "Tối về là cao thủ cờ tướng vỉa hè, ván nào cũng gài bẫy",
     life: ["27 tuổi, ở trọ gần hồ", "Nuôi một con mèo tên Font", "Đi làm bằng xe buýt số 32"],
     comic_engine: ["Tay dài với tới mọi thứ trong phòng mà không cần đứng dậy", "Lý do đến muộn dài thành cả một khung truyện"],
     relationships: [],

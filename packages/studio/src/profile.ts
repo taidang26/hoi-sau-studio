@@ -33,7 +33,10 @@ export interface Look {
 
 export interface Profile {
   slug: string;
+  /** The global name, used in English. */
   name: string;
+  /** The name in Vietnamese posts and dialogue; falls back to `name`. */
+  name_vi?: string;
   species: string;
   status: "candidate" | "active" | "retired";
   office_type: string;
@@ -43,6 +46,8 @@ export interface Profile {
   want?: string;
   fear?: string;
   contradiction?: string;
+  /** The rebellious or weird streak behind the good behaviour, kept for the twist. */
+  edge?: string;
   /** Concrete details of their life outside the joke. */
   life?: string[];
   /** Repeatable situations that make them funny, tied to the animal's body. */
@@ -70,6 +75,9 @@ const isStr = (v: unknown): v is string => typeof v === "string" && v.trim().len
 const isStrList = (v: unknown, min = 1): v is string[] => Array.isArray(v) && v.length >= min && v.every(isStr);
 
 /** Collect every problem at once, so a broken profile is fixed in one pass. */
+/** The name to use in Vietnamese text. */
+export const nameVi = (p: Pick<Profile, "name" | "name_vi">): string => p.name_vi?.trim() || p.name;
+
 export function validateProfile(raw: unknown, slug?: string): Profile {
   const p = raw as Record<string, any>;
   const errors: string[] = [];
@@ -77,6 +85,7 @@ export function validateProfile(raw: unknown, slug?: string): Profile {
 
   if (!p || typeof p !== "object") throw new ProfileError("profile is not a YAML mapping");
   for (const k of ["slug", "name", "species", "office_type", "core_gag", "role"]) need(isStr(p[k]), `${k} is required`);
+  need(p.name_vi === undefined || isStr(p.name_vi), "name_vi must be text when set");
   if (slug) need(p.slug === slug, `slug "${p.slug}" does not match folder "${slug}"`);
   need(["candidate", "active", "retired"].includes(p.status), "status must be candidate, active or retired");
 
@@ -102,7 +111,7 @@ export function validateProfile(raw: unknown, slug?: string): Profile {
   need(isStrList(p.never_says, 3), "never_says needs at least 3 rules");
 
   // Depth fields are optional for older profiles, but checked when present.
-  for (const k of ["want", "fear", "contradiction"]) need(p[k] === undefined || isStr(p[k]), `${k} must be a sentence`);
+  for (const k of ["want", "fear", "contradiction", "edge"]) need(p[k] === undefined || isStr(p[k]), `${k} must be a sentence`);
   for (const k of ["life", "comic_engine"]) need(p[k] === undefined || isStrList(p[k]), `${k} must be a list of strings`);
   need(
     p.relationships === undefined || (Array.isArray(p.relationships) && p.relationships.every((r: any) => isStr(r?.with) && isStr(r?.dynamic))),

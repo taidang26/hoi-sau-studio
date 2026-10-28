@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Rico, ferret-badger. Placeholder portrait until the Muse Image model sheet is locked. -->
+  <g stroke="#1b1410" stroke-width="10" stroke-linejoin="round" stroke-linecap="round">
+    <!-- slim lilac shirt and skinny black tie -->
+    <path d="M100 512 C110 420 180 380 256 380 C332 380 402 420 412 512 Z" fill="#B9A3E3"/>
+    <path d="M244 392 L268 392 L262 512 L250 512 Z" fill="#1F1F1F" stroke-width="6"/>
+    <!-- gold star pin -->
+    <path d="M340 430 l10 20 22 3 -16 15 4 22 -20 -11 -20 11 4 -22 -16 -15 22 -3 Z" fill="#F2C230" stroke-width="6"/>
+    <!-- head -->
+    <path d="M136 260 C120 160 186 96 256 96 C326 96 392 160 376 260 C364 340 312 384 256 384 C200 384 148 340 136 260 Z" fill="#7A6A5C"/>
+    <circle cx="160" cy="140" r="28" fill="#7A6A5C"/>
+    <circle cx="352" cy="140" r="28" fill="#7A6A5C"/>
+  </g>
+  <!-- white bandit mask and forehead stripe -->
+  <path d="M240 100 L272 100 L268 200 L244 200 Z" fill="#F7F3EC"/>
+  <path d="M150 230 C180 196 230 200 256 222 C282 200 332 196 362 230 C350 262 300 270 256 250 C212 270 162 262 150 230 Z" fill="#F7F3EC" stroke="#1b1410" stroke-width="8"/>
+  <path d="M200 316 C230 290 282 290 312 316 C300 350 212 350 200 316 Z" fill="#F7F3EC" stroke="#1b1410" stroke-width="8"/>
+  <!-- sly narrow eyes -->
+  <path d="M190 232 q24 -12 44 2 M278 234 q20 -14 44 -2" stroke="#1b1410" stroke-width="10" fill="none" stroke-linecap="round"/>
+  <ellipse cx="256" cy="292" rx="16" ry="11" fill="#1b1410"/>
+  <!-- wide toothy grin -->
+  <path d="M206 322 Q256 362 306 322" fill="#ffffff" stroke="#1b1410" stroke-width="8"/>
+  <path d="M232 332 v12 M256 338 v12 M280 332 v12" stroke="#1b1410" stroke-width="5"/>
+</svg>

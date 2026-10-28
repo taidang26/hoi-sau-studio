@@ -3,6 +3,7 @@
 # Names are rarely said in dialogue: the situation and the drawing carry the joke.
 slug: cu-li
 name: Lolo
+name_vi: Tũn
 species: slow loris (cu li)
 status: candidate
 office_type: Người chậm, não nhanh
@@ -12,6 +13,7 @@ role: Content executive, năm thứ hai đi làm
 want: Một lần được sếp gọi đúng tên (sếp toàn gọi nhầm thành "em Mi", "bạn mới")
 fear: Câu "em lên phòng anh một chút"
 contradiction: Ở công ty chậm nhất phòng, nhưng 1 giờ sáng chốt đơn order hộ bạn bè nhanh như chớp
+edge: "Admin ẩn danh của trang confession công ty, nơi cả tầng 7 bị chế meme; ngoài đời cu li có nọc ở khuỷu tay, nên khi bị dồn tới đường cùng Lolo liếm khuỷu tay, mắt rực lên và lần đầu tiên nói \"không\""
 life:
   - 24 tuổi, quê Nam Định, thuê phòng trọ 15 m² ở Cầu Giấy
   - Mẹ gọi video lúc 21h mỗi tối, đúng lúc đang làm dở việc
@@ -53,11 +55,13 @@ look:
     happy: eyes closed in a curve, cheeks raised
     caught: both arms raised over the head like a slow loris defending itself, eyes huge
     overthinking: tiny body frozen at the keyboard, a huge thought cloud above full of small disaster scenes
+    edge: at night in the empty office, eyes glowing like headlights, typing at lightning speed with motion lines, a sly grin no one has ever seen
   # The core gag as a picture, for the image model.
   gag_scene: late at night alone in a dark office, lit by the laptop screen, eyes huge, holding a giant coffee mug, wall clock at 2 a.m.
   # The one item readers know this character by at thumbnail size. Every panel draws it, a little oversized.
   icon: the oversized mustard-yellow hoodie, sleeves hanging past the paws
-  character_sheet: null   # set after the Muse Image test; path under output/characters/cu-li/
+  character_sheet: model-sheet.png   # locked with `studio sheet approve`; every panel is drawn against it
+  pose_sheet: pose-sheet.png   # locked with `studio sheet approve`; reusable poses, attached with the model sheet
 
 personality:
   - Hiền, lễ phép, sợ làm phiền người khác hơn sợ trễ deadline

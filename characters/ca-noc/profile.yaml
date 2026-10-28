@@ -3,6 +3,7 @@
 # Names are rarely said in dialogue: the situation and the drawing carry the joke.
 slug: ca-noc
 name: Poppy
+name_vi: Bống
 species: pufferfish (cá nóc)
 status: candidate
 office_type: Hiền nhất phòng, đáng sợ nhất phòng
@@ -12,6 +13,7 @@ role: Kế toán, người nắm bảng lương của cả công ty
 want: Một ngày không phải nuốt giận
 fear: Hoá đơn gửi lúc 16h59 thứ Sáu
 contradiction: Người dịu dàng nhất phòng, nhưng ai cũng sợ chị một chút vì chị biết lương của tất cả mọi người
+edge: "Giữ một cuốn \"sổ đen\" ghi từng hoá đơn sai của cả công ty từ 2017; phồng tới cỡ lớn nhất thì thành \"trùm cuối\" gai nhọn, giọng trầm hẳn, cả phòng tự giác xếp hàng; cuối tuần hát karaoke nhạc rock tới mất giọng"
 life:
   - 31 tuổi, mẹ của bé Su 4 tuổi; phải đón con lúc 17h30, nên 17h00 là giờ thiêng
   - Tranh bé Su vẽ dán kín cạnh màn hình
@@ -52,11 +54,13 @@ look:
     angry: fully inflated spiky ball, tiny fins shaking, glasses still neat
     happy: floats a little higher, sparkles around
     deflated: flat and soft like a sigh, small apologetic smile
+    edge: inflated into a gigantic spiky final-boss ball that fills half the office, glasses glinting, eyes narrowed, a thick black notebook in one fin, tiny coworkers lined up neatly in front of her like a queue
   # The core gag as a picture, for the image model.
   gag_scene: the desk clock shows 16:59 and a boss hands over a thick folder; the character inflates into a round spiky ball, glasses still on
   # The one item readers know this character by at thumbnail size. Every panel draws it, a little oversized.
   icon: a wide teal necktie, still knotted even when the body inflates into a spiky ball
-  character_sheet: null   # set after the Muse Image test; path under output/characters/ca-noc/
+  character_sheet: model-sheet.png   # locked with `studio sheet approve`; every panel is drawn against it
+  pose_sheet: pose-sheet.png   # locked with `studio sheet approve`; reusable poses, attached with the model sheet
 
 personality:
   - Hiền, chu đáo, chăm cả phòng như chăm con

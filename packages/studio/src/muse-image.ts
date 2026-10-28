@@ -88,6 +88,28 @@ export async function normalizeImage(image: Buffer, size?: string): Promise<Buff
   }
 }
 
+/** Above this a reference is re-encoded; six full-size PNG sheets inline to ~21 MB and the API refuses the request. */
+const REFERENCE_MAX_BYTES = 700_000;
+const REFERENCE_MAX_SIDE = 1536;
+
+/** Shrinks a large data-URL reference to a JPEG of a few hundred KB. URLs and small images pass through. */
+export async function compactReference(ref: string): Promise<string> {
+  const m = /^data:image\/[\w+.-]+;base64,(.*)$/s.exec(ref);
+  if (!m) return ref;
+  const data = Buffer.from(m[1], "base64");
+  if (data.length <= REFERENCE_MAX_BYTES) return ref;
+  try {
+    const jpg = await sharp(data)
+      .resize({ width: REFERENCE_MAX_SIDE, height: REFERENCE_MAX_SIDE, fit: "inside", withoutEnlargement: true })
+      .flatten({ background: "#ffffff" })
+      .jpeg({ quality: 85 })
+      .toBuffer();
+    return jpg.length < data.length ? `data:image/jpeg;base64,${jpg.toString("base64")}` : ref;
+  } catch {
+    return ref;
+  }
+}
+
 const FILTERED = /content management policy|filtered/i;
 
 export interface MuseImageOptions {
@@ -146,7 +168,8 @@ export class MuseImage {
   }
 
   async generate(turn: ImageTurn): Promise<ImageResult> {
-    const body = JSON.stringify(this.requestBody(turn));
+    const references = turn.references && (await Promise.all(turn.references.map(compactReference)));
+    const body = JSON.stringify(this.requestBody({ ...turn, references }));
     for (let attempt = 0; ; attempt++) {
       const res = await this.transport(`${this.baseUrl}/responses`, {
         method: "POST",

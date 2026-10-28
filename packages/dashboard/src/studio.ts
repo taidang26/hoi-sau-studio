@@ -47,7 +47,7 @@ import {
 } from "@hoi-sau/studio";
 import type { State } from "./data.js";
 import { locale, t } from "./i18n.js";
-import { button, esc, flash, layout } from "./views.js";
+import { button, charSrc, esc, flash, layout } from "./views.js";
 
 export interface StudioOptions {
   /** Opened on each action, so a missing API key shows as an error, not a crash. */
@@ -69,6 +69,7 @@ export interface StudioOptions {
 
 export const FORMAT_LABEL: Record<EpisodeFormat, string> = {
   strip3: "Truyện 3 khung, vuốt từng khung",
+  single: "Một khung, đủ cả câu chuyện",
   carousel: "Truyện dài 4–6 khung",
 };
 
@@ -354,7 +355,7 @@ export function studioPage(s: State, st: Studio, error?: string, inspiration = "
       const faces = ep.characters
         .map((slug) => s.characters.find((c) => c.profile.slug === slug))
         .filter(Boolean)
-        .map((c) => `<img class="face" src="${c!.run?.images.find((i) => i.id === "sheet") ? `/media/${esc(c!.profile.slug)}/${esc(c!.run!.images.find((i) => i.id === "sheet")!.file)}` : `/portrait/${esc(c!.profile.slug)}.svg`}" alt="${esc(c!.profile.name)}" title="${esc(c!.profile.name)}" style="background:${esc(c!.profile.look.palette[0].hex)}44">`)
+        .map((c) => `<img class="face" src="${charSrc(c!)}" alt="${esc(c!.profile.name)}" title="${esc(c!.profile.name)}" style="background:${esc(c!.profile.look.palette[0].hex)}44">`)
         .join("");
       return `<a class="card ep-row" href="/studio/${esc(id)}">${pages.length ? `<div class="mini-strip">${pages.map((p) => `<img src="${esc(p)}" alt="" loading="lazy">`).join("")}</div>` : `<div class="mini-strip empty-strip">✎</div>`}<div class="ep-row-body"><b>${esc(premise?.title ?? ep.direction.slice(0, 60))}</b><div class="faces">${faces}</div>${job?.running ? `<span class="tag due"><span class="spinner"></span>${esc(t("đang chạy…"))}</span>` : ""}</div>${steps(id, dir)}</a>`;
     })
@@ -363,22 +364,18 @@ export function studioPage(s: State, st: Studio, error?: string, inspiration = "
   const picked = new Set(s.directions.map((d) => d.commentId));
   const ideas = s.comments.filter((c) => picked.has(c.id));
   const cast = s.characters.map((c) => c);
-  const pic = (slug: string) => {
-    const c = s.characters.find((x) => x.profile.slug === slug)!;
-    const sheet = c.run?.images.find((i) => i.id === "sheet");
-    return sheet ? `/media/${esc(slug)}/${esc(sheet.file)}` : `/portrait/${esc(slug)}.svg`;
-  };
+  const pic = (slug: string) => charSrc(s.characters.find((x) => x.profile.slug === slug)!);
   const form = `<form class="card form new-ep" method="post" action="/studio/new"><h2>${esc(t("Tập mới"))}</h2>
 <fieldset class="pick-cast"><legend>${esc(t("Nhân vật chính"))}</legend>${cast.map((c, i) => `<label class="cast-pick"><input type="radio" name="lead" value="${esc(c.profile.slug)}"${i === 0 ? " checked" : ""}><img src="${pic(c.profile.slug)}" alt="" style="background:${esc(c.profile.look.palette[0].hex)}44"><span>${esc(c.profile.name)}</span></label>`).join("")}</fieldset>
 <fieldset class="pick-cast small-pick"><legend>${esc(t("Cùng xuất hiện"))}</legend>${cast.map((c) => `<label class="cast-pick"><input type="checkbox" name="with" value="${esc(c.profile.slug)}"><img src="${pic(c.profile.slug)}" alt="" style="background:${esc(c.profile.look.palette[0].hex)}44"><span>${esc(c.profile.name)}</span></label>`).join("")}</fieldset>
 <label>${esc(t("Hướng truyện"))}<textarea name="direction" rows="3" required placeholder="${esc(t("Chuyện gì xảy ra trong tập này"))}">${esc(ideas.map((c) => c.text).join("\n"))}</textarea></label>
-<fieldset class="pick-format"><legend>${esc(t("Kiểu truyện"))}</legend>${EPISODE_FORMATS.map((f) => `<label class="format-pick"><input type="radio" name="format" value="${f}"${f === "strip3" ? " checked" : ""}><span class="fmt fmt-${f}">${f === "strip3" ? "<i></i><i></i><i></i>" : "<i></i><i></i><i></i><i></i><i></i>"}</span>${esc(t(FORMAT_LABEL[f]))}</label>`).join("")}</fieldset>
+<fieldset class="pick-format"><legend>${esc(t("Kiểu truyện"))}</legend>${EPISODE_FORMATS.map((f) => `<label class="format-pick"><input type="radio" name="format" value="${f}"${f === "strip3" ? " checked" : ""}><span class="fmt fmt-${f}">${"<i></i>".repeat(f === "single" ? 1 : f === "strip3" ? 3 : 5)}</span>${esc(t(FORMAT_LABEL[f]))}</label>`).join("")}</fieldset>
 ${ideas.length ? `<fieldset><legend>${esc(t("Ghi công người bình luận"))}</legend>${ideas.map((c) => `<label class="check"><input type="checkbox" name="credit" value="${esc(`${c.author.name}::${c.text}`)}" checked> <b>${esc(c.author.name)}</b>: <span class="muted">${esc(c.text)}</span></label>`).join("")}</fieldset>` : `<p class="muted small">${t('Mẹo: chọn bình luận hay ở trang <a href="/comments">Bình luận</a>, chúng sẽ hiện ở đây làm hướng truyện.')}</p>`}
 ${inspiration}
 <div class="row-actions"><button class="btn on">${esc(t("Tạo tập"))}</button>${aiNote(st)}</div></form>`;
 
   const flow = `<ol class="flow">${EPISODE_STEPS.map((x, i) => `<li><b>${i + 1}</b>${esc(t(STEP_LABEL[x]))}</li>`).join("")}</ol>`;
-  const body = `<header class="page-head"><div><h1>Studio</h1><p class="muted">${esc(t("Mỗi tập đi qua 8 bước. Muse Spark viết, Muse Image vẽ theo model sheet đã khoá, rồi tự soát lại từng khung. Bước nào cũng xem lại và chạy lại riêng được."))}</p></div></header>
+  const body = `<header class="page-head"><div><h1>Studio</h1><p class="muted">${esc(t("Mỗi tập đi qua 8 bước. Muse Spark viết, Muse Image vẽ theo bản vẽ chuẩn đã chốt của nhân vật, rồi tự soát lại từng khung. Bước nào cũng xem lại và chạy lại riêng được."))}</p></div></header>
 ${flow}
 ${flash(undefined, error)}
 <div class="grid-studio">${form}<div>${rows || `<div class="card empty"><p>${esc(t("Chưa có tập nào. Tạo tập đầu tiên ở bên cạnh."))}</p></div>`}</div></div>`;
@@ -443,11 +440,11 @@ ${next ? `<form class="run" method="post" action="/studio/${esc(id)}/run"><butto
   const dl = (rows: Array<[string, string | undefined]>) => `<dl class="kv">${rows.filter(([, v]) => v).map(([k, v]) => `<dt>${esc(t(k))}</dt><dd>${esc(v)}</dd>`).join("")}</dl>`;
   const body = `<p><a href="/studio">← Studio</a></p><header class="page-head"><div><h1>${esc(premise?.title ?? t("Tập mới"))}</h1><p class="muted">${esc(t(FORMAT_LABEL[ep.format ?? "carousel"]))} · ${esc(t("vai chính"))}: ${esc(name(ep.lead))}${ep.characters.length > 1 ? ` · ${esc(t("cùng"))}: ${esc(ep.characters.slice(1).map(name).join(", "))}` : ""}</p></div>${steps(id, dir)}</header>
 ${runBar}
-${reviewCard(st, id, Boolean(job?.running))}
-<section class="card"><h2>${esc(t("Hướng từ khán giả"))}</h2><p class="pre">${esc(ep.direction)}</p>${ep.credits.length ? `<p class="muted small">${esc(t("Ghi công"))}: ${ep.credits.map((c) => esc(c.name)).join(", ")}</p>` : ""}</section>
 ${motionSection(st, id)}
 ${letter?.page ? `<section class="card"><h2>${esc(t("Trang ghép"))}</h2><img class="strip-page" src="${media(id, letter.page)}" alt=""></section>` : ""}
 ${letter ? `<section class="card"><h2>${esc(t("Bản hoàn chỉnh"))}</h2><div class="pages">${letter.pages.map((p) => `<figure><img src="${media(id, p.file)}" alt="${esc(t("Khung {n}", { n: p.n }))}" loading="lazy"><figcaption>${p.n}${p.overflow ? ` · <span class="tag over">${esc(t("{n} lời thoại tràn", { n: p.overflow }))}</span>` : ""}</figcaption></figure>`).join("")}</div></section>` : ""}
+${reviewCard(st, id, Boolean(job?.running))}
+<section class="card"><h2>${esc(t("Hướng từ khán giả"))}</h2><p class="pre">${esc(ep.direction)}</p>${ep.credits.length ? `<p class="muted small">${esc(t("Ghi công"))}: ${ep.credits.map((c) => esc(c.name)).join(", ")}</p>` : ""}</section>
 ${extra}
 ${section("premise", premise ? dl([["Một câu", premise.logline], ["Mở đầu", premise.setup], ["Bất ngờ", premise.twist], ["Móc hồi sau", premise.hook], ["Khách mời", premise.cameo ? `${premise.cameo.name}: ${premise.cameo.description}` : undefined]]) : "")}
 ${section("beats", beats ? `<ol class="beats">${beats.beats.map((b) => `<li><span class="tag">${esc(b.purpose)}</span> ${esc(b.what_happens)}</li>`).join("")}</ol>` : "")}
@@ -485,12 +482,12 @@ export function stylePage(st: Studio, error?: string): string {
     : `${job?.error ? `<div class="warn small">${esc(t("Lần vẽ trước dừng lại"))}: ${esc(job.error)}</div>` : ""}${flash(undefined, error)}
 <form class="run" method="post" action="/style/draw"><button class="btn${renders.length ? "" : " on"}">${esc(renders.length ? t("Vẽ thử lại cả {n} kiểu", { n: style.variants.length }) : t("Vẽ thử {n} kiểu", { n: style.variants.length }))}</button>${aiNote(st)}</form>`;
   const locked = style.reference
-    ? `<section class="card"><h2>${esc(t("Ảnh mẫu đang dùng"))}</h2><img class="sheet" src="/series-media/${encodeURIComponent(style.reference)}" alt=""><p class="muted small">${esc(t("Ảnh này đi kèm mọi model sheet và khung đầu của mỗi tập. Đổi phong cách thì nên vẽ lại model sheet của các nhân vật."))}</p></section>`
+    ? `<section class="card"><h2>${esc(t("Ảnh mẫu đang dùng"))}</h2><img class="sheet" src="/series-media/${encodeURIComponent(style.reference)}" alt=""><p class="muted small">${esc(t("Ảnh này đi kèm mọi bản vẽ chuẩn và khung đầu của mỗi tập. Đổi phong cách thì nên vẽ lại bản chuẩn của các nhân vật."))}</p></section>`
     : "";
   const body = `<header class="page-head"><div><h1>${esc(t("Phong cách"))}</h1><p class="muted">${esc(t("Một kiểu vẽ cho cả series. Cùng một cảnh được vẽ theo từng kiểu; chọn kiểu đọc rõ nhất trên điện thoại."))}</p></div></header>
 ${bar}
 <div class="styles">${cards}</div>
 ${locked}
-<section class="card"><h2>${esc(t("Phần chung"))}</h2><p>${esc(style.base)}</p>${style.avoid.length ? `<h3>${esc(t("Tránh"))}</h3><ul>${style.avoid.map((a) => `<li>${esc(a)}</li>`).join("")}</ul>` : ""}</section>`;
+<section class="card"><details><summary><b>${esc(t("Phần chung"))}</b> <span class="muted small">${esc(t("Mô tả gửi AI"))}</span></summary><p>${esc(style.base)}</p>${style.avoid.length ? `<h3>${esc(t("Tránh"))}</h3><ul>${style.avoid.map((a) => `<li>${esc(a)}</li>`).join("")}</ul>` : ""}</details></section>`;
   return layout(t("Phong cách"), "/style", body);
 }

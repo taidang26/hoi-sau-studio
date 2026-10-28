@@ -19,3 +19,4 @@ export * from "./studio.js";
 export { mockTransport, mockSparkTransport } from "./mock.js";
 export * from "./office.js";
 export * from "./brand-art.js";
+export * from "./edge-art.js";

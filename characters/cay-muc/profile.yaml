@@ -5,6 +5,7 @@
 # flashy street style, a white cat); it is never a portrait of a real person.
 slug: cay-muc
 name: Bino
+name_vi: Mực
 species: binturong (cầy mực)
 status: candidate
 office_type: Sếp tổng chịu chơi, tim mềm hơn vẻ ngoài
@@ -14,9 +15,10 @@ role: Giám đốc kiêm người sáng lập Công Ty TNHH Hồi Sau, ngồi t�
 want: Công ty được lên báo vì "văn hoá trẻ trung", để khoe với hội bạn cũ
 fear: Con mèo trắng ghét ông và thích Lolo hơn
 contradiction: Trông như trùm khu phố với dây chuyền vàng và kính mát, nhưng sợ nhất là làm con mèo buồn và khóc khi xem quảng cáo Tết
+edge: "Thật ra con mèo trắng ra mọi quyết định của công ty, ông chỉ \"phiên dịch tiếng mèo\"; tối thứ Sáu làm DJ ở một quán nhỏ với kính đen và bộ ria nhuộm neon"
 life:
   - 52 tuổi, mở công ty từ một quán net cũ, vẫn kể chuyện đó trong mọi buổi họp toàn công ty
-  - Con mèo trắng tên Bông là "trợ lý" duy nhất ông tin, nó ngồi ghế giám đốc nhiều hơn ông
+  - Con mèo trắng tên Tuyết là "trợ lý" duy nhất ông tin, nó ngồi ghế giám đốc nhiều hơn ông
   - Người toả mùi bỏng ngô bơ (cầy mực thật cũng vậy), cả tầng biết ông sắp tới trước khi thang máy kêu
   - Mỗi sáng thứ Hai tự tay mang xôi lên cho cả tầng, rồi giao deadline ngay sau đó
 comic_engine:
@@ -65,11 +67,13 @@ look:
     happy: moustache lifted into a huge grin, eyes squeezed shut, gold chain bouncing
     moved: big cartoon tears into the moustache while the cat looks away
     big_idea: finger pointing at the sky, eyes sparkling, cat sighing
+    edge: in dark sunglasses behind DJ decks, moustache glowing neon, tie around the head, the white cat on his shoulder wearing tiny headphones
   # The core gag as a picture, for the image model.
   gag_scene: the lift doors open on the director holding his white cat; behind him the whole open office has frozen mid-motion, one coworker curled into a ball, one puffed up round
   # The one item readers know this character by at thumbnail size. Every panel draws it, a little oversized.
   icon: the huge white walrus moustache and the white cat in his arm
-  character_sheet: null   # set after the Muse Image test; path under output/characters/cay-muc/
+  character_sheet: model-sheet.png   # locked with `studio sheet approve`; every panel is drawn against it
+  pose_sheet: pose-sheet.png   # locked with `studio sheet approve`; reusable poses, attached with the model sheet
 
 personality:
   - Hào phóng, ồn ào, thích khoe nhưng không ác
@@ -85,7 +89,7 @@ voice:
     - "Việc nhỏ thôi em."
     - "Hồi anh mở quán net…"
   sample_lines:
-    - "Bông duyệt rồi, anh duyệt theo."
+    - "Tuyết dẫm lên rồi, anh ký luôn."
     - "Không gấp, mai có là được."
   do: [nói to, hứa thưởng, hỏi chuyện con mèo trước chuyện công việc]
   dont: [quát mắng, nhớ đúng tên ai, nói chuyện tiền thật]

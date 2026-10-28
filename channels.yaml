@@ -98,3 +98,37 @@ brands:
       - platform: threads
         status: planned
         env: { userId: THREADS_USER_ID_UNI, token: THREADS_TOKEN_UNI, username: THREADS_USERNAME_UNI }
+
+  - id: bino
+    name: "Bino"
+    kind: character
+    character: cay-muc
+    tagline: "Sếp tổng chịu chơi, tim mềm hơn vẻ ngoài"
+    posts: lead
+    channels:
+      - platform: facebook
+        status: planned
+        env: { pageId: FB_PAGE_ID_BINO, token: FB_PAGE_TOKEN_BINO }
+      - platform: instagram
+        status: planned
+        env: { userId: IG_USER_ID_BINO }
+      - platform: threads
+        status: planned
+        env: { userId: THREADS_USER_ID_BINO, token: THREADS_TOKEN_BINO, username: THREADS_USERNAME_BINO }
+
+  - id: rico
+    name: "Rico"
+    kind: character
+    character: chon-bac-ma
+    tagline: "Thảo mai, tranh công, mưu nhỏ ngày nào cũng có"
+    posts: lead
+    channels:
+      - platform: facebook
+        status: planned
+        env: { pageId: FB_PAGE_ID_RICO, token: FB_PAGE_TOKEN_RICO }
+      - platform: instagram
+        status: planned
+        env: { userId: IG_USER_ID_RICO }
+      - platform: threads
+        status: planned
+        env: { userId: THREADS_USER_ID_RICO, token: THREADS_TOKEN_RICO, username: THREADS_USERNAME_RICO }

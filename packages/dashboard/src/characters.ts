@@ -6,9 +6,9 @@
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { parseDocument } from "yaml";
-import { slugify, validateProfile, writeProfile, type Profile } from "@hoi-sau/studio";
-import { t } from "./i18n.js";
+import { parseDocument, type Scalar, type YAMLMap } from "yaml";
+import { nameVi, slugify, validateProfile, writeProfile, type Profile } from "@hoi-sau/studio";
+import { lang, t } from "./i18n.js";
 import { esc, layout } from "./views.js";
 
 const lines = (v: string | null) =>
@@ -23,6 +23,9 @@ const STATUSES: Array<[Profile["status"], string]> = [
   ["retired", "Tạm nghỉ"],
 ];
 
+/** The name for the current language. */
+const shown = (p: Profile) => (lang() === "vi" ? nameVi(p) : p.name);
+
 /** What the form changes, checked with messages a person can act on. */
 function readForm(form: URLSearchParams) {
   const text = (k: string) => (form.get(k) ?? "").trim();
@@ -32,6 +35,7 @@ function readForm(form: URLSearchParams) {
     .filter((s) => /^#[0-9A-F]{6}$/.test(s.hex) && s.name);
   const v = {
     name: text("name"),
+    name_vi: text("name_vi"),
     species: text("species"),
     role: text("role"),
     office_type: text("office_type"),
@@ -40,6 +44,7 @@ function readForm(form: URLSearchParams) {
     want: text("want"),
     fear: text("fear"),
     contradiction: text("contradiction"),
+    edge: text("edge"),
     life: lines(form.get("life")),
     comic_engine: lines(form.get("comic_engine")),
     personality: lines(form.get("personality")),
@@ -68,7 +73,7 @@ function readForm(form: URLSearchParams) {
 /** Saves the form as a new character, or into an existing profile. Returns the slug. */
 export function saveCharacter(form: URLSearchParams, dir: string, slug?: string): string {
   const v = readForm(form);
-  const optional = (k: "want" | "fear" | "contradiction") => (v[k] ? v[k] : undefined);
+  const optional = (k: "want" | "fear" | "contradiction" | "edge") => (v[k] ? v[k] : undefined);
   if (!slug) {
     const id = slugify(v.species.replace(/\(.*\)/, "") || v.name) || slugify(v.name);
     if (!id) throw new Error(t("Cần tên nhân vật."));
@@ -77,6 +82,7 @@ export function saveCharacter(form: URLSearchParams, dir: string, slug?: string)
       {
         slug: id,
         name: v.name,
+        name_vi: v.name_vi || undefined,
         species: v.species,
         status: v.status,
         office_type: v.office_type,
@@ -85,6 +91,7 @@ export function saveCharacter(form: URLSearchParams, dir: string, slug?: string)
         want: optional("want"),
         fear: optional("fear"),
         contradiction: optional("contradiction"),
+        edge: optional("edge"),
         life: v.life.length ? v.life : undefined,
         comic_engine: v.comic_engine.length ? v.comic_engine : undefined,
         look: {
@@ -115,7 +122,16 @@ export function saveCharacter(form: URLSearchParams, dir: string, slug?: string)
     } else doc.setIn(path, value);
   };
   for (const k of ["name", "species", "role", "office_type", "core_gag", "status"] as const) set([k], v[k]);
-  for (const k of ["want", "fear", "contradiction"] as const) set([k], optional(k));
+  if (v.name_vi) {
+    if (doc.hasIn(["name_vi"])) doc.setIn(["name_vi"], v.name_vi);
+    else {
+      // Right under `name`, where a person looks for it.
+      const items = (doc.contents as YAMLMap).items;
+      const at = items.findIndex((i) => (i.key as Scalar).value === "name");
+      items.splice(at + 1, 0, doc.createPair("name_vi", v.name_vi));
+    }
+  } else set(["name_vi"], undefined);
+  for (const k of ["want", "fear", "contradiction", "edge"] as const) set([k], optional(k));
   set(["life"], v.life);
   set(["comic_engine"], v.comic_engine);
   set(["personality"], v.personality);
@@ -150,9 +166,10 @@ function paletteRows(p?: Profile): string {
 /** The full profile as a form, empty for a new character. */
 export function profileForm(p: Profile | undefined, action: string): string {
   return `<form class="form char-form" method="post" action="${esc(action)}">
-<section class="card"><h2>${t("Cơ bản")}</h2><div class="row3">
-${field("name", "Tên", p?.name, "Tên ngắn, dễ nhớ, đọc được cả tiếng Anh", true)}
-${field("species", "Loài vật", p?.species, "Ví dụ: cu li, cá nóc, tê tê", true)}
+<section class="card"><h2>${t("Cơ bản")}</h2><div class="row2">
+${field("name_vi", "Tên tiếng Việt", p?.name_vi, "Dùng trong bài đăng và lời thoại tiếng Việt")}
+${field("name", "Tên quốc tế", p?.name, "Dùng cho bản tiếng Anh", true)}
+</div><div class="row2">${field("species", "Loài vật", p?.species, "Ví dụ: cu li, cá nóc, tê tê", true)}
 <label>${t("Trạng thái")}<select name="status">${STATUSES.map(([s, l]) => `<option value="${s}"${(p?.status ?? "candidate") === s ? " selected" : ""}>${esc(t(l))}</option>`).join("")}</select></label></div>
 <div class="row3">${field("role", "Công việc", p?.role, "Làm gì trong văn phòng", true)}${field("office_type", "Kiểu người", p?.office_type, "Một cụm từ", true)}${field("core_gag", "Miếng hài chính", p?.core_gag, "Chuyện gì lặp lại là buồn cười", true)}</div></section>
 <section class="card"><h2>${t("Ngoại hình")}</h2><div class="row2">
@@ -164,15 +181,15 @@ ${area("personality", "Tính cách", p?.personality, "Mỗi dòng một nét, í
 ${area("catchphrases", "Câu cửa miệng", p?.voice.catchphrases, "Mỗi dòng một câu", 4, true)}
 ${area("never_says", "Không bao giờ nói", p?.never_says, "Mỗi dòng một điều, ít nhất 3", 4, true)}
 ${area("comic_engine", "Tình huống gây cười", p?.comic_engine, "Mỗi dòng một tình huống", 4)}</div></section>
-<section class="card"><h2>${t("Con người")}</h2><div class="row3">${field("want", "Muốn", p?.want)}${field("fear", "Sợ", p?.fear)}${field("contradiction", "Mâu thuẫn", p?.contradiction)}</div>
+<section class="card"><h2>${t("Con người")}</h2><div class="row3">${field("want", "Muốn", p?.want)}${field("fear", "Sợ", p?.fear)}${field("contradiction", "Mâu thuẫn", p?.contradiction)}</div>${field("edge", "Mặt khuất (bí mật nổi loạn, kỳ quặc)", p?.edge)}
 ${area("life", "Đời sống ngoài giờ làm", p?.life, "Mỗi dòng một chi tiết", 3)}</section>
 <div class="sticky-save"><button class="btn on">${t(p ? "Lưu thay đổi" : "Tạo nhân vật")}</button>${p ? `<a class="btn" href="/characters/${esc(p.slug)}">${t("Huỷ")}</a>` : ""}</div></form>`;
 }
 
 export function editCharacterPage(p: Profile, portrait: string, error?: string): string {
-  const body = `<p><a href="/characters/${esc(p.slug)}">← ${esc(p.name)}</a></p><header class="page-head"><div class="b-top"><img class="b-ava" src="${esc(portrait)}" alt=""><div><h1>${t("Sửa {name}", { name: esc(p.name) })}</h1><p class="muted">${t("Đổi xong bấm Lưu. Ngoại hình đổi nhiều thì nên vẽ lại model sheet.")}</p></div></div></header>
+  const body = `<p><a href="/characters/${esc(p.slug)}">← ${esc(shown(p))}</a></p><header class="page-head"><div class="b-top"><img class="b-ava" src="${esc(portrait)}" alt=""><div><h1>${t("Sửa {name}", { name: esc(shown(p)) })}</h1><p class="muted">${t("Đổi xong bấm Lưu. Ngoại hình đổi nhiều thì nên vẽ lại bản chuẩn.")}</p></div></div></header>
 ${error ? `<div class="warn small">${esc(error)}</div>` : ""}${profileForm(p, `/characters/${p.slug}/edit`)}`;
-  return layout(t("Sửa {name}", { name: p.name }), "/characters", body);
+  return layout(t("Sửa {name}", { name: shown(p) }), "/characters", body);
 }
 
 /** Two ways to start: one line for the AI, or the whole form. */
@@ -181,7 +198,7 @@ export function newCharacterPage(mock: boolean, aiReady: boolean, error?: string
 <div class="ai-head"><span class="spark">✦</span><div><h2>${t("Nhờ AI viết hồ sơ")}</h2><p class="muted small">${t("Một câu ý tưởng là đủ. Muse Spark viết ngoại hình, bảng màu, tính cách, giọng nói, và giữ khác hẳn dàn nhân vật đang có.")}</p></div></div>
 <textarea name="idea" rows="3" required placeholder="${esc(t("Ví dụ: một con vượn đen má trắng làm thiết kế, luôn đến muộn đúng 5 phút nhưng lý do nào cũng thuyết phục"))}"></textarea>
 <div class="row-actions"><button class="btn on"${aiReady ? "" : " disabled"}>${t("Viết hồ sơ")}</button>${aiReady ? (mock ? `<span class="muted small">${t("Bản thử: hồ sơ là mẫu cố định.")}</span>` : "") : `<span class="muted small">${t("Cần khoá AI Muse.")} <a href="/settings">${t("Mở Cài đặt")}</a></span>`}</div></form>`;
-  const steps = `<ol class="flow"><li><b>1</b>${t("Hồ sơ")}</li><li><b>2</b>${t("Vẽ model sheet")}</li><li><b>3</b>${t("Khoá sheet")}</li><li><b>4</b>${t("Lên tập")}</li></ol>`;
+  const steps = `<ol class="flow"><li><b>1</b>${t("Hồ sơ")}</li><li><b>2</b>${t("Vẽ bản chuẩn")}</li><li><b>3</b>${t("Chốt bản chuẩn")}</li><li><b>4</b>${t("Lên tập")}</li></ol>`;
   const body = `<p><a href="/characters">← ${t("Nhân vật")}</a></p><header class="page-head"><div><h1>${t("Tạo nhân vật")}</h1></div>${steps}</header>
 ${error ? `<div class="warn small">${esc(error)}</div>` : ""}
 <div class="tabs"><a class="${manual ? "" : "on"}" href="/characters/new">✦ ${t("AI viết")}</a><a class="${manual ? "on" : ""}" href="/characters/new?manual=1">✎ ${t("Tự điền")}</a></div>

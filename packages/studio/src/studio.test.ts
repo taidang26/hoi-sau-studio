@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import { cpSync, existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { test } from "node:test";
 import {
   approveStyle,
   characterSheetPrompt,
+  compactReference,
   consistencyBeats,
   loadStyle,
   poseSheetPrompt,
@@ -27,7 +28,7 @@ import {
 } from "./index.js";
 
 test("every test character loads and validates", () => {
-  assert.deepEqual(listCharacters(), ["ca-noc", "cay-muc", "cu-li", "sao-la", "te-te"]);
+  assert.deepEqual(listCharacters(), ["ca-noc", "cay-muc", "chon-bac-ma", "cu-li", "sao-la", "te-te"]);
   for (const slug of listCharacters()) {
     const p = loadProfile(slug);
     assert.equal(p.slug, slug);
@@ -78,6 +79,19 @@ test("request body follows the Responses API shape", () => {
   const withRef = client.requestBody({ prompt: "b", references: ["data:image/png;base64,AA"] }) as any;
   assert.equal(withRef.input[0].role, "user");
   assert.deepEqual(withRef.input[0].content[1], { type: "input_image", image_url: "data:image/png;base64,AA" });
+});
+
+test("large reference images are shrunk before they are sent", async () => {
+  const sharp = (await import("sharp")).default;
+  const noise = (await import("node:crypto")).randomBytes(1800 * 1200 * 3);
+  const big = await sharp(noise, { raw: { width: 1800, height: 1200, channels: 3 } }).png().toBuffer();
+  assert.ok(big.length > 700_000);
+  const small = await compactReference(`data:image/png;base64,${big.toString("base64")}`);
+  assert.match(small, /^data:image\/jpeg;base64,/);
+  const out = await sharp(Buffer.from(small.split(",")[1], "base64")).metadata();
+  assert.equal(out.width, 1536);
+  assert.equal(await compactReference("data:image/png;base64,AA"), "data:image/png;base64,AA");
+  assert.equal(await compactReference("https://x/y.png"), "https://x/y.png");
 });
 
 test("parseResponse pulls the image and refuses empty or filtered replies", () => {
@@ -195,7 +209,7 @@ test("style test draws every variant; approve locks one as the reference sent wi
 test("mock images draw the staged characters from their portraits", async () => {
   const { loadMockCast, sceneFromPrompt } = await import("./mock-art.js");
   const cast = loadMockCast();
-  assert.deepEqual(cast.map((c) => c.name).sort(), ["Bino", "Lolo", "Pango", "Poppy", "Uni"]);
+  assert.deepEqual(cast.map((c) => c.name).sort(), ["Bino", "Lolo", "Pango", "Poppy", "Rico", "Uni"]);
   const scene = sceneFromPrompt("medium shot, eye level. Lolo (slow loris (cu li)) on the left, x. Poppy (pufferfish (cá nóc)) on the right, y.", cast, 1);
   assert.deepEqual(scene.places.map((p) => [p.cast.name, p.position]), [["Lolo", "left"], ["Poppy", "right"]]);
   assert.equal(sceneFromPrompt("An original character sheet for a comic series. " + cast[0].description, cast, 2).kind, "sheet");
@@ -260,7 +274,7 @@ test("the office floor plan seats every character once and reaches the prompts",
   const office = loadOffice()!;
   assert.ok(office, "series/office.yaml exists");
   const seated = office.desks.map((d) => d.character).sort();
-  assert.deepEqual(seated, ["ca-noc", "cu-li", "sao-la", "te-te"]);
+  assert.deepEqual(seated, ["ca-noc", "chon-bac-ma", "cu-li", "sao-la", "te-te"]);
   assert.match(officeBrief(office), /Lolo's desk/);
   const text = officePanelText(office, ["cu-li"]);
   assert.match(text, /pothos/);
@@ -271,7 +285,7 @@ test("the office floor plan seats every character once and reaches the prompts",
 });
 
 test("brand art: an avatar and a Facebook-size cover for every brand, offline", async () => {
-  const { loadBrandList, makeBrandArt, coverPrompt, COVER_SIZE } = await import("./brand-art.js");
+  const { loadBrandList, makeBrandArt, coverPrompt, avatarPrompt, COVER_SIZE, SOCIAL_SIZES } = await import("./brand-art.js");
   const { openStudio } = await import("./studio.js");
   const { imageSize } = await import("@hoi-sau/svg-text");
   const ctx = openStudio({ mock: true });
@@ -279,7 +293,16 @@ test("brand art: an avatar and a Facebook-size cover for every brand, offline", 
   assert.ok(brands.some((b) => b.id === "hoi-sau") && brands.some((b) => b.character === "cu-li"));
   const series = coverPrompt(ctx, brands.find((b) => b.id === "hoi-sau")!);
   assert.match(series, /zebra crossing/);
-  assert.match(series, /Pango[\s\S]*Poppy[\s\S]*Lolo[\s\S]*Uni/, "walk order front to back");
+  assert.match(series, /Bino[\s\S]*Pango[\s\S]*Poppy[\s\S]*Lolo[\s\S]*Uni[\s\S]*Rico/, "walk order front to back, the director leads");
+  assert.match(series, /Bino \(.*?\) leading the line at the far right/);
+  assert.match(series, /full length with their feet/);
+  assert.match(series, /none sitting at a desk/);
+  const avatar = avatarPrompt(ctx, brands.find((b) => b.id === "hoi-sau")!);
+  assert.match(avatar, /^Lolo \(.*alone, a big close-up/);
+  assert.match(avatar, /Nobody else/);
+  // Characters added later join the parade: the cover follows the cast, not a fixed four.
+  assert.match(series, new RegExp(`Exactly ${["", "one", "two", "three", "four", "five", "six", "seven"][ctx.profiles.size]} main characters`));
+  for (const p of ctx.profiles.values()) assert.ok(series.includes(`${p.name} (`), p.name);
   assert.match(coverPrompt(ctx, brands.find((b) => b.id === "lolo")!), /Lolo \(.*\) walks across it alone/);
   const out = mkdtempSync(join(tmpdir(), "brand-art-"));
   const { art } = await makeBrandArt(ctx, brands.filter((b) => ["hoi-sau", "lolo"].includes(b.id)), out);
@@ -288,5 +311,65 @@ test("brand art: an avatar and a Facebook-size cover for every brand, offline", 
     assert.deepEqual(imageSize(readFileSync(a.cover)), { ...COVER_SIZE, mime: "image/png" });
     assert.deepEqual(imageSize(readFileSync(a.avatar)), { width: 1024, height: 1024, mime: "image/png" });
     assert.ok(existsSync(a.coverTitle));
+    const dir = dirname(a.cover);
+    for (const [network, sizes] of Object.entries(SOCIAL_SIZES)) {
+      assert.deepEqual(imageSize(readFileSync(join(dir, "social", network, "avatar.png"))), { ...sizes.avatar, mime: "image/png" }, network);
+      if ("cover" in sizes) assert.deepEqual(imageSize(readFileSync(join(dir, "social", network, "cover.png"))), { ...sizes.cover, mime: "image/png" });
+    }
   }
+  // Only the cover again, cropped from the saved drawing without asking Muse.
+  const before = readFileSync(art[0].avatar);
+  const again = await makeBrandArt(ctx, brands.filter((b) => b.id === "hoi-sau"), out, () => {}, { only: "cover", recrop: true });
+  assert.equal(again.usage.length, 0);
+  assert.deepEqual(readFileSync(art[0].avatar), before);
+});
+
+test("brand art: the cover crop keeps the cast's feet, even under a colourful top", async () => {
+  const { coverCrop, COVER_SIZE } = await import("./brand-art.js");
+  const sharp = (await import("sharp")).default;
+  // Like a real drawing: orange roofs through the windows at the top, the cast lower down,
+  // red shoes at 80% of the height, then grey floor with white zebra stripes.
+  const w = 1920, h = 1280;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><rect width="${w}" height="${h}" fill="#d8d6d0"/>
+    <rect y="0" width="${w}" height="380" fill="#e07a3a"/>
+    <rect x="300" y="620" width="1300" height="380" fill="#3a8ee0"/>
+    <rect x="300" y="1000" width="1300" height="24" fill="#e0202a"/>
+    <rect y="1060" width="${w}" height="40" fill="#ffffff"/><rect y="1160" width="${w}" height="40" fill="#ffffff"/></svg>`;
+  const img = await sharp(Buffer.from(svg)).png().toBuffer();
+  for (const size of [COVER_SIZE, { width: 1500, height: 500 }]) {
+    const out = await coverCrop(img, size);
+    const meta = await sharp(out).metadata();
+    assert.deepEqual([meta.width, meta.height], [size.width, size.height]);
+    // The shoes (y 1000-1024 of 1280) are inside, above the bottom edge.
+    const scale = size.width / w;
+    const raw = await sharp(out).removeAlpha().raw().toBuffer();
+    const redRows = [];
+    for (let y = 0; y < size.height; y++) {
+      const i = (y * size.width + Math.round(900 * scale)) * 3;
+      if (raw[i] > 200 && raw[i + 1] < 80) redRows.push(y);
+    }
+    assert.ok(redRows.length > 0, `shoes inside the ${size.width}x${size.height} crop`);
+    assert.ok(size.height - redRows[redRows.length - 1] > 10, "floor below the shoes");
+  }
+});
+
+test("edge art: one picture per character of its secret side, offline", async () => {
+  const { makeEdgeArt, edgePrompt, EDGE_SIZE } = await import("./edge-art.js");
+  const { openStudio } = await import("./studio.js");
+  const { imageSize } = await import("@hoi-sau/svg-text");
+  const ctx = openStudio({ mock: true });
+  for (const slug of listCharacters()) {
+    const p = loadProfile(slug);
+    assert.ok(p.edge, `${slug} has an edge`);
+    assert.ok(edgePrompt(ctx, slug).includes(p.look.expressions.edge!), `${slug} prompt draws its edge`);
+    assert.match(edgePrompt(ctx, slug), /No text/);
+  }
+  const out = mkdtempSync(join(tmpdir(), "edge-"));
+  const { files } = await makeEdgeArt(ctx, ["cu-li", "chon-bac-ma"], out);
+  assert.equal(files.length, 2);
+  for (const f of files) assert.deepEqual(imageSize(readFileSync(f)), { ...EDGE_SIZE, mime: "image/png" });
+  assert.match(readFileSync(join(out, "index.html"), "utf8"), /Rico/);
+  await makeEdgeArt(ctx, ["te-te"], out);
+  const page = readFileSync(join(out, "index.html"), "utf8");
+  assert.ok(/Rico/.test(page) && /Pango/.test(page), "redrawing one keeps the others on the page");
 });

@@ -1,6 +1,6 @@
 /* Hồi Sau dashboard: frosted "liquid glass" panels floating over a soft colour field, after iOS. */
-@font-face { font-family: "Be Vietnam Pro"; font-weight: 600; src: url(/static/BeVietnamPro-SemiBold.ttf) format("truetype"); }
-@font-face { font-family: "Be Vietnam Pro"; font-weight: 700; src: url(/static/BeVietnamPro-Bold.ttf) format("truetype"); }
+@font-face { font-family: "Be Vietnam Pro"; font-weight: 600; src: url(/static/BeVietnamPro-SemiBold.ttf?v=1) format("truetype"); font-display: swap; }
+@font-face { font-family: "Be Vietnam Pro"; font-weight: 700; src: url(/static/BeVietnamPro-Bold.ttf?v=1) format("truetype"); font-display: swap; }
 
 :root {
   /* Bright and fresh: warm paper, candy accents, cards that read as white. */
@@ -10,7 +10,7 @@
   --blob-3: #e3dcff;
   --blob-4: #ffe9b8;
   --blob-5: #d4f5e4;
-  --glass: rgba(255, 255, 255, 0.78);
+  --glass: rgba(255, 255, 255, 0.86);
   --glass-strong: rgba(255, 255, 255, 0.94);
   --glass-edge: rgba(255, 255, 255, 0.95);
   --glass-shine: rgba(255, 255, 255, 1);
@@ -28,7 +28,9 @@
   --fb: #0866ff;
   --ig: #d62976;
   --shadow: 0 10px 34px -16px rgba(120, 60, 120, 0.28), 0 2px 6px -2px rgba(120, 60, 120, 0.08);
-  --blur: blur(22px) saturate(160%);
+  /* No live blur: the colour field behind is already soft, and twenty blurred panels made
+     scrolling and page changes stutter on ordinary laptops. */
+  --blur: none;
   --r-lg: 24px;
   --r: 18px;
   --r-sm: 12px;
@@ -161,6 +163,7 @@ div.warn { background: linear-gradient(var(--warn-soft), var(--warn-soft)), var(
 .char { padding: 0; overflow: hidden; transition: transform .25s; }
 .char:hover { transform: translateY(-4px); opacity: 1; }
 .char img, .char .ph { width: 100%; aspect-ratio: 3 / 2; object-fit: cover; display: block; }
+.char img.from-sheet { object-fit: contain; padding-top: 12px; background: #fff; }
 .ph { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: var(--muted); }
 .char-body { padding: 16px 18px 18px; }
 .char-body p { margin: 4px 0; }
@@ -455,6 +458,8 @@ a.mini:hover { opacity: 1; box-shadow: inset 0 0 0 1px var(--accent); }
 .page-btn small { color: var(--muted); font-weight: 500; }
 .brand-cover { width: 100%; max-height: 260px; object-fit: cover; border-radius: var(--r-lg); display: block; margin-bottom: 18px; box-shadow: var(--shadow); }
 .hero-cover { width: calc(100% + 56px); max-height: 220px; object-fit: cover; margin: -26px -28px 18px; display: block; border-radius: var(--r-lg) var(--r-lg) 0 0; }
+/* A face cut from the sheet sits on white, like the sheet itself. */
+.b-cover:has(img[src^="/face/"]) { background: #fff !important; }
 .b-cover img.art { width: 100%; height: 100%; object-fit: cover; padding: 0; }
 .next-step { background: linear-gradient(var(--accent-soft), var(--accent-soft)), var(--glass); }
 
@@ -497,9 +502,9 @@ img.sheet { max-width: 100%; }
 .pick-cast { display: flex !important; flex-wrap: wrap; gap: 8px !important; }
 .cast-pick { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px; border-radius: var(--r-sm); cursor: pointer; border: 2px solid transparent; font-size: 13px; font-weight: 600; color: var(--ink); width: 78px; text-align: center; }
 .cast-pick input { position: absolute; opacity: 0; pointer-events: none; }
-.cast-pick img { width: 54px; height: 54px; border-radius: 50%; object-fit: cover; }
+.cast-pick img { width: 72px; height: 72px; border-radius: 50%; object-fit: cover; }
 .small-pick .cast-pick { width: 64px; font-size: 12px; }
-.small-pick .cast-pick img { width: 40px; height: 40px; }
+.small-pick .cast-pick img { width: 52px; height: 52px; }
 .cast-pick:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
 .cast-pick:has(input:focus-visible) { outline: 2px solid var(--accent-2); }
 .pick-format { display: grid !important; grid-template-columns: 1fr 1fr; gap: 8px !important; }
@@ -583,7 +588,11 @@ img.sheet { max-width: 100%; }
 .research-add { margin-bottom: 16px; }
 .dropzone { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; min-height: 130px; padding: 18px; border: 2px dashed rgba(108, 92, 255, 0.35); border-radius: var(--r); background: rgba(108, 92, 255, 0.05); text-align: center; cursor: pointer; }
 .dropzone:hover, .dropzone:focus-within { border-color: var(--accent-2); background: rgba(108, 92, 255, 0.09); }
-.dropzone input[type=file] { max-width: 100%; font-size: 13px; }
+/* The real file input covers the whole zone, invisible: a click or a drop anywhere picks images,
+   and no browser-language "Choose Files" button shows. */
+.dropzone { position: relative; }
+.dropzone input[type=file] { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+.dropzone .drop-say { font-weight: 600; color: var(--accent-2); }
 .read-new { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .ideas { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; margin-bottom: 20px; }
 .idea { display: flex; flex-direction: column; gap: 8px; border-top: 5px solid var(--accent-2); }
@@ -642,3 +651,11 @@ img.sheet { max-width: 100%; }
 .login { max-width: 340px; margin: 18vh auto 0; padding: 0 16px; text-align: center; }
 .login form { display: flex; gap: 8px; margin-top: 16px; }
 .login input { flex: 1; min-width: 0; font: inherit; padding: 8px 14px; border-radius: 99px; border: 1px solid var(--line, #ccd); background: transparent; color: inherit; }
+
+/* Page changes cross-fade instead of flashing white; the sidebar stays put. */
+@view-transition { navigation: auto; }
+.side { view-transition-name: side; }
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: .16s; }
+@media (prefers-reduced-motion: reduce) { @view-transition { navigation: none; } }
+
+.settings-side { display: grid; gap: 18px; align-content: start; }

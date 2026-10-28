@@ -1,0 +1,102 @@
+# The team's rival: the sly one the audience argues about. The slug is the species and never changes; the name can.
+# Fields under `look` are English because they go into Muse Image prompts.
+# Names are rarely said in dialogue: the situation and the drawing carry the joke.
+# He schemes, flatters and steals credit, but never insults, threatens or bullies,
+# and his schemes always backfire by the last panel.
+slug: chon-bac-ma
+name: Rico
+name_vi: Lẻo
+species: ferret-badger (chồn bạc má)
+status: candidate
+office_type: Thảo mai, tranh công, mưu nhỏ ngày nào cũng có
+core_gag: Lén nhận công việc người khác trước mặt sếp, rồi mưu nào cũng quay ngược vào chính mình
+role: Trưởng nhóm bên cạnh, bàn sát phòng sếp, đối thủ của team Pango trong mọi dự án
+
+want: Được Giám đốc gọi đúng tên và ngồi phòng có cửa kính riêng
+fear: Ai đó đọc được lịch sử chỉnh sửa file
+contradiction: Mưu mẹo nhất tầng, nhưng là người duy nhất nhớ đặt bánh sinh nhật cho cả tầng, rồi chụp ảnh đăng là "team em tổ chức"
+edge: "Trong ngăn kéo khoá có một \"bảng mưu\" đầy ảnh và chỉ đỏ như phim trinh thám; tối về luyện \"nụ cười trước mặt sếp\" trước gương đủ 100 lần"
+life:
+  - 29 tuổi, vào công ty sau Pango 9 năm nhưng đã lên trưởng nhóm, ai cũng muốn biết bằng cách nào
+  - Bàn làm việc sạch bong, một tấm ảnh chụp chung với Giám đốc đóng khung trên bàn (Giám đốc không nhớ đã chụp)
+  - Gửi mail lúc 23h59 để sếp thấy mình làm khuya, thật ra hẹn giờ gửi từ chiều
+  - Mèo của Giám đốc ghét Rico nhất tầng; mỗi lần Rico nịnh sếp, mèo cào vào tay áo
+comic_engine:
+  - 'Mưu nhỏ quay ngược: Rico giấu tờ báo cáo của Lolo, sếp lại khen chính tờ Rico nộp bị sai'
+  - 'Hai khuôn mặt: trước mặt sếp cười tít mắt, quay lưng là cái mặt nạ trắng nhíu lại; vẽ hai nửa khung đối nhau'
+  - 'Câu "em chỉ góp ý thôi" luôn đi kèm một đống việc đẩy sang team Pango'
+  - 'Mèo của Giám đốc là "camera an ninh" duy nhất Rico không lừa được'
+relationships:
+  - { with: te-te, dynamic: 'Đối thủ 9 năm: Rico tranh công, Pango cuộn tròn chịu trận, nhưng cuối cùng lần nào Pango cũng thắng mà không cần cố' }
+  - { with: cu-li, dynamic: 'Rủ Lolo "làm chung cho vui" rồi đứng tên một mình; Lolo hiền quá nên chưa nhận ra, cả phòng thì nhận ra' }
+  - { with: ca-noc, dynamic: 'Người duy nhất dám xin chị Poppy duyệt chi lúc 16h59, và lần nào cũng bị chị trả lại hoá đơn với nụ cười rất to' }
+  - { with: sao-la, dynamic: 'Lấy thiết kế của Uni đi thuyết trình như của nhóm mình; Uni không dám nói, khán giả thì nói thay' }
+  - { with: cay-muc, dynamic: 'Nịnh Giám đốc không ngừng, Giám đốc vẫn gọi nhầm Rico là "em gì đấy"' }
+
+look:
+  style: flat 2D comic, thick black outline, flat colors, minimal shading, simple shapes
+  description: >-
+    A slim, sleek ferret-badger office worker standing upright, a little taller
+    than the team. Grey-brown fur, a long bushy tail with a pale tip, and a bold
+    white bandit-mask pattern across the face and cheeks with a white stripe up
+    the forehead, which makes every smile look a little sly. Narrow eyes that
+    narrow further when scheming, a wide toothy grin. Hair on the head combed
+    back shiny and neat. Wears a tight slim-fit lilac shirt, a skinny black tie,
+    shiny pointed shoes, and a big gold star pin on the chest. Always holds a
+    smartphone, ready to film himself next to the boss.
+  signature:
+    - slim grey-brown ferret-badger with a bold white bandit-mask face and white forehead stripe
+    - sly narrow eyes and a wide toothy grin
+    - tight slim-fit lilac shirt with a skinny black tie
+    - a big gold star pin on the chest
+    - a smartphone always in one paw
+  palette:
+    - { name: fur, hex: "#7A6A5C" }
+    - { name: mask, hex: "#F7F3EC" }
+    - { name: shirt, hex: "#B9A3E3" }
+    - { name: tie, hex: "#1F1F1F" }
+    - { name: gold star, hex: "#F2C230" }
+  props: [smartphone on a selfie stick, a framed photo with the director, a scheduled email on screen, a stack of other people's reports]
+  expressions:
+    default: smooth fake smile, eyes half closed like a cat
+    scheming: eyes narrowed to slits, grin stretched ear to ear, paws steepled
+    flattering: whole body bent forward in a deep bow, sparkles around, tail wagging
+    caught: frozen grin, huge sweat drops, fur standing on end, the white bandit mask still clearly on his animal face
+    backfired: slicked hair flopped over the mask, tie askew, flattened like a pancake, still a ferret-badger
+    edge: in front of a detective-style conspiracy board full of photos joined by red string, lit by a desk lamp, grinning madly
+  # The core gag as a picture, for the image model.
+  gag_scene: in the meeting room the character proudly presents a big chart to the director while holding a report with another coworker's paw print on it; the director's white cat on the table glares straight at him
+  # The one item readers know this character by at thumbnail size. Every panel draws it, a little oversized.
+  icon: the bold white bandit-mask face with the big gold star pin on the chest
+  character_sheet: model-sheet.png   # locked with `studio sheet approve`; every panel is drawn against it
+  pose_sheet: pose-sheet.png   # locked with `studio sheet approve`; reusable poses, attached with the model sheet
+
+personality:
+  - Thảo mai bậc thầy, lúc nào cũng cười và nói "dạ vâng ạ"
+  - Tranh công, đẩy việc, nói xấu khéo sau lưng ("em không nói gì đâu, nhưng mà…")
+  - Rất nhanh nhạy, mưu thì giỏi nhưng luôn tính sót một chi tiết
+  - Thèm được công nhận hơn thèm tiền
+  - Sâu trong lòng sợ bị bỏ lại, nên làm gì cũng muốn đứng đầu
+
+voice:
+  register: Tiếng Việt văn phòng, xưng "em" với sếp, "anh/chị" ngọt xớt với team Pango, nói nhanh và trơn
+  speech_pattern: Khen trước, gài sau; mỗi câu góp ý mở bằng "em chỉ góp ý thôi" hoặc "em nói thật lòng nha"
+  catchphrases:
+    - "Em chỉ góp ý thôi ạ."
+    - "Cái này team em làm đó anh."
+  sample_lines:
+    - "Ý tưởng hay quá, để em trình sếp giúp nhé."
+    - "Em không nói gì đâu, nhưng mà…"
+  do: [cười khi đang mưu, nịnh sếp lộ liễu, nhận vơ công việc, luôn bị lộ ở khung cuối]
+  dont: [chửi, doạ nạt, bắt nạt ai, thắng thật sự ở cuối tập]
+
+never_says:
+  - Chửi thề, nói tục, xúc phạm người khác
+  - Doạ nạt, bắt nạt, quấy rối bất kỳ ai; Rico chỉ mưu mẹo và tranh công
+  - Chê ngoại hình, vùng miền, giới tính của bất kỳ ai
+  - Nhắc tên công ty, nhãn hàng, người thật có thật
+  - Nói chuyện chính trị, tôn giáo
+  - Nhắc chuyện săn bắt, buôn bán chồn hay bất kỳ động vật hoang dã nào
+
+memory:
+  episodes: []

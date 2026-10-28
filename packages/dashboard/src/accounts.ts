@@ -54,6 +54,7 @@ export const SETTINGS = [
   { name: "META_APP_ID", label: "Mã ứng dụng Meta (App ID)", secret: false, help: "developers.facebook.com → Ứng dụng của bạn → Cài đặt → Thông tin cơ bản" },
   { name: "META_APP_SECRET", label: "Khoá bí mật ứng dụng (App Secret)", secret: true, help: "Cùng trang, bấm Hiện cạnh App Secret" },
   { name: "META_API_KEY", label: "Khoá AI Muse (viết và vẽ)", secret: true, help: "Khoá Llama API dùng cho Muse Spark và Muse Image" },
+  { name: "BACKUP_DIR", label: "Thư mục sao lưu", secret: false, help: "Nên dán đường dẫn một thư mục OneDrive hoặc Google Drive, để còn bản sao khi máy hỏng" },
   { name: "THREADS_APP_SECRET", label: "Khoá bí mật ứng dụng Threads", secret: true, help: "Ứng dụng Threads → Cài đặt → Thông tin cơ bản" },
 ] as const;
 

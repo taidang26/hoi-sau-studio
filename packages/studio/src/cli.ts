@@ -3,14 +3,16 @@
  * Studio CLI.
  *
  *   npm run studio -- characters                 validate and list character profiles
- *   npm run studio -- brand-art [brand…] [--mock] profile pictures and cover photos for the pages in channels.yaml
+ *   npm run studio -- brand-art [brand…] [--only avatar|cover] [--recrop] [--mock] profile pictures and cover photos for the pages in channels.yaml
+ *   npm run studio -- edge [slug…] [--mock]      one picture of each character's rebellious or weird side
  *   npm run studio -- office                     draw the office floor plan to series/office-plan.png
  *   npm run studio -- style [--mock]             draw the test scene in every series style variant
  *   npm run studio -- style approve <variant>    lock that render as the series style reference
  *   npm run studio -- sheet <slug|all> [--mock]  Muse Image consistency test
  *   npm run studio -- sheet approve <slug>       lock that sheet as the model sheet
  *   npm run studio -- character new "<idea>" [--mock]
- *   npm run studio -- episode new <id> --lead <slug> [--with a,b] [--format strip3] --direction "…" [--credit "name: comment"]
+ *   npm run studio -- episode headline <id> "…"   (quote band above a single panel)
+ *   npm run studio -- episode new <id> --lead <slug> [--with a,b] [--format strip3|single] [--headline "câu trích"] --direction "…" [--credit "name: comment"]
  *   npm run studio -- episode new <id> --lead <slug> [--with a,b] --from-listen data/listen/<id>.json
  *   npm run studio -- episode run <id> [--from step] [--to step] [--mock]
  *   npm run studio -- episode approve <id> [--post post.json] [--despite-warnings]
@@ -32,11 +34,12 @@ import { listCharacters, loadProfile } from "./profile.js";
 import { createCharacter, writeProfile } from "./create.js";
 import { approveEpisode, checkForApproval } from "./approve.js";
 import { whoAmI } from "./provenance.js";
-import { createEpisode, doneSteps, episodeDir, EPISODE_FORMATS, EPISODE_STEPS, type EpisodeFormat, type EpisodeStep, listEpisodes, readStep, runEpisode } from "./episode.js";
+import { createEpisode, doneSteps, setHeadline, episodeDir, EPISODE_FORMATS, EPISODE_STEPS, type EpisodeFormat, type EpisodeStep, listEpisodes, readStep, runEpisode } from "./episode.js";
 import { approveSheet, openStudio } from "./studio.js";
 import { approveStyle, loadStyle, runStyleTest, styleReference, styleText } from "./style.js";
 import { loadOffice, officePlanSvg } from "./office.js";
 import { loadBrandList, makeBrandArt } from "./brand-art.js";
+import { makeEdgeArt } from "./edge-art.js";
 import { SERIES_DIR } from "./bible.js";
 import { ALL_FONT_PATHS, svgToPng } from "@hoi-sau/svg-text";
 
@@ -51,9 +54,12 @@ function loadDotEnv(): void {
   }
 }
 
+const unCaret = (s: string): string => s.replace(/\^(?=\s)/g, "");
+
 async function main(argv: string[]): Promise<void> {
   loadDotEnv();
-  const [cmd, ...rest] = argv;
+  // npm.cmd on Windows passes quoted text through cmd.exe, which can leave its escape caret before each space.
+  const [cmd, ...rest] = process.platform === "win32" ? argv.map(unCaret) : argv;
   // --flag value pairs; a flag followed by another flag (or nothing) is boolean.
   const opts: Record<string, string[]> = {};
   const args: string[] = [];
@@ -83,8 +89,19 @@ async function main(argv: string[]): Promise<void> {
     const brands = args.length ? all.filter((b) => args.includes(b.id)) : all;
     if (!brands.length) throw new Error(`no such brand; known: ${all.map((b) => b.id).join(", ")}`);
     const out = join(ROOT, "output", "brand-art");
-    const { art } = await makeBrandArt(ctx, brands, out, console.log);
+    const only = opt("--only") as "avatar" | "cover" | undefined;
+    if (only && only !== "avatar" && only !== "cover") throw new Error("--only takes avatar or cover");
+    const { art } = await makeBrandArt(ctx, brands, out, console.log, { only, recrop: flags.has("--recrop") });
     console.log(`${art.length} brands → ${out} (avatar.png, cover.png, cover-title.png each)`);
+    return;
+  }
+
+  if (cmd === "edge") {
+    const ctx = openStudio({ mock, log: console.log });
+    const slugs = args.length ? args : listCharacters();
+    const out = join(ROOT, "output", "edge");
+    const { files } = await makeEdgeArt(ctx, slugs, out, console.log);
+    console.log(`${files.length} pictures → ${join(out, "index.html")}`);
     return;
   }
 
@@ -144,6 +161,13 @@ async function main(argv: string[]): Promise<void> {
     return;
   }
 
+  if (cmd === "episode" && args[0] === "headline") {
+    const [, id, ...words] = args;
+    if (!id) throw new Error('usage: episode headline <id> "câu trên đầu tranh" (empty clears it)');
+    const ep = setHeadline(id, words.join(" "));
+    console.log(ep.headline ? `${id}: headline set. Run: episode run ${id} --from safety` : `${id}: headline cleared`);
+    return;
+  }
   if (cmd === "episode" && args[0] === "new") {
     const id = args[1];
     const lead = opt("--lead");
@@ -161,6 +185,7 @@ async function main(argv: string[]): Promise<void> {
       characters: (opt("--with") ?? "").split(",").filter(Boolean),
       direction,
       ...(format ? { format } : {}),
+      ...(opt("--headline") ? { headline: opt("--headline") } : {}),
       credits: opts["--credit"]
         ? opts["--credit"].map((c) => {
             const [name, ...comment] = c.split(":");

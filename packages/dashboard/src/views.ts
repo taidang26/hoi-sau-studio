@@ -7,7 +7,12 @@
  * Interface text goes through t() (Vietnamese and English).
  */
 
+import { createHash } from "node:crypto";
+import { readFileSync, statSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { canReply, windowClosesAt, type Comment, type Conversation } from "@hoi-sau/channel";
+import type { BackupInfo } from "./backup.js";
 import type { BrandView, CharacterView, Episode, Run, State } from "./data.js";
 import { lang, locale, t } from "./i18n.js";
 
@@ -56,6 +61,30 @@ const NAV = [
   ["/settings", "Cài đặt", icon('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>')],
 ] as const;
 
+const STATIC_DIR = fileURLToPath(new URL("../static", import.meta.url));
+let assets = { mtime: -1, html: "" };
+/**
+ * Stylesheet and fonts with a version, so the browser keeps them between pages instead of
+ * fetching them again (which made text jump on every click). Links in the menu and on cards
+ * are rendered ahead on hover, and pages cross-fade, so moving around feels like one app.
+ */
+function HEAD_ASSETS(): string {
+  const mtime = statSync(join(STATIC_DIR, "app.css")).mtimeMs;
+  if (mtime !== assets.mtime) {
+    const v = createHash("sha1").update(readFileSync(join(STATIC_DIR, "app.css"))).digest("hex").slice(0, 10);
+    const rules = { prerender: [{ where: { and: [{ href_matches: "/*" }, { not: { href_matches: ["/lang/*", "/logout", "/login", "/connect/*"] } }] }, eagerness: "moderate" }] };
+    assets = {
+      mtime,
+      html:
+        `<link rel="preload" href="/static/BeVietnamPro-SemiBold.ttf?v=1" as="font" type="font/ttf" crossorigin>` +
+        `<link rel="preload" href="/static/BeVietnamPro-Bold.ttf?v=1" as="font" type="font/ttf" crossorigin>` +
+        `<link rel="stylesheet" href="/static/app.css?v=${v}">` +
+        `<script type="speculationrules">${JSON.stringify(rules)}</script>`,
+    };
+  }
+  return assets.html;
+}
+
 export function layout(title: string, path: string, body: string): string {
   const nav = NAV.map(([href, label, svg]) => {
     const active = href === "/" ? path === "/" : path.startsWith(href);
@@ -64,26 +93,33 @@ export function layout(title: string, path: string, body: string): string {
   const back = encodeURIComponent(path || "/");
   const langs = `<div class="lang" role="group" aria-label="${esc(t("Ngôn ngữ"))}"><a href="/lang/vi?back=${back}"${lang() === "vi" ? ' class="on" aria-current="true"' : ""}>VI</a><a href="/lang/en?back=${back}"${lang() === "en" ? ' class="on" aria-current="true"' : ""}>EN</a></div>`;
   return `<!doctype html><html lang="${lang()}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#fff7ee">
-<title>${esc(title)} · Hồi Sau</title><link rel="stylesheet" href="/static/app.css"></head>
+<title>${esc(title)} · Hồi Sau</title>${HEAD_ASSETS()}</head>
 <body><div class="shell"><input type="checkbox" id="menu" class="menu-toggle" aria-hidden="true"><aside class="side"><div class="side-top"><a class="brand" href="/"><span class="mark">HS</span><span class="brand-name">Hồi Sau<small>${esc(t("Studio truyện tranh"))}</small></span></a>
 <label for="menu" class="menu-btn" aria-label="${esc(t("Mở menu"))}">${icon('<path d="M4 7h16M4 12h16M4 17h16"/>')}</label></div><nav>${nav}</nav>
 <div class="side-foot">${langs}<p>${esc(t("Khán giả viết tiếp. Xem hồi sau sẽ rõ."))}</p></div></aside>
 <main>${body}</main></div></body></html>`;
 }
 
+/** "pufferfish (cá nóc)" reads "cá nóc" in Vietnamese and "pufferfish" in English. */
+const species = (s: string) => {
+  const m = s.match(/^(.*?)\s*\(([^)]+)\)\s*$/);
+  return m ? (lang() === "vi" ? m[2] : m[1]) : s;
+};
+
 const swatches = (c: CharacterView) =>
   `<span class="swatches">${c.profile.look.palette.map((s) => `<i style="background:${esc(s.hex)}" title="${esc(s.name)} ${esc(s.hex)}"></i>`).join("")}</span>`;
 
-/** The character's picture: the latest Muse Image sheet, else the placeholder portrait. */
+/** The character's picture: the front view from the locked sheet, else the latest Muse Image sheet, else the placeholder portrait. */
 export const charSrc = (c: CharacterView) => {
+  if (c.profile.look.character_sheet) return `/face/${esc(c.profile.slug)}.webp`;
   const sheet = c.run?.images.find((i) => i.id === "sheet");
-  return sheet ? `/media/${esc(c.profile.slug)}/${esc(sheet.file)}` : `/portrait/${esc(c.profile.slug)}.svg`;
+  return sheet ? `/media/${esc(c.profile.slug)}/${esc(sheet.file)}?face` : `/portrait/${esc(c.profile.slug)}.svg`;
 };
 
 const sheetImg = (c: CharacterView) =>
-  c.run?.images.some((i) => i.id === "sheet")
-    ? `<img src="${charSrc(c)}" alt="${esc(c.profile.name)}" loading="lazy">`
-    : `<div class="ph portrait" style="background:${esc(c.profile.look.palette[0].hex)}33"><img src="${charSrc(c)}" alt="${esc(c.profile.name)}" loading="lazy"><span class="badge" title="${esc(t("Chân dung tạm, thay bằng model sheet khi vẽ bằng AI"))}">${esc(t("tạm"))}</span></div>`;
+  c.profile.look.character_sheet || c.run?.images.some((i) => i.id === "sheet")
+    ? `<img class="from-sheet" src="${charSrc(c)}" alt="${esc(c.profile.name)}" loading="lazy">`
+    : `<div class="ph portrait" style="background:${esc(c.profile.look.palette[0].hex)}33"><img src="${charSrc(c)}" alt="${esc(c.profile.name)}" loading="lazy"><span class="badge" title="${esc(t("Chân dung tạm, thay bằng bản vẽ chuẩn khi AI vẽ xong"))}">${esc(t("tạm"))}</span></div>`;
 
 /** Round face of a character, by slug. */
 function face(s: State, slug: string, size = "") {
@@ -267,8 +303,8 @@ export function empty(text: string, action = ""): string {
 export function charactersPage(s: State, ok?: string): string {
   const cards = s.characters
     .map(
-      (c) => `<a class="card char" href="/characters/${esc(c.profile.slug)}">${sheetImg(c)}<div class="char-body"><h2>${esc(c.profile.name)} <span class="muted">${esc(c.profile.species)}</span></h2>
-<p class="type">${esc(c.profile.office_type)}</p><p>${esc(c.profile.core_gag)}</p>${swatches(c)}<p class="muted small">${esc(t("{e} tập · {c} bình luận", { e: c.episodes, c: c.comments }))}${c.profile.look.character_sheet ? ` · <span class="ok-text">✓ ${esc(t("đã khoá sheet"))}</span>` : ""}</p></div></a>`,
+      (c) => `<a class="card char" href="/characters/${esc(c.profile.slug)}">${sheetImg(c)}<div class="char-body"><h2>${esc(c.profile.name)} <span class="muted">${esc(species(c.profile.species))}</span></h2>
+<p class="type">${esc(c.profile.office_type)}</p><p>${esc(c.profile.core_gag)}</p>${swatches(c)}<p class="muted small">${esc(t("{e} tập · {c} bình luận", { e: c.episodes, c: c.comments }))}${c.profile.look.character_sheet ? ` · <span class="ok-text">✓ ${esc(t("đã chốt bản chuẩn"))}</span>` : ""}</p></div></a>`,
     )
     .join("");
   const add = `<a class="card char add-card" href="/characters/new"><span class="plus">+</span><b>${esc(t("Tạo nhân vật mới"))}</b><small class="muted">${esc(t("AI viết hồ sơ từ một câu, hoặc tự điền"))}</small></a>`;
@@ -290,17 +326,17 @@ export interface SheetControls {
   extra?: string;
 }
 
-const SHOT: Record<string, string> = { sheet: "Model sheet", poses: "Bộ tư thế", desk: "Thử: bàn làm việc", meeting: "Thử: phòng họp", gag: "Thử: miếng hài" };
+const SHOT: Record<string, string> = { sheet: "Bản vẽ chuẩn", poses: "Bộ tư thế", desk: "Thử: bàn làm việc", meeting: "Thử: phòng họp", gag: "Thử: miếng hài" };
 
 export function characterPage(c: CharacterView, draw?: SheetControls): string {
   const p = c.profile;
   const list = (items: string[]) => `<ul>${items.map((i) => `<li>${esc(i)}</li>`).join("")}</ul>`;
-  const drawBtn = (primary: boolean) => button(`/characters/${p.slug}/sheet`, esc(t(c.run ? "Vẽ lại bằng AI" : "Vẽ model sheet bằng AI")), primary ? "btn on" : "btn");
+  const drawBtn = (primary: boolean) => button(`/characters/${p.slug}/sheet`, esc(t(c.run ? "Vẽ lại bằng AI" : "Vẽ bản chuẩn bằng AI")), primary ? "btn on" : "btn");
   const images = c.run
     ? `<div class="shots">${c.run.images
         .map((i) => `<figure><img src="/media/${esc(p.slug)}/${esc(i.file)}" alt="${esc(t(SHOT[i.id] ?? i.id))}" loading="lazy"><figcaption>${esc(t(SHOT[i.id] ?? i.id))}</figcaption></figure>`)
         .join("")}</div><p class="muted small">${c.run.mock ? `${esc(t("Ảnh vẽ thử, không phải AI thật."))} ` : ""}${time(c.run.startedAt)} · <a href="/media/${esc(p.slug)}/review.html">${esc(t("trang soát nét nhận diện"))}</a></p>`
-    : empty("Chưa vẽ lần nào. AI sẽ vẽ model sheet, 6 tư thế và 3 khung thử theo phong cách series.", draw?.canDraw && !draw.drawing ? drawBtn(true) : "");
+    : empty("Chưa vẽ lần nào. AI sẽ vẽ bản chuẩn, 6 tư thế và 3 khung thử theo phong cách series.", draw?.canDraw && !draw.drawing ? drawBtn(true) : "");
   const drawBar = !draw?.canDraw
     ? ""
     : draw.drawing
@@ -308,7 +344,7 @@ export function characterPage(c: CharacterView, draw?: SheetControls): string {
       : c.run
         ? drawBtn(false)
         : "";
-  const body = `<p><a href="/characters">← ${esc(t("Nhân vật"))}</a></p><header class="page-head"><div class="b-top"><img class="b-ava big" src="${charSrc(c)}" alt="" style="background:${esc(p.look.palette[0].hex)}44"><div><h1>${esc(p.name)}</h1><p class="muted">${esc(p.species)} · ${esc(p.role)}</p>${swatches(c)}</div></div><a class="btn on" href="/characters/${esc(p.slug)}/edit">✎ ${esc(t("Sửa hồ sơ"))}</a></header>
+  const body = `<p><a href="/characters">← ${esc(t("Nhân vật"))}</a></p><header class="page-head"><div class="b-top"><img class="b-ava big" src="${charSrc(c)}" alt="" style="background:${esc(p.look.palette[0].hex)}44"><div><h1>${esc(p.name)}</h1><p class="muted">${esc(species(p.species))} · ${esc(p.role)}</p>${swatches(c)}</div></div><a class="btn on" href="/characters/${esc(p.slug)}/edit">✎ ${esc(t("Sửa hồ sơ"))}</a></header>
 ${flash(draw?.ok, draw?.error)}
 ${modelSheet(c)}
 <section class="card"><div class="card-head"><h2>${esc(t("Thử độ nhất quán"))}</h2>${drawBar}</div>${images}</section>
@@ -322,9 +358,9 @@ ${draw?.extra ?? ""}
 /** Want, fear, contradiction, life, comic engine and relationships, when the profile has them. */
 function depth(c: CharacterView): string {
   const p = c.profile;
-  if (!p.want && !p.contradiction && !p.comic_engine?.length) return "";
+  if (!p.want && !p.contradiction && !p.edge && !p.comic_engine?.length) return "";
   const list = (items: string[]) => `<ul>${items.map((i) => `<li>${esc(i)}</li>`).join("")}</ul>`;
-  const kv = [["Muốn", p.want], ["Sợ", p.fear], ["Mâu thuẫn", p.contradiction]].filter(([, v]) => v).map(([k, v]) => `<dt>${esc(t(k!))}</dt><dd>${esc(v)}</dd>`).join("");
+  const kv = [["Muốn", p.want], ["Sợ", p.fear], ["Mâu thuẫn", p.contradiction], ["Mặt khuất", p.edge]].filter(([, v]) => v).map(([k, v]) => `<dt>${esc(t(k!))}</dt><dd>${esc(v)}</dd>`).join("");
   return `<div class="grid2"><section class="card"><h2>${esc(t("Con người"))}</h2>${kv ? `<dl class="kv">${kv}</dl>` : ""}${p.life?.length ? `<h3>${esc(t("Đời sống"))}</h3>${list(p.life)}` : ""}</section>
 <section class="card"><h2>${esc(t("Tình huống gây cười"))}</h2>${list(p.comic_engine ?? [])}${p.relationships?.length ? `<h3>${esc(t("Quan hệ"))}</h3>${list(p.relationships.map((r) => r.dynamic))}` : ""}</section></div>`;
 }
@@ -333,10 +369,10 @@ function depth(c: CharacterView): string {
 function modelSheet(c: CharacterView): string {
   const p = c.profile;
   if (p.look.character_sheet)
-    return `<section class="card"><div class="card-head"><h2>✓ ${esc(t("Model sheet đã khoá"))}</h2>${c.run ? button(`/characters/${p.slug}/approve`, esc(t("Khoá lại bằng bản vẽ mới"))) : ""}</div>
-<div class="sheets"><img class="sheet" src="/sheet/${esc(p.slug)}/${esc(p.look.character_sheet)}" alt="Model sheet ${esc(p.name)}">${p.look.pose_sheet ? `<img class="sheet" src="/sheet/${esc(p.slug)}/${esc(p.look.pose_sheet)}" alt="${esc(t("Bộ tư thế"))} ${esc(p.name)}">` : ""}</div><p class="muted small">${esc(t("Mọi khung truyện đều vẽ theo bản này, và AI soát lại từng khung theo nó."))}</p></section>`;
+    return `<section class="card"><div class="card-head"><h2>✓ ${esc(t("Bản vẽ chuẩn đã chốt"))}</h2>${c.run ? button(`/characters/${p.slug}/approve`, esc(t("Chốt bản vẽ mới nhất"))) : ""}</div>
+<div class="sheets"><img class="sheet" src="/sheet/${esc(p.slug)}/${esc(p.look.character_sheet)}" alt="Model sheet ${esc(p.name)}">${p.look.pose_sheet ? `<img class="sheet" src="/sheet/${esc(p.slug)}/${esc(p.look.pose_sheet)}" alt="${esc(t("Bộ tư thế"))} ${esc(p.name)}">` : ""}</div><p class="muted small">${esc(t("Đây là khuôn của nhân vật: AI vẽ mọi khung truyện theo bản này để nhân vật luôn giống nhau, rồi soát lại từng khung xem có lệch không."))}</p></section>`;
   return c.run
-    ? `<section class="card next-step"><div class="card-head"><h2>${esc(t("Bước tiếp: khoá model sheet"))}</h2>${button(`/characters/${p.slug}/approve`, esc(t("Khoá model sheet")), "btn on")}</div><p class="muted">${esc(t("Ưng bản vẽ bên dưới thì khoá lại: từ đó mọi khung truyện đều vẽ theo bản này."))}</p></section>`
+    ? `<section class="card next-step"><div class="card-head"><h2>${esc(t("Bước tiếp: chốt bản vẽ chuẩn"))}</h2>${button(`/characters/${p.slug}/approve`, esc(t("Chốt bản vẽ chuẩn")), "btn on")}</div><p class="muted">${esc(t("Ưng bản vẽ bên dưới thì chốt lại: từ đó mọi khung truyện đều vẽ theo bản này."))}</p></section>`
     : "";
 }
 
@@ -618,7 +654,17 @@ export interface SettingView {
   set: boolean;
 }
 
-export function settingsPage(settings: SettingView[], opts: { demo: boolean; mock: boolean; ok?: string; error?: string }): string {
+/** Last backup, where backups go, and a button to back up now. */
+function backupCard(b?: BackupInfo): string {
+  if (!b) return "";
+  const last = b.last ? t("Lần gần nhất: {at}", { at: b.last.at.toLocaleString(locale()) }) : t("Chưa sao lưu lần nào.");
+  return `<section class="card"><h2>${esc(t("Sao lưu"))}</h2><p>${esc(last)}${b.count ? ` · ${esc(t("{n} bản", { n: b.count }))}` : ""}</p>
+<p class="muted small">${esc(t("Tự sao lưu bình luận, tin nhắn, tập đã vẽ, tư liệu và nhân vật mỗi 6 giờ. Khoá bí mật không được chép."))}</p>
+<p class="small"><span class="muted">${esc(t("Thư mục"))}:</span> <code>${esc(b.dir)}</code></p>
+${b.error ? `<div class="warn small">${esc(b.error)}</div>` : ""}${button("/settings/backup", esc(t(b.running ? "Đang sao lưu…" : "Sao lưu ngay")), "btn on")}</section>`;
+}
+
+export function settingsPage(settings: SettingView[], opts: { demo: boolean; mock: boolean; ok?: string; error?: string; backup?: BackupInfo }): string {
   const rows = settings
     .map(
       (s) => `<label class="setting"><span class="s-head"><b>${esc(t(s.label))}</b><span class="pill ${s.set ? "ok" : "off"}">${esc(t(s.set ? "Đã có" : "Chưa có"))}</span></span><small class="muted">${esc(t(s.help))}</small>
@@ -629,8 +675,8 @@ export function settingsPage(settings: SettingView[], opts: { demo: boolean; moc
 ${flash(opts.ok, opts.error)}
 ${opts.demo ? `<div class="notice">${esc(t("Đang xem dữ liệu mẫu nên không lưu cài đặt."))}</div>` : ""}
 <div class="settings-grid"><form class="card form" method="post" action="/settings"><h2>${esc(t("Khoá kết nối"))}</h2>${rows}<button class="btn on"${opts.demo ? " disabled" : ""}>${esc(t("Lưu"))}</button></form>
-<section class="card"><h2>${esc(t("Thứ tự thiết lập"))}</h2><ol class="flow vertical"><li><b>1</b><span>${esc(t("Nhập Mã ứng dụng Meta và Khoá bí mật"))}</span></li><li><b>2</b><span>${t('Vào <a href="/channels">Kênh</a>, bấm Kết nối Facebook, chọn Trang')}</span></li><li><b>3</b><span>${esc(t("Nhập khoá AI Muse để AI viết và vẽ"))}</span></li><li><b>4</b><span>${t('Vào <a href="/style">Phong cách</a> chọn kiểu vẽ, rồi vẽ model sheet cho nhân vật')}</span></li></ol>
-${opts.mock ? `<p class="muted small">${esc(t("AI đang ở chế độ vẽ thử: ảnh là mẫu, không tốn lượt."))}</p>` : ""}</section></div>`;
+<div class="settings-side"><section class="card"><h2>${esc(t("Thứ tự thiết lập"))}</h2><ol class="flow vertical"><li><b>1</b><span>${esc(t("Nhập Mã ứng dụng Meta và Khoá bí mật"))}</span></li><li><b>2</b><span>${t('Vào <a href="/channels">Kênh</a>, bấm Kết nối Facebook, chọn Trang')}</span></li><li><b>3</b><span>${esc(t("Nhập khoá AI Muse để AI viết và vẽ"))}</span></li><li><b>4</b><span>${t('Vào <a href="/style">Phong cách</a> chọn kiểu vẽ, rồi vẽ bản chuẩn cho nhân vật')}</span></li></ol>
+${opts.mock ? `<p class="muted small">${esc(t("AI đang ở chế độ vẽ thử: ảnh là mẫu, không tốn lượt."))}</p>` : ""}</section>${backupCard(opts.backup)}</div></div>`;
   return layout(t("Cài đặt"), "/settings", body);
 }
 

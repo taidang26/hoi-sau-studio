@@ -7,9 +7,11 @@ import { createReadStream, existsSync, statSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { extname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import sharp from "sharp";
 import { BOLD_FONT_PATH, DEFAULT_FONT_PATH } from "@hoi-sau/svg-text";
-import type { Conversation, InboxMessage, Platform } from "@hoi-sau/channel";
+import { addCharacterBrand, type Conversation, type InboxMessage, type Platform } from "@hoi-sau/channel";
 import { NeedsSetup, type Accounts } from "./accounts.js";
+import type { Backup } from "./backup.js";
 import { editCharacterPage, newCharacterPage, saveCharacter } from "./characters.js";
 import { appendMessage, brandArtDir, loadState, toggleDirection, type Paths } from "./data.js";
 import { isSignedIn, passwordMatches, sessionCookie } from "./auth.js";
@@ -53,6 +55,8 @@ const TYPES: Record<string, string> = {
 };
 
 export interface DashboardOptions extends Paths {
+  /** Copies of what lives only on this machine, shown and run from Settings. */
+  backup?: Backup;
   channel: () => ChannelStatus;
   /** When set, every page but /login and /static asks for it. Set it whenever the dashboard is online. */
   password?: string;
@@ -104,16 +108,97 @@ const redirect = (res: ServerResponse, to: string) => {
 const withNote = (to: string, key: "ok" | "err", text: string) => `${to}${to.includes("?") ? "&" : "?"}${key}=${encodeURIComponent(text)}`;
 
 function send(res: ServerResponse, status: number, body: string, type = "text/html; charset=utf-8"): void {
-  res.writeHead(status, { "Content-Type": type, "Cache-Control": "no-store" });
+  // no-cache, not no-store: the page is still fetched fresh, but Back can restore it instantly.
+  res.writeHead(status, { "Content-Type": type, "Cache-Control": "no-cache" });
   res.end(body);
 }
 
-/** Serves a file; honours a single byte Range, which Safari needs to play video. */
-function sendFile(res: ServerResponse, file: string, range?: string): void {
+/** Every picture on a page asks for a WebP sized to how it is shown; the full file stays one click away. */
+const sizedImages = (html: string) =>
+  html.replace(
+    /<img([^>]*?) src="(\/(?:studio-media|sheet|media|brand-art|style-media|series-media|research-media)\/[^"?]+\.(?:png|jpe?g|webp))"/g,
+    (_, pre: string, src: string) => `<img${pre} decoding="async" src="${src}?w=${/^\/(sheet|brand-art)\//.test(src) ? 1400 : 960}"`,
+  );
+
+/** Widths an image may be asked for with ?w=, so a page never pulls a 3 MB sheet for a thumbnail. */
+const WIDTHS = [320, 640, 960, 1400];
+const resized = new Map<string, Promise<Buffer>>();
+
+/**
+ * The head and shoulders of the first figure on a model sheet (the front view, top left).
+ * Sheets differ in how many views they have, so the figure is found by its columns of ink.
+ */
+async function faceCrop(file: string): Promise<Buffer> {
+  const { data, info } = await sharp(file).removeAlpha().greyscale().raw().toBuffer({ resolveWithObject: true });
+  const { width: W, height: H } = info;
+  const half = Math.round(H / 2);
+  const ink = (x: number, y: number) => data[y * W + x] < 200;
+  const colInk = (x: number) => {
+    for (let y = 0; y < half; y += 2) if (ink(x, y)) return true;
+    return false;
+  };
+  let x0 = 0;
+  while (x0 < W && !colInk(x0)) x0++;
+  // The figure ends at the first gap of blank columns wide enough to separate two views.
+  let x1 = x0, gap = 0;
+  for (let x = x0; x < W && gap < Math.round(W / 80); x++) colInk(x) ? ((x1 = x), (gap = 0)) : gap++;
+  // Views that touch (a tail over the next view) leave no gap: fall back to the first quarter.
+  if (x1 - x0 > W / 3) x1 = x0 + Math.round(W / 4.5);
+  let y0 = 0;
+  const rowInk = (y: number) => {
+    for (let x = x0; x <= x1; x += 2) if (ink(x, y)) return true;
+    return false;
+  };
+  while (y0 < half && !rowInk(y0)) y0++;
+  const w = Math.max(1, x1 - x0 + 1);
+  const pad = Math.round(w * 0.06);
+  const left = Math.max(0, x0 - pad), top = Math.max(0, y0 - pad);
+  const size = Math.min(w + 2 * pad, W - left, H - top);
+  return sharp(file).extract({ left, top, width: size, height: size }).png().toBuffer();
+}
+
+/** A smaller WebP copy of an image, kept in memory and keyed by the file's mtime so a redraw shows up. */
+function resizedImage(file: string, mtime: number, width: number, crop?: "face"): Promise<Buffer> {
+  const key = `${file}|${mtime}|${width}|${crop ?? ""}`;
+  let hit = resized.get(key);
+  if (!hit) {
+    hit = (async () => {
+      const img = crop === "face" ? sharp(await faceCrop(file)).resize(width, width) : sharp(file).resize({ width, withoutEnlargement: true });
+      return img.webp({ quality: 82 }).toBuffer();
+    })();
+    if (resized.size > 300) resized.delete(resized.keys().next().value!);
+    resized.set(key, hit);
+    hit.catch(() => resized.delete(key));
+  }
+  return hit;
+}
+
+/**
+ * Serves a file with an ETag, so a page change only revalidates what it already has.
+ * ?w= on an image returns a WebP no wider than that; ?v= marks a versioned asset that never changes.
+ * Honours a single byte Range, which Safari needs to play video.
+ */
+async function sendFile(req: IncomingMessage, res: ServerResponse, file: string, crop?: "face"): Promise<void> {
   if (!existsSync(file) || !statSync(file).isFile()) return send(res, 404, notFoundPage());
-  const type = TYPES[extname(file).toLowerCase()] ?? "application/octet-stream";
-  const size = statSync(file).size;
-  const m = range?.match(/^bytes=(\d*)-(\d*)$/);
+  const q = new URL(req.url ?? "/", "http://localhost").searchParams;
+  const st = statSync(file);
+  const ext = extname(file).toLowerCase();
+  const asked = Number(q.get("w")) || (crop ? 320 : 0);
+  const width = asked && /^\.(png|jpe?g|webp)$/.test(ext) ? (WIDTHS.find((w) => w >= asked) ?? WIDTHS[WIDTHS.length - 1]) : 0;
+  const etag = `W/"${st.size.toString(36)}-${Math.round(st.mtimeMs).toString(36)}${width ? `-${width}${crop ?? ""}` : ""}"`;
+  const cache = q.has("v") ? "public, max-age=31536000, immutable" : "no-cache";
+  if (req.headers["if-none-match"] === etag) {
+    res.writeHead(304, { ETag: etag, "Cache-Control": cache });
+    return void res.end();
+  }
+  if (width) {
+    const body = await resizedImage(file, st.mtimeMs, width, crop);
+    res.writeHead(200, { "Content-Type": "image/webp", "Content-Length": body.length, ETag: etag, "Cache-Control": cache });
+    return void res.end(body);
+  }
+  const type = TYPES[ext] ?? "application/octet-stream";
+  const size = st.size;
+  const m = req.headers.range?.match(/^bytes=(\d*)-(\d*)$/);
   if (m && (m[1] || m[2])) {
     const start = m[1] ? Number(m[1]) : Math.max(0, size - Number(m[2]));
     const end = m[1] && m[2] ? Math.min(Number(m[2]), size - 1) : size - 1;
@@ -124,7 +209,7 @@ function sendFile(res: ServerResponse, file: string, range?: string): void {
     res.writeHead(206, { "Content-Type": type, "Accept-Ranges": "bytes", "Content-Range": `bytes ${start}-${end}/${size}`, "Content-Length": end - start + 1 });
     return void createReadStream(file, { start, end }).pipe(res);
   }
-  res.writeHead(200, { "Content-Type": type, "Accept-Ranges": "bytes", "Content-Length": size });
+  res.writeHead(200, { "Content-Type": type, "Accept-Ranges": "bytes", "Content-Length": size, ETag: etag, "Cache-Control": cache });
   createReadStream(file).pipe(res);
 }
 
@@ -142,7 +227,22 @@ const errText = (e: unknown) => friendly(e instanceof Error ? e.message : String
 
 export function handler(opts: DashboardOptions) {
   const page = (res: ServerResponse, status: number, html: string) =>
-    send(res, status, opts.banner ? html.replace("<main>", `<main><div class="notice demo-note">${t(opts.banner)}</div>`) : html);
+    send(res, status, sizedImages(opts.banner ? html.replace("<main>", `<main><div class="notice demo-note">${t(opts.banner)}</div>`) : html));
+  /** A new character gets its own channel on the Kênh page right away (every account still to connect). */
+  const withBrand = (slug: string) => {
+    if (opts.brandsFile) {
+      const p = loadProfile(slug, charactersDir());
+      addCharacterBrand({ slug, name: p.name, tagline: p.office_type }, opts.brandsFile);
+    }
+    return slug;
+  };
+  const loadProfileSafe = (slug: string) => {
+    try {
+      return loadProfile(slug, charactersDir());
+    } catch {
+      return undefined;
+    }
+  };
   const charactersDir = () => opts.studio?.opts.charactersDir ?? opts.charactersDir ?? CHARACTERS_DIR;
   const acc = opts.accounts;
   // Sample data shows every button; pressing one explains that nothing real changes.
@@ -205,6 +305,14 @@ export function handler(opts: DashboardOptions) {
     }
 
     // Settings and accounts.
+    if (path === "/settings/backup" && req.method === "POST") {
+      if (!opts.backup) return redirect(res, "/settings");
+      try {
+        return redirect(res, withNote("/settings", "ok", t("Đã sao lưu: {name}", { name: opts.backup.run() })));
+      } catch (e) {
+        return redirect(res, withNote("/settings", "err", (e as Error).message));
+      }
+    }
     if (path === "/settings") {
       if (req.method === "POST") {
         if (!acc || opts.demo) return redirect(res, "/settings");
@@ -216,7 +324,7 @@ export function handler(opts: DashboardOptions) {
         }
       }
       const settings = acc?.settings() ?? [];
-      return page(res, 200, settingsPage(settings, { demo: Boolean(opts.demo || !acc), mock: Boolean(opts.studio?.opts.mock), ok, error: err }));
+      return page(res, 200, settingsPage(settings, { demo: Boolean(opts.demo || !acc), mock: Boolean(opts.studio?.opts.mock), ok, error: err, backup: opts.backup?.info() }));
     }
     if (path === "/connect/facebook") {
       const brand = q.get("brand") ?? "hoi-sau";
@@ -285,7 +393,13 @@ export function handler(opts: DashboardOptions) {
           if (!files.length) throw new Error(t("Chưa chọn ảnh."));
           let added = 0;
           for (const f of files) if (rs.add(brand, Buffer.from(await f.arrayBuffer()), { from: "upload", link: link || undefined }).added) added++;
-          return redirect(res, withNote(to, "ok", added ? t("Đã thêm {n} ảnh. Bấm “AI đọc tất cả” để rút công thức.", { n: added }) : t("Ảnh này đã có trong tư liệu.")));
+          if (!added) return redirect(res, withNote(to, "ok", t("Ảnh này đã có trong tư liệu.")));
+          // With the AI ready, reading starts at once: one drop, and the recipes follow.
+          if (!opts.studio || opts.studio.ready) {
+            rs.readNew(brand);
+            return redirect(res, withNote(to, "ok", t("Đã thêm {n} ảnh. AI đang đọc để rút công thức.", { n: added })));
+          }
+          return redirect(res, withNote(to, "ok", t("Đã thêm {n} ảnh. Thêm khoá AI Muse ở Cài đặt để AI đọc.", { n: added })));
         }
         const form = await readForm(req);
         if (path === "/research/instagram") {
@@ -321,13 +435,13 @@ export function handler(opts: DashboardOptions) {
     }
     if (rs && path.startsWith("/research-media/")) {
       const file = inside(rs.opts.dir, path.slice("/research-media/".length));
-      return file && /[\\/]files[\\/][a-f0-9]+\.(png|jpe?g|webp)$/.test(file) ? sendFile(res, file) : send(res, 404, notFoundPage());
+      return file && /[\\/]files[\\/][a-f0-9]+\.(png|jpe?g|webp)$/.test(file) ? sendFile(req, res, file) : send(res, 404, notFoundPage());
     }
 
     // Characters: the form works without Muse; drawing and the AI writer need Studio.
     if (path === "/characters/new/manual" && req.method === "POST") {
       try {
-        return redirect(res, withNote(`/characters/${saveCharacter(await readForm(req), charactersDir())}`, "ok", t("Đã tạo nhân vật. Bước tiếp: vẽ model sheet.")));
+        return redirect(res, withNote(`/characters/${withBrand(saveCharacter(await readForm(req), charactersDir()))}`, "ok", t("Đã tạo nhân vật. Bước tiếp: vẽ bản chuẩn.")));
       } catch (e) {
         return fail("/characters/new?manual=1", e);
       }
@@ -351,7 +465,7 @@ export function handler(opts: DashboardOptions) {
       if (path === "/characters/new") {
         const idea = (await readForm(req)).get("idea") ?? "";
         try {
-          return redirect(res, withNote(`/characters/${await st.newCharacter(idea)}`, "ok", t("Đã tạo nhân vật. Bước tiếp: vẽ model sheet.")));
+          return redirect(res, withNote(`/characters/${withBrand(await st.newCharacter(idea))}`, "ok", t("Đã tạo nhân vật. Bước tiếp: vẽ bản chuẩn.")));
         } catch (e) {
           return fail("/characters/new", e);
         }
@@ -395,7 +509,7 @@ export function handler(opts: DashboardOptions) {
       if (ap) {
         try {
           st.approve(ap[1]);
-          return redirect(res, withNote(`/characters/${ap[1]}`, "ok", t("Đã khoá model sheet.")));
+          return redirect(res, withNote(`/characters/${ap[1]}`, "ok", t("Đã chốt bản vẽ chuẩn.")));
         } catch (e) {
           return fail(`/characters/${ap[1]}`, e);
         }
@@ -461,36 +575,42 @@ export function handler(opts: DashboardOptions) {
 
     if (path.startsWith("/static/")) {
       const name = path.slice("/static/".length);
-      if (FONTS[name]) return sendFile(res, FONTS[name]);
+      if (FONTS[name]) return sendFile(req, res, FONTS[name]);
       const file = inside(STATIC_DIR, name);
-      return file ? sendFile(res, file) : send(res, 404, notFoundPage());
+      return file ? sendFile(req, res, file) : send(res, 404, notFoundPage());
     }
     if (path.startsWith("/media/")) {
       const file = inside(opts.runsDir, path.slice("/media/".length));
-      return file ? sendFile(res, file) : send(res, 404, notFoundPage());
+      // ?face cuts the front view from a sheet that is drawn but not locked yet.
+      return file ? sendFile(req, res, file, url.searchParams.has("face") ? "face" : undefined) : send(res, 404, notFoundPage());
     }
     if (path.startsWith("/brand-art/")) {
       const file = inside(st?.brandArtDir ?? brandArtDir(opts), path.slice("/brand-art/".length));
-      return file && /[\\/](avatar|cover|cover-title)\.png$/.test(file) ? sendFile(res, file) : send(res, 404, notFoundPage());
+      return file && /[\\/](avatar|cover|cover-title)\.png$/.test(file) ? sendFile(req, res, file) : send(res, 404, notFoundPage());
     }
 
     if (st && path.startsWith("/studio-media/")) {
       const file = inside(st.opts.episodesDir, path.slice("/studio-media/".length));
-      return file && !file.includes(`${sep}layers${sep}`) ? sendFile(res, file, req.headers.range) : send(res, 404, notFoundPage());
+      return file && !file.includes(`${sep}layers${sep}`) ? sendFile(req, res, file) : send(res, 404, notFoundPage());
+    }
+    const fm = path.match(/^\/face\/([a-z0-9-]+)\.webp$/);
+    if (fm) {
+      const sheet = loadProfileSafe(fm[1])?.look.character_sheet;
+      return sheet ? sendFile(req, res, join(charactersDir(), fm[1], sheet), "face") : send(res, 404, notFoundPage());
     }
     const pm = path.match(/^\/portrait\/([a-z0-9-]+)\.svg$/);
-    if (pm) return sendFile(res, join(charactersDir(), pm[1], "portrait.svg"));
-    if (st && path.startsWith("/sheet/")) {
-      const file = inside(st.opts.charactersDir, path.slice("/sheet/".length));
-      return file && /[\\/](model|pose)-sheet\.(png|jpe?g|webp)$/.test(file) ? sendFile(res, file) : send(res, 404, notFoundPage());
+    if (pm) return sendFile(req, res, join(charactersDir(), pm[1], "portrait.svg"));
+    if (path.startsWith("/sheet/")) {
+      const file = inside(charactersDir(), path.slice("/sheet/".length));
+      return file && /[\\/](model|pose)-sheet\.(png|jpe?g|webp)$/.test(file) ? sendFile(req, res, file) : send(res, 404, notFoundPage());
     }
     if (st && path.startsWith("/style-media/")) {
       const file = inside(st.styleDir, path.slice("/style-media/".length));
-      return file && /\.(png|jpe?g|webp)$/.test(file) ? sendFile(res, file) : send(res, 404, notFoundPage());
+      return file && /\.(png|jpe?g|webp)$/.test(file) ? sendFile(req, res, file) : send(res, 404, notFoundPage());
     }
     if (st && path.startsWith("/series-media/")) {
       const file = inside(st.opts.seriesDir ?? SERIES_DIR, path.slice("/series-media/".length));
-      return file && /[\\/]style-ref\.(png|jpe?g|webp)$/.test(file) ? sendFile(res, file) : send(res, 404, notFoundPage());
+      return file && /[\\/]style-ref\.(png|jpe?g|webp)$/.test(file) ? sendFile(req, res, file) : send(res, 404, notFoundPage());
     }
 
     const state = loadState(opts);

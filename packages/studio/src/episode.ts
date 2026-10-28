@@ -20,7 +20,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import sharp from "sharp";
-import { BUBBLE_KINDS, composePanel, imageSize, snugBubble, svgToPng, type BubbleKind, type DialogueLine } from "@hoi-sau/svg-text";
+import { BOLD_FONT_PATH, BUBBLE_KINDS, composePanel, escapeXml, renderSpeech, imageSize, snugBubble, svgToPng, type BubbleKind, type DialogueLine } from "@hoi-sau/svg-text";
 import {
   AUDIENCE_DATA_RULE,
   BANNED_RULE,
@@ -46,7 +46,7 @@ import {
 import { addCanon, SERIES_DIR, type CanonFact, type SeriesBible } from "./bible.js";
 import { generateSoftly, type MuseImage } from "./muse-image.js";
 import { type ChatMessage, type MuseSpark, S } from "./muse-spark.js";
-import { CHARACTERS_DIR, type Profile } from "./profile.js";
+import { CHARACTERS_DIR, nameVi, type Profile } from "./profile.js";
 import { iconLine } from "./prompts.js";
 import { type SeriesStyle, styleReference, styleText } from "./style.js";
 import { officeBrief, officePanelText, type Office } from "./office.js";
@@ -66,14 +66,16 @@ export interface EpisodeSpec {
   direction: string;
   /** Commenters to credit; they may appear as coworkers drawn from text only. */
   credits: Array<{ name: string; comment: string }>;
-  /** "carousel" (default): 4–6 panels posted one by one. "strip3": exactly three panels, the rule of three, posted one by one too. */
+  /** "carousel" (default): 4–6 panels posted one by one. "strip3": exactly three panels, the rule of three, posted one by one too. "single": one panel that carries the whole joke. */
   format?: EpisodeFormat;
+  /** A one-line quote card: this text sits in a band above the panel, the drawing and short lines below it. */
+  headline?: string;
   /** Where the direction came from; also the first line of provenance.jsonl. */
   source?: EpisodeSource;
   createdAt: string;
 }
 
-export const EPISODE_FORMATS = ["carousel", "strip3"] as const;
+export const EPISODE_FORMATS = ["carousel", "strip3", "single"] as const;
 export type EpisodeFormat = (typeof EPISODE_FORMATS)[number];
 
 export interface Premise {
@@ -135,6 +137,8 @@ export interface PanelReview {
   issues: Array<{ character: string; feature: string; problem: string }>;
   fix: string;
   redrawn: boolean;
+  /** Where each character's head is in the final panel, as shares of width and height; tails aim here. */
+  heads?: Array<{ character: string; x: number; y: number }>;
 }
 
 export interface StudioContext {
@@ -163,6 +167,7 @@ const PANEL_SIZE = "1024x1280";
 
 /** How many panels a format takes. */
 export function panelRange(ep: Pick<EpisodeSpec, "format">, bible: SeriesBible): { min: number; max: number } {
+  if (ep.format === "single") return { min: 1, max: 1 };
   return ep.format === "strip3" ? { min: 3, max: 3 } : bible.format.panels;
 }
 
@@ -200,6 +205,44 @@ export async function fitPost(image: Buffer, size = POST_SIZE): Promise<Buffer> 
   }
 }
 
+/** Paper card for a quote: the headline in a band on top, the lettered panel framed below. Same size as the panel. */
+export function headlineCard(panel: Buffer, size: { width: number; height: number }, headline: string): string {
+  const { width: W, height: H } = size;
+  const band = Math.round(H * 0.27);
+  const margin = Math.round(W * 0.05);
+  const ph = H - band - margin;
+  const pw = Math.round((ph * W) / H);
+  const px = Math.round((W - pw) / 2);
+  const text = renderSpeech(headline, { x: margin, y: Math.round(H * 0.03), width: W - 2 * margin, height: band - Math.round(H * 0.05), shape: "rect", draw: false }, {
+    fontPath: BOLD_FONT_PATH,
+    color: "#1d1d1f",
+    maxFontSize: Math.round(W * 0.06),
+    minFontSize: Math.round(W * 0.036),
+  }).svg;
+  const href = `data:image/png;base64,${panel.toString("base64")}`;
+  return (
+    `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">` +
+    `<rect width="${W}" height="${H}" fill="#f5f3ee"/>` +
+    text +
+    `<image href="${escapeXml(href)}" xlink:href="${escapeXml(href)}" x="${px}" y="${band}" width="${pw}" height="${ph}"/>` +
+    `<rect x="${px}" y="${band}" width="${pw}" height="${ph}" fill="none" stroke="#1d1d1f" stroke-width="${Math.max(3, Math.round(W / 270))}"/>` +
+    "</svg>"
+  );
+}
+
+/** Sets or clears the headline of an existing episode, through the pipeline so approval sees it. Re-run from letter after. */
+export function setHeadline(id: string, headline: string | undefined, dir?: string, safety: SafetyPolicy = loadSafety()): EpisodeSpec {
+  const ep = readStep<EpisodeSpec>(id, "episode", dir);
+  if (!ep) throw new Error(`no episode ${id}`);
+  if (headline) {
+    const early = ruleCheck([{ where: "headline", text: headline }], safety);
+    if (early.length) throw new Error(`headline refused by the safety rules:\n${early.map((i) => `  - ${i.topic} (${i.detail})`).join("\n")}`);
+  }
+  const next = { ...ep, headline: headline?.trim() || undefined };
+  writeStep(id, "episode", next, dir);
+  return next;
+}
+
 // ── storage ────────────────────────────────────────────────────────────────
 
 export const episodeDir = (id: string, dir = EPISODES_DIR) => join(dir, id);
@@ -220,7 +263,7 @@ function writeStep(id: string, step: string, value: unknown, dir?: string): void
 export function createEpisode(spec: Omit<EpisodeSpec, "createdAt">, dir?: string, safety: SafetyPolicy = loadSafety()): EpisodeSpec {
   if (!/^[a-z0-9-]+$/.test(spec.id)) throw new Error("episode id: lowercase letters, digits and dashes only");
   // Cheap early stop: an injected or banned direction never reaches the writer. The safety step checks it all again.
-  const early = ruleCheck([{ where: "direction", text: spec.direction }, ...spec.credits.flatMap((c, i) => [{ where: `credit ${i + 1}`, text: `${c.name}: ${c.comment}` }])], safety);
+  const early = ruleCheck([{ where: "direction", text: spec.direction }, ...(spec.headline ? [{ where: "headline", text: spec.headline }] : []), ...spec.credits.flatMap((c, i) => [{ where: `credit ${i + 1}`, text: `${c.name}: ${c.comment}` }])], safety);
   if (early.length) throw new Error(`episode ${spec.id} refused by the safety rules:\n${early.map((i) => `  - ${i.where}: ${i.topic} (${i.detail})`).join("\n")}`);
   if (existsSync(file(spec.id, "episode", dir))) throw new Error(`episode ${spec.id} already exists`);
   if (spec.format && !EPISODE_FORMATS.includes(spec.format)) throw new Error(`format must be one of ${EPISODE_FORMATS.join(", ")}`);
@@ -252,13 +295,16 @@ function castBrief(ctx: StudioContext, slugs: string[]): string {
       const p = ctx.profiles.get(s)!;
       return {
         slug: p.slug,
-        name: p.name,
+        // The episode is written in Vietnamese, so it uses the Vietnamese name; the English one is kept for reference.
+        name: nameVi(p),
+        global_name: p.name,
         species: p.species,
         office_type: p.office_type,
         core_gag: p.core_gag,
         want: p.want,
         fear: p.fear,
         contradiction: p.contradiction,
+        edge: p.edge,
         life: p.life,
         comic_engine: p.comic_engine,
         relationships: p.relationships?.filter((r) => slugs.includes(r.with)),
@@ -299,9 +345,12 @@ function writerMessages(ctx: StudioContext, ep: EpisodeSpec, task: string, earli
         `Series bible: ${seriesBrief(ctx, ep)}`,
         `Cast for this episode: ${castBrief(ctx, ep.characters)}`,
         "Use only the cast slugs given above in character and speaker fields.",
+        namesRule(ctx),
         BANNED_RULE(safetyOf(ctx)),
         AUDIENCE_DATA_RULE,
-      ].join("\n\n"),
+      ]
+        .filter(Boolean)
+        .join("\n\n"),
     },
     {
       role: "user",
@@ -310,6 +359,12 @@ function writerMessages(ctx: StudioContext, ep: EpisodeSpec, task: string, earli
         .join("\n\n"),
     },
   ];
+}
+
+/** The bible and notes may use the global names; Vietnamese text always uses the Vietnamese ones. */
+function namesRule(ctx: StudioContext): string {
+  const pairs = [...ctx.profiles.values()].filter((p) => nameVi(p) !== p.name).map((p) => `${p.name} → ${nameVi(p)}`);
+  return pairs.length ? `Names: in every Vietnamese text (titles, captions, dialogue) call the characters by their Vietnamese names: ${pairs.join(", ")}. The other names in the bible and notes are the same characters.` : "";
 }
 
 const safetyOf = (ctx: StudioContext) => (ctx.safety ??= loadSafety(ctx.seriesDir ?? SERIES_DIR));
@@ -323,6 +378,7 @@ export function episodeTexts(id: string, dir?: string): EpisodeText[] {
   const out: EpisodeText[] = [];
   const add = (where: string, text: string | undefined | null) => text?.trim() && out.push({ where, text });
   add("direction", ep?.direction);
+  add("headline", ep?.headline);
   ep?.credits.forEach((c, i) => (add(`credit ${i + 1} name`, c.name), add(`credit ${i + 1} comment`, c.comment)));
   if (premise) {
     for (const k of ["title", "logline", "setup", "twist", "hook", "trigger"] as const) add(`premise.${k}`, premise[k]);
@@ -405,6 +461,7 @@ const reviewSchema = S.obj({
   pass: S.bool(),
   issues: S.arr(S.obj({ character: S.str(), feature: S.str("which signature feature"), problem: S.str() })),
   fix: S.str("English edit instruction naming only what to change, or empty if pass"),
+  heads: S.arr(S.obj({ character: S.str("cast slug"), x: S.num("head centre, share of panel width 0-1"), y: S.num("head centre, share of panel height 0-1") })),
 });
 
 const canonSchema = S.obj({
@@ -485,6 +542,15 @@ export function episodePanelPrompt(ctx: StudioContext, ep: EpisodeSpec, sp: Scri
 export const PHONE_FONT = 0.044;
 export const PHONE_MIN_FONT = 0.036;
 
+/** The review may name a character by slug, display name or Vietnamese name; letter matches by slug. */
+export function slugFor(ctx: StudioContext, who: string): string {
+  const k = who.trim().toLowerCase();
+  for (const p of ctx.profiles.values()) if ([p.slug, p.name, nameVi(p)].some((n) => n?.toLowerCase() === k)) return p.slug;
+  return who;
+}
+
+const clamp01 = (v: number) => Math.min(1, Math.max(0, Number.isFinite(v) ? v : 0.5));
+
 /** Roughly where a speaker's head is, from staging and shot. Coordinates as shares of the panel. */
 function headAt(bp: BoardPanel, pos: Position): { x: number; y: number } {
   const X: Record<Position, number> = { left: 0.27, center: 0.5, right: 0.73 };
@@ -498,7 +564,7 @@ function headAt(bp: BoardPanel, pos: Position): { x: number; y: number } {
  * a thought) at the speaker's head. A second line reads after the first:
  * lower, and on its own side when the speakers stand apart. Coordinates in px.
  */
-export function bubbleLayout(sp: ScriptPanel, bp: BoardPanel, width: number, height: number): DialogueLine[] {
+export function bubbleLayout(sp: ScriptPanel, bp: BoardPanel, width: number, height: number, heads: PanelReview["heads"] = []): DialogueLine[] {
   const margin = width * 0.035;
   // A feed image is about 390 pt wide on a phone. 4.4% of the width is about
   // 17 pt there; below 3.6% (14 pt) a line counts as overflow so review flags it.
@@ -508,23 +574,33 @@ export function bubbleLayout(sp: ScriptPanel, bp: BoardPanel, width: number, hei
   return sp.dialogue.map((d, i) => {
     const kind = d.kind ?? "speech";
     const pos = bp.staging.find((s) => s.character === d.speaker)?.position ?? "center";
-    const head = headAt(bp, pos);
+    const seen = heads.find((h) => h.character === d.speaker);
+    const head = seen ? { x: clamp01(seen.x), y: clamp01(seen.y) } : headAt(bp, pos);
     const two = sp.dialogue.length > 1;
+    // Speakers on opposite sides each keep a bubble on their own side, narrower so both fit.
+    const sides = sp.dialogue.map((o) => bp.staging.find((s) => s.character === o.speaker)?.position ?? "center");
+    // Two speakers in different spots: the one further left takes the left edge, the other the right.
+    // Where the review saw the heads wins over the storyboard's left/centre/right.
+    const RANK = { left: 0.27, center: 0.5, right: 0.73 } as const;
+    const xOf = (j: number) => heads.find((h) => h.character === sp.dialogue[j].speaker)?.x ?? RANK[sides[j]];
+    const j = i === 0 ? 1 : 0;
+    const apart = two && sp.dialogue[j] !== undefined && sp.dialogue[j].speaker !== d.speaker && Math.abs(xOf(i) - xOf(j)) > 0.12;
+    const leftSide = apart && xOf(i) < xOf(j);
     // Bangers is condensed, so shouts get a larger size to read as loud.
     const size = kind === "shout" ? Math.round(fontSize * 1.25) : fontSize;
-    const { width: w, height: h } = snugBubble(d.text, kind, { fontSize: size, maxWidth: width * (two ? 0.52 : 0.62) });
+    const { width: w, height: h } = snugBubble(d.text, kind, { fontSize: size, maxWidth: width * (apart ? 0.44 : two ? 0.52 : 0.62) });
     // Lean towards the reading order: the first of two sits left of its speaker, the second right.
     const lean = two ? (i === 0 ? -0.06 : 0.06) : 0;
-    let x = Math.min(Math.max((head.x + lean) * width - w / 2, margin), width - margin - w);
+    let x = apart ? (leftSide ? margin : width - margin - w) : Math.min(Math.max((head.x + lean) * width - w / 2, margin), width - margin - w);
     let y = height * 0.03 + (two && i > 0 ? height * 0.05 : 0);
     const prev = placed[i - 1];
     if (prev && x < prev.x + prev.w + margin * 0.5 && prev.x < x + w + margin * 0.5) {
       // They would touch: hang the second below the first, nudged aside.
       y = prev.y + prev.h * 0.82;
-      x = Math.min(Math.max(prev.x + prev.w * 0.35, margin), width - margin - w);
+      if (!apart) x = Math.min(Math.max(prev.x + prev.w * 0.35, margin), width - margin - w);
     }
     placed.push({ x, y, w, h });
-    const aim = { x: head.x * width, y: Math.max(head.y * height, y + h + height * 0.06) };
+    const aim = { x: head.x * width, y: Math.max(head.y * height, y + h + height * 0.04) };
     return { speaker: d.speaker, text: d.text, bubble: { x, y, width: w, height: h, kind, draw: true, tail: aim }, options: { maxFontSize: size, minFontSize, strokeWidth: Math.max(3, width / 300) } };
   });
 }
@@ -550,7 +626,9 @@ export async function runStep(ctx: StudioContext, id: string, step: EpisodeStep)
     case "beats": {
       const n = panelRange(ep, ctx.bible);
       const task =
-        ep.format === "strip3"
+        ep.format === "single"
+          ? 'Make it exactly 1 beat (purpose "punchline"): one picture that holds the whole joke. The everyday trigger is visible in the scene itself and the twist lands at a glance, from the drawing first and at most two short lines.'
+          : ep.format === "strip3"
           ? 'Break it into exactly 3 beats, the rule of three: beat 1 sets up the everyday trigger, beat 2 repeats the pattern one step worse, beat 3 is the twist (purpose "punchline") and must land from the drawing alone. Each panel is posted as its own swipeable image.'
           : `Break it into ${n.min}–${n.max} beats. Last beat is the hook for "hồi sau".`;
       const beats = await ctx.spark.json<Beats>("beats", beatsSchema(n), writerMessages(ctx, ep, task, { premise: need("premise") }));
@@ -560,7 +638,7 @@ export async function runStep(ctx: StudioContext, id: string, step: EpisodeStep)
       const raw = await ctx.spark.json<Script>(
         "script",
         scriptSchema(panelRange(ep, ctx.bible)),
-        writerMessages(ctx, ep, "Write the panel script: one panel per beat. Let the pictures carry the joke: at least one panel has no dialogue, and the punchline must read from the drawing alone. Keep dialogue short and in each character's voice, never breaking their never_says rules. Characters rarely call each other by name.", { premise: need("premise"), beats: need("beats") }),
+        writerMessages(ctx, ep, (ep.headline ? `A headline band above the panel already reads: "${ep.headline}". The picture illustrates it; the bubbles must not repeat or explain it, they add the punch. ` : "") + (ep.format === "single" ? "Write the script for one single panel that tells the whole joke: the setting shows the trigger, the characters' poses and faces show the twist, and at most two short bubbles (12 words each) finish it. Write everyday spoken Northern (Hà Nội) Vietnamese: blunt, clipped, colloquial. The last bubble is the punchline and must land on its own; never explain the joke or state its moral. Keep dialogue in each character's voice, never breaking their never_says rules. Characters rarely call each other by name." : "Write the panel script: one panel per beat. Let the pictures carry the joke: at least one panel has no dialogue, and the punchline must read from the drawing alone. Write everyday spoken Northern (Hà Nội) Vietnamese: blunt, clipped, colloquial; never explain the joke or state its moral. Keep dialogue short and in each character's voice, never breaking their never_says rules. Characters rarely call each other by name."), { premise: need("premise"), beats: need("beats") }),
       );
       return writeStep(id, "script", sanitizeScript(raw, ep, ctx.bible), dir);
     }
@@ -659,10 +737,12 @@ export async function runStep(ctx: StudioContext, id: string, step: EpisodeStep)
       for (const r of renders) {
         const data = await fitPost(readFileSync(join(episodeDir(id, dir), r.file)));
         const size = imageSize(data);
-        const lines = bubbleLayout(script.panels[r.n - 1], board.panels[r.n - 1], size.width, size.height);
+        const heads = readStep<{ reviews: PanelReview[] }>(id, "review", dir)?.reviews.find((v) => v.n === r.n)?.heads?.map((h) => ({ ...h, character: slugFor(ctx, h.character) }));
+        const lines = bubbleLayout(script.panels[r.n - 1], board.panels[r.n - 1], size.width, size.height, heads);
         const { svg, overflow } = composePanel({ data, ...size }, lines);
         const name = `${String(r.n).padStart(2, "0")}.png`;
-        writeFileSync(join(out, name), svgToPng(svg));
+        const png = svgToPng(svg);
+        writeFileSync(join(out, name), ep.headline && r.n === 1 ? svgToPng(headlineCard(png, size, ep.headline)) : png);
         writeFileSync(join(out, `${String(r.n).padStart(2, "0")}.svg`), svg);
         pages.push({ n: r.n, file: `final/${name}`, overflow: overflow.length });
       }
@@ -705,6 +785,7 @@ async function reviewPanel(ctx: StudioContext, ep: EpisodeSpec, sp: ScriptPanel,
           return `${p.name} must have: ${p.look.signature.join("; ")}.${p.look.icon ? ` Its identifying item must be clearly visible: ${p.look.icon}.` : ""} Palette: ${p.look.palette.map((s) => s.hex).join(", ")}.`;
         }),
         "Fail the panel if a signature feature is wrong or missing, a character is off-model, there is drawn text, a speech bubble or a thought cloud, a human figure anywhere (every coworker is an animal), or anything unsafe. The first image is the panel; any others are the locked model sheets.",
+        `Also give, for every cast character you can see (by slug: ${sp.characters.map((c) => `${c} = ${ctx.profiles.get(c)!.name}`).join(", ")}), where the centre of their head is in the panel, as shares of its width and height (0 is left or top, 1 is right or bottom). Speech tails will aim there.`,
         `Unsafe means anything on this list, even in the background: ${safetyOf(ctx).topics.map((t) => t.describe).join("; ")}.`,
       ].join("\n"),
     },

@@ -6,7 +6,8 @@
  *   npm run talk -- sync <slug> <sound|video> [--lyrics file.txt] [--vocals stem.wav] [--start s] [--duration s] [--mock]
  *                    lip-sync to an existing sound: Muse Voice Transcribe times the words, Muse Spark picks gestures
  *   npm run talk -- cut <slug> [--phrase "cartoon character"] [--force]  SAM 3.1 cuts the character out, for --bg photos
- *                    make/sync take --bg photo.jpg: the character stands on a real photo instead of the drawn room
+ *   npm run talk -- sets [--only office,cafe] [--force]                    Muse Image draws empty background sets in series/sets/
+ *                    make/sync take --bg office|pantry|phong-tro|cafe or --bg photo.jpg: the cut-out character stands in front of it
  *   npm run talk -- demo                                                   offline: mock pictures, hummed voice
  */
 
@@ -17,6 +18,7 @@ import { probeVideo, reelsProblems } from "@hoi-sau/motion";
 import { openStudio } from "@hoi-sau/studio";
 import { Sam } from "@hoi-sau/dance";
 import { cutTalkArt, drawTalkArt, loadArt, talkDir } from "./art.js";
+import { drawSets, resolveBackground, setsDir } from "./sets.js";
 import { GESTURES } from "./gestures.js";
 import { renderTalk, silentCopy } from "./render.js";
 import { gateMouth, linesFromWords, readSound, soundVoice, stageLines, timeLyrics, toWords, voicedRegions } from "./sync.js";
@@ -27,6 +29,7 @@ import { mouthTrack, voiceFor } from "./voice.js";
 
 const ROOT = fileURLToPath(new URL("../../..", import.meta.url));
 const CHARACTERS = join(ROOT, "characters");
+const SETS_DIR = setsDir(join(ROOT, "series"));
 const fromCwd = (p: string) => (isAbsolute(p) ? p : resolve(process.cwd(), p));
 
 function flags(argv: string[]) {
@@ -194,6 +197,11 @@ async function main() {
       console.log(dir);
       return;
     }
+    case "sets": {
+      const files = await drawSets(openStudio({ mock: !!opt.mock, log }), SETS_DIR, { only: opt.only ? String(opt.only).split(",") : undefined, force: !!opt.force, log });
+      console.log(files.join("\n"));
+      return;
+    }
     case "cut": {
       const slug = pos[0];
       if (!slug) throw new Error('Usage: talk cut <slug> [--phrase "cartoon character"] [--force]');
@@ -211,7 +219,7 @@ async function main() {
       await sync(slug, fromCwd(media), {
         mock,
         lyrics: opt.lyrics ? fromCwd(opt.lyrics as string) : undefined,
-        background: opt.bg ? fromCwd(opt.bg as string) : undefined,
+        background: opt.bg ? fromCwd(resolveBackground(opt.bg as string, SETS_DIR)) : undefined,
         vocals: opt.vocals ? fromCwd(opt.vocals as string) : undefined,
         start: opt.start ? Number(opt.start) : undefined,
         duration: opt.duration ? Number(opt.duration) : undefined,
@@ -229,7 +237,7 @@ async function main() {
       await make(slug, {
         mock,
         topic: opt.topic as string | undefined,
-        background: opt.bg ? fromCwd(opt.bg as string) : undefined,
+        background: opt.bg ? fromCwd(resolveBackground(opt.bg as string, SETS_DIR)) : undefined,
         like: opt.like ? fromCwd(opt.like as string) : undefined,
         seconds: Number(opt.seconds ?? 30),
         script: opt.script ? fromCwd(opt.script as string) : undefined,
@@ -242,7 +250,7 @@ async function main() {
       return;
     }
     default:
-      console.log(readFileSync(fileURLToPath(import.meta.url), "utf8").split("\n").slice(2, 11).join("\n").replace(/^ \*/gm, ""));
+      console.log(readFileSync(fileURLToPath(import.meta.url), "utf8").split("\n").slice(2, 12).join("\n").replace(/^ \*/gm, ""));
   }
 }
 

@@ -163,4 +163,5 @@ test("depth of field: the near ground and side walls stay sharp, the end of the 
   assert.equal(shutter.far, 3, "a shallow set blurs less");
   assert.match(setPrompt(shutter), /knee height/);
   assert.doesNotMatch(setPrompt(shutter), /standing head height/);
+  assert.equal(setFor("van-phong-goc.png")?.far, 3, "the office corner is shallow too");
 });

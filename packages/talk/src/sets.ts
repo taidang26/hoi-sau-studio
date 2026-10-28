@@ -40,6 +40,16 @@ export const SETS: TalkSet[] = [
       "Shallow scene, no deep street perspective: the camera is low, at about the knee height of an adult, facing the shutter straight on. The line where the pavement meets the wall runs across the picture at about 62% of its height, so the pavement fills the lower part and comes right up to the camera; the middle of the pavement is clear, where a character will stand in front of the shutter.",
   },
   {
+    id: "van-phong-goc",
+    vi: "góc văn phòng",
+    vp: { x: 0.5, y: 0.45 },
+    far: 3,
+    scene:
+      "a corner of a real, ordinary small Vietnamese office in the afternoon, seen close: a pale wall with a frosted-glass partition about one to two metres behind, on it a wall calendar with no readable text, a small whiteboard with faint scribbles and a wall clock with no numbers; the corner of a plain office desk with a computer monitor and an office chair at the left side; a water dispenser and a potted plant at the right side; light grey ceramic floor tiles in the foreground; soft afternoon light from a window off the picture",
+    camera:
+      "Shallow scene, no deep room perspective and no rows of desks: the camera is low, at about the knee height of an adult, facing the wall straight on. The line where the floor meets the wall runs across the picture at about 60% of its height, so the floor fills the lower part and comes right up to the camera; the middle of the floor is clear, where a character will stand, with the desk and the water dispenser at the sides.",
+  },
+  {
     id: "van-phong-that",
     vi: "văn phòng Việt",
     vp: { x: 0.64, y: 0.52 },

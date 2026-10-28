@@ -140,3 +140,16 @@ test("storyNumbers: short numbers the story puts on props, not times or percenta
   assert.deepEqual(storyNumbers("Rico waves a queue ticket with 02 at 9:05, 50% done, number 02 again"), ["02"]);
   assert.deepEqual(storyNumbers("Lolo sleeps at the desk"), []);
 });
+
+test("fillBands paints over dark margin bands and keeps the size; a plain light wall is left alone", async () => {
+  const { fillBands } = await import("./finish.js");
+  const art = await lineArt();
+  // A 10 px black band down the left edge, as an edit leaves it.
+  const banded = await sharp(art).composite([{ input: await sharp({ create: { width: 10, height: 640, channels: 3, background: "#080808" } }).png().toBuffer(), left: 0, top: 0 }]).png().toBuffer();
+  const out = await fillBands(banded);
+  const meta = await sharp(out).metadata();
+  assert.deepEqual([meta.width, meta.height], [512, 640]);
+  const px = await sharp(out).removeAlpha().raw().toBuffer();
+  assert.ok(px[(300 * 512 + 2) * 3] > 150, "band filled with the wall colour");
+  assert.equal(await fillBands(art), art);
+});

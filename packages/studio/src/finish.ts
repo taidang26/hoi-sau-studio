@@ -140,7 +140,7 @@ export async function framingZoom(src: Buffer, out: Buffer): Promise<number> {
 }
 
 /** The share of each side added as a plain margin before an edit, so a zoom eats the margin, not the picture. */
-export const RECOLOUR_PAD = 0.08;
+export const RECOLOUR_PAD = 0.12;
 
 /** The panel inside a plain margin of its own average edge colour, same pixel size as the panel. */
 export async function padPanel(png: Buffer, pad = RECOLOUR_PAD): Promise<Buffer> {
@@ -176,7 +176,55 @@ export async function alignBack(src: Buffer, edited: Buffer): Promise<Buffer> {
       }
   const left = Math.max(0, Math.round(best.x * ew)), top = Math.max(0, Math.round(best.y * eh));
   const width = Math.min(ew - left, Math.round(best.s * ew)), height = Math.min(eh - top, Math.round(best.s * eh));
-  return sharp(edited).extract({ left, top, width, height }).resize(w, h, { fit: "fill" }).png().toBuffer();
+  const cut = await sharp(edited).extract({ left, top, width, height }).resize(w, h, { fit: "fill" }).png().toBuffer();
+  return fillBands(cut);
+}
+
+/**
+ * Paints over dark flat bands along the edges (what is left of the margin,
+ * which the edit tends to paint near-black) with the nearest picture line,
+ * so the framing stays as it is. An edge line counts as band while it is
+ * dark and nearly one colour; at most 6% per side.
+ */
+export async function fillBands(png: Buffer): Promise<Buffer> {
+  const { data, info } = await sharp(png).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+  const { width: w, height: h } = info;
+  const lum = (x: number, y: number) => {
+    const k = (y * w + x) * 3;
+    return (data[k] + data[k + 1] + data[k + 2]) / 3;
+  };
+  const band = (pts: Array<[number, number]>) => {
+    let n = 0, s = 0, ss = 0;
+    for (const [x, y] of pts) {
+      const v = lum(x, y);
+      (n++, (s += v), (ss += v * v));
+    }
+    // Only dark, even lines: a plain light wall at the edge of a panel is picture, not margin.
+    return s / n < 40 && Math.sqrt(Math.max(0, ss / n - (s / n) ** 2)) < 6;
+  };
+  const col = (x: number) => Array.from({ length: Math.ceil(h / 4) }, (_, i) => [x, Math.min(h - 1, i * 4)] as [number, number]);
+  const row = (y: number) => Array.from({ length: Math.ceil(w / 4) }, (_, i) => [Math.min(w - 1, i * 4), y] as [number, number]);
+  const maxX = Math.floor(w * 0.06), maxY = Math.floor(h * 0.06);
+  let l = 0, r = 0, t = 0, b = 0;
+  while (l < maxX && band(col(l))) l++;
+  while (r < maxX && band(col(w - 1 - r))) r++;
+  while (t < maxY && band(row(t))) t++;
+  while (b < maxY && band(row(h - 1 - b))) b++;
+  if (!(l || r || t || b)) return png;
+  const out = Buffer.from(data);
+  const copy = (x: number, y: number, sx: number, sy: number) => {
+    const d = (y * w + x) * 3, s2 = (sy * w + sx) * 3;
+    (out[d] = data[s2]), (out[d + 1] = data[s2 + 1]), (out[d + 2] = data[s2 + 2]);
+  };
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < l; x++) copy(x, y, l, y);
+    for (let x = w - r; x < w; x++) copy(x, y, w - 1 - r, y);
+  }
+  for (let x = 0; x < w; x++) {
+    for (let y = 0; y < t; y++) copy(x, y, x, t);
+    for (let y = h - b; y < h; y++) copy(x, y, x, h - 1 - b);
+  }
+  return sharp(out, { raw: { width: w, height: h, channels: 3 } }).png().toBuffer();
 }
 
 /**

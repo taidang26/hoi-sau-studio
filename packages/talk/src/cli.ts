@@ -9,6 +9,8 @@
  *   npm run talk -- cut <slug> [--phrase "cartoon character"] [--keep desk|none] [--force]  SAM 3.1 cuts the character (and desk) out
  *   npm run talk -- sets [--only office,cafe] [--force]                    Muse Image draws empty background sets in series/sets/
  *                    make/sync take --bg plain[:#hex], office|pantry|phong-tro|cafe, or photo.jpg: the cut-out character stands in front of it
+ *   npm run talk -- illustrate <slug> <clip.mp4> [--vocals stem.wav] [--lines lines.json] [--end s] [--step plan|draw|poses|stabilize|render|all] [--only s01,s02] [--out dir]
+ *                    the clip's voice and cuts, one picture per shot of <slug> acting it out (Muse Image, checked by Muse Spark), two poses on one background (SAM 3.1)
  *   npm run talk -- demo                                                   offline: mock pictures, hummed voice
  */
 
@@ -27,6 +29,7 @@ import { MuseTranscribe, type TimedWord } from "./transcribe.js";
 import { checkScript, PACE, writeScript, type TalkScript } from "./script.js";
 import { buildTimeline, FPS } from "./timeline.js";
 import { mouthTrack, ttsArg, voiceFor, type Tts } from "./voice.js";
+import { drawPoses, drawShots, groupLines, hearWords, planShots, renderIllustrated, sceneCuts, shotSpans, stabilizePoses, timeWords, type Line, type Plan } from "./illustrate.js";
 
 const ROOT = fileURLToPath(new URL("../../..", import.meta.url));
 const CHARACTERS = join(ROOT, "characters");
@@ -238,6 +241,39 @@ async function main() {
         pose,
         log,
       });
+      return;
+    }
+    case "illustrate": {
+      const [slug, clip] = pos;
+      if (!slug || !clip) throw new Error("Usage: talk illustrate <slug> <clip.mp4> [--vocals stem.wav] [--lines lines.json] [--step plan|draw|poses|stabilize|render|all]");
+      const out = opt.out ? fromCwd(opt.out as string) : join(ROOT, "data", "talk", `${slug}-illustrate-${stamp()}`);
+      mkdirSync(out, { recursive: true });
+      const step = String(opt.step ?? "all");
+      const only = opt.only ? String(opt.only).split(",") : undefined;
+      const ctx = openStudio({ log });
+      const planFile = join(out, "plan.json"), wordsFile = join(out, "words.json"), shots = join(out, "shots");
+      const run = (s: string) => step === "all" || step === s;
+      if (run("plan") && (step === "plan" || !existsSync(planFile))) {
+        const heard = await hearWords(opt.vocals ? fromCwd(opt.vocals as string) : fromCwd(clip), wordsFile);
+        // Corrected lines (text, start, end) when given; otherwise the recogniser's words split at pauses.
+        const lines: Line[] = opt.lines ? JSON.parse(readFileSync(fromCwd(opt.lines as string), "utf8")) : groupLines(heard);
+        const end = opt.end ? Number(opt.end) : (await probeVideo(fromCwd(clip))).duration;
+        const shotsPlan = await planShots(ctx, slug, lines, shotSpans(lines, sceneCuts(fromCwd(clip)), end));
+        writeFileSync(planFile, JSON.stringify({ slug, clip: fromCwd(clip), end, lines, shots: shotsPlan } satisfies Plan, null, 2) + "\n");
+        log(`${planFile}: ${lines.length} lines, ${shotsPlan.length} shots (edit it before drawing if needed)`);
+      }
+      const plan: Plan = JSON.parse(readFileSync(planFile, "utf8"));
+      if (run("draw")) await drawShots(ctx, plan, shots, { only, log });
+      if (run("poses")) await drawPoses(ctx, plan, shots, { only, log });
+      if (run("stabilize")) writeFileSync(join(out, "stabilize.json"), JSON.stringify(await stabilizePoses(Sam.fromEnv(), ctx, plan, shots, { only, log }), null, 1));
+      if (run("render")) {
+        const heard = JSON.parse(readFileSync(wordsFile, "utf8"));
+        const video = await renderIllustrated(plan, timeWords(plan.lines, heard), shots, join(out, `${slug}.mp4`), { log });
+        await silentCopy(video);
+        const problems = reelsProblems(await probeVideo(video));
+        log(problems.length ? `Reels check: ${problems.join("; ")}` : "Reels check: ok for Facebook/Instagram Reels and TikTok");
+        console.log(video);
+      }
       return;
     }
     case "make":

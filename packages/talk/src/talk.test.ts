@@ -6,6 +6,7 @@ import { mockScript, PACE, scriptProblems, syllables } from "./script.js";
 import { blinkTrack, chunkWords, wordTimes } from "./timeline.js";
 import { hummedLine, joinLines, mouthTrack, RATE, ttsArg, ttsEnv, voiceShape, wavBytes } from "./voice.js";
 import { setPrompt, SETS } from "./sets.js";
+import { alignBackground, dilate, groupLines, parseCuts, popScale, poseAt, shotSpans, timeWords } from "./illustrate.js";
 
 test("words share the line's time, with a pause after punctuation", () => {
   const w = wordTimes("Dạ, em đang làm", 1, 3);
@@ -232,4 +233,50 @@ test("--tts mms-hn reads the fine-tuned voice's folder from TALK_HN_MODEL", () =
   assert.equal(ttsEnv("mms-hn", { TALK_HN_MODEL: "C:/dv/vits-hn-out" }).TALK_TTS_MODEL, "C:/dv/vits-hn-out");
   assert.equal(ttsEnv("mms", { X: "1" }).TALK_TTS_MODEL, undefined);
   assert.deepEqual(voiceShape("mms-hn"), { pitch: 1, tempo: 1 });
+});
+
+test("illustrate: the voice splits into lines at pauses, and lines go to the shot they start in", () => {
+  const w = (text: string, start: number, end: number) => ({ text, start, end });
+  const lines = groupLines([w("đi", 0, 0.3), w("làm", 0.35, 0.6), w("cuối", 1.4, 1.6), w("tháng", 1.65, 1.9)], 0.45);
+  assert.deepEqual(lines.map((l) => l.text), ["đi làm", "cuối tháng"]);
+  assert.deepEqual(parseCuts("x pts_time:0.1 y pts_time:1.2 z pts_time:3.5"), [1.2, 3.5]);
+  const spans = shotSpans(lines, [1.2], 4);
+  assert.deepEqual(spans.map((s) => s.lines), [[0], [1]]);
+  assert.deepEqual([spans[0].t, spans[1].t, spans[1].end], [0, 1.2, 4]);
+});
+
+test("illustrate: corrected words keep the recogniser's times when the counts match", () => {
+  const heard = [{ text: "dăm", start: 1, end: 1.2 }, { text: "mê", start: 1.3, end: 1.5 }];
+  assert.deepEqual(timeWords([{ text: "đam mê", start: 1, end: 1.5 }], heard), [{ text: "đam", start: 1, end: 1.2 }, { text: "mê", start: 1.3, end: 1.5 }]);
+  const spread = timeWords([{ text: "ab c", start: 0, end: 3 }], []);
+  assert.equal(spread.length, 2);
+  assert.ok(Math.abs(spread[0].end - 2) < 1e-9 && Math.abs(spread[1].end - 3) < 1e-9);
+});
+
+test("illustrate: poses take turns on caption chunks and the bubble pops", () => {
+  const c = (start: number, end: number) => ({ words: [], start, end });
+  const chunks = [c(0, 1), c(1, 2), c(2, 3), c(3, 4)];
+  assert.deepEqual([0, 1, 2, 3].map((i) => poseAt(chunks, i, 1, 2)), [0, 0, 1, 0]);
+  assert.equal(poseAt(chunks, 2, 0, 1), 0);
+  assert.equal(popScale(-0.1), null);
+  assert.deepEqual([0, 0.06, 0.5].map(popScale), [0.82, 1.06, 1]);
+});
+
+test("illustrate: pose B's background is found again after a shift", () => {
+  const w = 120, h = 160;
+  const a = new Uint8Array(w * h * 3), b = new Uint8Array(w * h * 3);
+  const tex = (x: number, y: number) => ((x * 37) ^ (y * 59) ^ ((x * y) >> 3)) & 255;
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++) {
+      for (let k = 0; k < 3; k++) a[(y * w + x) * 3 + k] = tex(x, y);
+      for (let k = 0; k < 3; k++) b[(y * w + x) * 3 + k] = tex(x + 4, y - 2);
+    }
+  const keep = new Uint8Array(w * h).fill(1);
+  const t = alignBackground(a, b, w, h, keep, { range: 8, scales: [1, 1] });
+  assert.deepEqual([t.dx, t.dy], [4, -2]);
+  assert.equal(t.err, 0);
+  const m = new Uint8Array(w * h);
+  m[80 * w + 60] = 1;
+  const d = dilate(m, w, h, 2);
+  assert.equal(d.reduce((n, v) => n + v, 0), 25);
 });

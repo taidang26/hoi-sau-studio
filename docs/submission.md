@@ -34,7 +34,7 @@ In the order the submission form asks (seen 28 Oct). Paste these as they are; *i
 | Track | Indie Developer |
 | Problem statement | Build for Your World |
 | Most Viral X post | *link to the demo post on X* |
-| Project Description | The short description below, then "The problem" and "What we built" from the full description |
+| Project Description | The short description below, then "The problem" and "What we built" from the full description, then the "Live product" links above (the form has no field for them; they need no Meta App Review, since viewers only see public posts) |
 | Public GitHub Repository | https://github.com/taidang26/hoi-sau-studio |
 | 3-Minute Demo Video | *YouTube link, public or unlisted* |
 | Use of Meta products | "How we used Meta's tools" below, as text |

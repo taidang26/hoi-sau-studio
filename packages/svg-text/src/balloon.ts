@@ -76,9 +76,9 @@ function wobblyOval(b: Box, rnd: () => number): string {
 }
 
 /**
- * A short tail that leaves the balloon facing the speaker and bends a little,
- * the way a letterer flicks it with one stroke. It stops well short of the
- * speaker so it never covers a face.
+ * A tail that leaves the balloon facing the speaker and bends a little,
+ * the way a letterer flicks it with one stroke. It reaches most of the way to
+ * the speaker but stops short so it never covers a face.
  */
 function curvedTail(b: Box, aim: Pt, rnd: () => number): string {
   const t = facing(b, aim);
@@ -91,7 +91,8 @@ function curvedTail(b: Box, aim: Pt, rnd: () => number): string {
   const edge = onEllipse(b, t, 1);
   const dx = aim.x - edge.x, dy = aim.y - edge.y;
   const dist = Math.hypot(dx, dy) || 1;
-  const len = Math.min(dist * 0.7, Math.max(b.height * 0.55, 34));
+  // Long enough to reach most of the way to a speaker standing far below the balloon.
+  const len = Math.min(dist * 0.78, Math.max(b.height * 2.2, 34));
   const tip = { x: edge.x + (dx / dist) * len, y: edge.y + (dy / dist) * len };
   // Bend sideways, away from the balloon's vertical centre line.
   const side = (aim.x >= c.x ? -1 : 1) * (0.25 + rnd() * 0.1) * len;
@@ -119,7 +120,7 @@ function puffs(b: Box, aim: Pt): Array<Pt & { r: number }> {
   const edge = onEllipse(b, facing(b, aim), 1.08);
   const dx = aim.x - edge.x, dy = aim.y - edge.y;
   const dist = Math.hypot(dx, dy) || 1;
-  const len = Math.min(dist * 0.75, Math.max(b.height * 0.7, 48));
+  const len = Math.min(dist * 0.8, Math.max(b.height * 2, 48));
   const r0 = Math.min(b.width, b.height) * 0.075;
   return [0.2, 0.55, 0.88].map((f, i) => ({ x: edge.x + (dx / dist) * len * f, y: edge.y + (dy / dist) * len * f, r: r0 * (1 - i * 0.3) }));
 }

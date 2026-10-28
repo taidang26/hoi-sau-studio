@@ -137,6 +137,8 @@ export interface PanelReview {
   issues: Array<{ character: string; feature: string; problem: string }>;
   fix: string;
   redrawn: boolean;
+  /** Where each character's head is in the final panel, as shares of width and height; tails aim here. */
+  heads?: Array<{ character: string; x: number; y: number }>;
 }
 
 export interface StudioContext {
@@ -459,6 +461,7 @@ const reviewSchema = S.obj({
   pass: S.bool(),
   issues: S.arr(S.obj({ character: S.str(), feature: S.str("which signature feature"), problem: S.str() })),
   fix: S.str("English edit instruction naming only what to change, or empty if pass"),
+  heads: S.arr(S.obj({ character: S.str("cast slug"), x: S.num("head centre, share of panel width 0-1"), y: S.num("head centre, share of panel height 0-1") })),
 });
 
 const canonSchema = S.obj({
@@ -539,6 +542,8 @@ export function episodePanelPrompt(ctx: StudioContext, ep: EpisodeSpec, sp: Scri
 export const PHONE_FONT = 0.044;
 export const PHONE_MIN_FONT = 0.036;
 
+const clamp01 = (v: number) => Math.min(1, Math.max(0, Number.isFinite(v) ? v : 0.5));
+
 /** Roughly where a speaker's head is, from staging and shot. Coordinates as shares of the panel. */
 function headAt(bp: BoardPanel, pos: Position): { x: number; y: number } {
   const X: Record<Position, number> = { left: 0.27, center: 0.5, right: 0.73 };
@@ -552,7 +557,7 @@ function headAt(bp: BoardPanel, pos: Position): { x: number; y: number } {
  * a thought) at the speaker's head. A second line reads after the first:
  * lower, and on its own side when the speakers stand apart. Coordinates in px.
  */
-export function bubbleLayout(sp: ScriptPanel, bp: BoardPanel, width: number, height: number): DialogueLine[] {
+export function bubbleLayout(sp: ScriptPanel, bp: BoardPanel, width: number, height: number, heads: PanelReview["heads"] = []): DialogueLine[] {
   const margin = width * 0.035;
   // A feed image is about 390 pt wide on a phone. 4.4% of the width is about
   // 17 pt there; below 3.6% (14 pt) a line counts as overflow so review flags it.
@@ -562,15 +567,18 @@ export function bubbleLayout(sp: ScriptPanel, bp: BoardPanel, width: number, hei
   return sp.dialogue.map((d, i) => {
     const kind = d.kind ?? "speech";
     const pos = bp.staging.find((s) => s.character === d.speaker)?.position ?? "center";
-    const head = headAt(bp, pos);
+    const seen = heads.find((h) => h.character === d.speaker);
+    const head = seen ? { x: clamp01(seen.x), y: clamp01(seen.y) } : headAt(bp, pos);
     const two = sp.dialogue.length > 1;
     // Speakers on opposite sides each keep a bubble on their own side, narrower so both fit.
     const sides = sp.dialogue.map((o) => bp.staging.find((s) => s.character === o.speaker)?.position ?? "center");
     // Two speakers in different spots: the one further left takes the left edge, the other the right.
-    const RANK = { left: 0, center: 1, right: 2 } as const;
-    const other = sides[i === 0 ? 1 : 0];
-    const apart = two && other !== undefined && other !== pos;
-    const leftSide = apart && RANK[pos] < RANK[other];
+    // Where the review saw the heads wins over the storyboard's left/centre/right.
+    const RANK = { left: 0.27, center: 0.5, right: 0.73 } as const;
+    const xOf = (j: number) => heads.find((h) => h.character === sp.dialogue[j].speaker)?.x ?? RANK[sides[j]];
+    const j = i === 0 ? 1 : 0;
+    const apart = two && sp.dialogue[j] !== undefined && sp.dialogue[j].speaker !== d.speaker && Math.abs(xOf(i) - xOf(j)) > 0.12;
+    const leftSide = apart && xOf(i) < xOf(j);
     // Bangers is condensed, so shouts get a larger size to read as loud.
     const size = kind === "shout" ? Math.round(fontSize * 1.25) : fontSize;
     const { width: w, height: h } = snugBubble(d.text, kind, { fontSize: size, maxWidth: width * (apart ? 0.44 : two ? 0.52 : 0.62) });
@@ -585,7 +593,7 @@ export function bubbleLayout(sp: ScriptPanel, bp: BoardPanel, width: number, hei
       if (!apart) x = Math.min(Math.max(prev.x + prev.w * 0.35, margin), width - margin - w);
     }
     placed.push({ x, y, w, h });
-    const aim = { x: head.x * width, y: Math.max(head.y * height, y + h + height * 0.06) };
+    const aim = { x: head.x * width, y: Math.max(head.y * height, y + h + height * 0.04) };
     return { speaker: d.speaker, text: d.text, bubble: { x, y, width: w, height: h, kind, draw: true, tail: aim }, options: { maxFontSize: size, minFontSize, strokeWidth: Math.max(3, width / 300) } };
   });
 }
@@ -722,7 +730,8 @@ export async function runStep(ctx: StudioContext, id: string, step: EpisodeStep)
       for (const r of renders) {
         const data = await fitPost(readFileSync(join(episodeDir(id, dir), r.file)));
         const size = imageSize(data);
-        const lines = bubbleLayout(script.panels[r.n - 1], board.panels[r.n - 1], size.width, size.height);
+        const heads = readStep<{ reviews: PanelReview[] }>(id, "review", dir)?.reviews.find((v) => v.n === r.n)?.heads;
+        const lines = bubbleLayout(script.panels[r.n - 1], board.panels[r.n - 1], size.width, size.height, heads);
         const { svg, overflow } = composePanel({ data, ...size }, lines);
         const name = `${String(r.n).padStart(2, "0")}.png`;
         const png = svgToPng(svg);
@@ -769,6 +778,7 @@ async function reviewPanel(ctx: StudioContext, ep: EpisodeSpec, sp: ScriptPanel,
           return `${p.name} must have: ${p.look.signature.join("; ")}.${p.look.icon ? ` Its identifying item must be clearly visible: ${p.look.icon}.` : ""} Palette: ${p.look.palette.map((s) => s.hex).join(", ")}.`;
         }),
         "Fail the panel if a signature feature is wrong or missing, a character is off-model, there is drawn text, a speech bubble or a thought cloud, a human figure anywhere (every coworker is an animal), or anything unsafe. The first image is the panel; any others are the locked model sheets.",
+        "Also give, for every cast character you can see, where the centre of their head is in the panel, as shares of its width and height (0 is left or top, 1 is right or bottom). Speech tails will aim there.",
         `Unsafe means anything on this list, even in the background: ${safetyOf(ctx).topics.map((t) => t.describe).join("; ")}.`,
       ].join("\n"),
     },

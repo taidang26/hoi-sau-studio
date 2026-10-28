@@ -192,6 +192,15 @@ test("a speaker at the centre and one at the left still each keep their own side
   assert.ok(left.tail!.x < centre.tail!.x);
 });
 
+test("tails aim at the heads the review saw, not the storyboard's guess", () => {
+  const sp = { dialogue: [{ speaker: "a", text: "Biết sai chưa?!" }, { speaker: "b", text: "Lãi!", kind: "thought" }] } as ScriptPanel;
+  const bp = { shot: "wide", angle: "eye level", composition: "", staging: [{ character: "a", position: "center" }, { character: "b", position: "left" }] } as BoardPanel;
+  const [a, b] = bubbleLayout(sp, bp, 1080, 1350, [{ character: "a", x: 0.6, y: 0.62 }, { character: "b", x: 0.2, y: 0.8 }]).map((l) => l.bubble);
+  assert.deepEqual(a.tail, { x: 0.6 * 1080, y: 0.62 * 1350 });
+  assert.deepEqual(b.tail, { x: 0.2 * 1080, y: 0.8 * 1350 });
+  assert.ok(b.x + b.width <= a.x, "the left head's bubble sits on the left");
+});
+
 test("lettering is big enough to read on a phone, and a long line still fits", () => {
   const sp = {
     dialogue: [

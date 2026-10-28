@@ -54,6 +54,8 @@ import { officeBrief, officePanelText, type Office } from "./office.js";
 import { sha256 } from "@hoi-sau/channel";
 import { type EpisodeSource, logProvenance, whoAmI } from "./provenance.js";
 
+const EXPIRED = /referenced response not found|expired/i;
+
 export const EPISODES_DIR = fileURLToPath(new URL("../../../episodes", import.meta.url));
 
 export const EPISODE_STEPS = ["premise", "beats", "script", "safety", "storyboard", "panels", "review", "letter", "canon"] as const;
@@ -718,11 +720,20 @@ export async function runStep(ctx: StudioContext, id: string, step: EpisodeStep)
         let redrawn = false;
         for (let attempt = 0; !verdict.pass && attempt < (ctx.maxRedraws ?? 1) + (isDuplicate(verdict) ? 1 : 0); attempt++) {
           log(`${id}: redraw panel ${r.n}: ${verdict.fix}`);
-          const res = await generateSoftly(ctx.image, {
+          const edit = {
             prompt: `Edit this panel. Change only this: ${verdict.fix}. Keep everything else exactly the same: composition, background, other characters, colours. ${numbers.length ? `No text, except keep the number ${numbers.join(", ")} on its prop as drawn.` : "No text."}`,
-            previousResponseId: current.responseId,
             size: panelSize(ep, r.n),
-          });
+          };
+          let res;
+          try {
+            res = await generateSoftly(ctx.image, { ...edit, previousResponseId: current.responseId });
+          } catch (e) {
+            if (!EXPIRED.test((e as Error).message)) throw e;
+            // Muse Image forgets old responses: send the panel itself and edit that instead.
+            log(`${id}: panel ${r.n}: Muse Image no longer has this panel's response; sending the picture.`);
+            const png = readFileSync(join(episodeDir(id, dir), current.file));
+            res = await generateSoftly(ctx.image, { ...edit, prompt: `${edit.prompt.replace("Edit this panel.", "Edit the attached panel.")}`, references: [`data:image/${imageSize(png).mime.split("/")[1]};base64,${png.toString("base64")}`] });
+          }
           const name = `panel-${r.n}-fix${attempt + 1}.${imageSize(res.image).mime.split("/")[1]}`;
           writeFileSync(join(episodeDir(id, dir), "panels", name), res.image);
           current = { ...current, history: [...current.history, current.file], file: `panels/${name}`, responseId: res.id };

@@ -125,6 +125,11 @@ test("a cut-out character stands bottom-centre on the photo", async () => {
   assert.equal(Math.round(OUT.h * (1 - ON_PHOTO.bottom)), SAFE.bottom);
   assert.ok(c(Math.round(SAFE_CX), SAFE.bottom - 5)[0] > 200, "feet end on the safe line");
   assert.ok(c(Math.round(SAFE_CX), SAFE.bottom + 40)[0] < 200, "nothing of the character below it");
+  // Moved right for a set with furniture on the left, but never past the safe area's right edge.
+  const right = await onPhoto(pic, holed, await photoBackdrop(photo), OUT.w);
+  const rp = (x: number, y: number) => [...right.data.subarray((y * right.width + x) * 3, (y * right.width + x) * 3 + 3)];
+  assert.ok(rp(SAFE.right - 5, cy)[0] > 200, "pushed right up to the safe edge");
+  assert.ok(rp(SAFE.right + 20, cy)[0] < 200, "nothing beyond the safe area");
 });
 
 test("set prompts keep the faded sketch look and leave out sparkles", () => {

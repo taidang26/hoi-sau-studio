@@ -144,7 +144,7 @@ export const backdropFor = (bg: string) => (bg === "plain" || bg.startsWith("pla
  * The character cut out with its SAM mask and stood on the photo, with a soft
  * contact shadow under it.
  */
-export async function onPhoto(png: Buffer, mask: Buffer, backdrop: Buffer): Promise<Raster> {
+export async function onPhoto(png: Buffer, mask: Buffer, backdrop: Buffer, cx = SAFE_CX): Promise<Raster> {
   const meta = await sharp(png).metadata();
   const w0 = meta.width!;
   const h0 = meta.height!;
@@ -196,8 +196,8 @@ export async function onPhoto(png: Buffer, mask: Buffer, backdrop: Buffer): Prom
     width = maxW;
   }
   const sized = await sharp(cut).resize(width, height).png().toBuffer();
-  // Centred on the safe area, which sits left of the platforms' button column.
-  const x = Math.round(SAFE_CX - width / 2);
+  // Centred on `cx` (by default the safe area's centre, left of the platforms' button column), never outside the safe area.
+  const x = Math.min(SAFE.right - width, Math.max(SAFE.left, Math.round(cx - width / 2)));
   const y = cutOff ? OUT.h - height : SAFE.bottom - height;
   if (cutOff) return flatten(backdrop, [{ input: sized, left: x, top: y }]);
   // Contact shadow: a dark core right under the feet inside a wider soft pool, so the character stands on the ground.
@@ -226,6 +226,8 @@ export class Pictures {
     private readonly dir: string,
     /** A backdrop photo (from photoBackdrop): characters with a cut stand on it. */
     private readonly backdrop?: Buffer,
+    /** Where a standing character's centre is on the backdrop, in output pixels. */
+    private readonly cx?: number,
   ) {}
   get(gesture: string, mouth: boolean, blink: boolean): Promise<Raster> {
     const key = `${gesture}:${mouth}:${blink}`;
@@ -243,7 +245,7 @@ export class Pictures {
       const both = pasteOval(await readRgb(read(g.blink.file)), await readRgb(read(g.mouth.file)), g.mouth.box);
       png = await sharp(both.data, { raw: { width: both.width, height: both.height, channels: 3 } }).png().toBuffer();
     } else png = read(mouth && g.mouth ? g.mouth.file : blink && g.blink ? g.blink.file : g.file);
-    return this.backdrop && g.mask ? onPhoto(png, read(g.mask), this.backdrop) : toFrame(png);
+    return this.backdrop && g.mask ? onPhoto(png, read(g.mask), this.backdrop, this.cx) : toFrame(png);
   }
 }
 
@@ -280,7 +282,8 @@ export async function renderTalk(r: RenderInput): Promise<{ video: string; secon
     wav = r.out.replace(/\.mp4$/, "") + ".voice.wav";
     writeFileSync(wav, wavBytes(r.voice.pcm, r.voice.rate));
   }
-  const pics = new Pictures(r.art, r.artDir, r.background ? await backdropFor(r.background) : undefined);
+  const standX = r.background ? setFor(r.background)?.standX : undefined;
+  const pics = new Pictures(r.art, r.artDir, r.background ? await backdropFor(r.background) : undefined, standX === undefined ? undefined : standX * OUT.w);
   // On a backdrop the character stands in the middle, so the words sit on the ground under it, clear of the body.
   const captions = new CaptionCache(r.chunks, r.background ? CAPTION_ON_BACKDROP.y : CAPTION_BAND.y);
   const title = r.title ? await titleOverlay(r.title) : undefined;

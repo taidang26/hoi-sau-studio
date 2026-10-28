@@ -31,6 +31,8 @@ export interface TalkSet {
    * character's feet. `vp` is measured on the framed picture.
    */
   framing?: { zoom: number; x: number; y: number };
+  /** Where the standing character's centre is, as a share of the frame width (default the safe area's centre); it always stays inside the safe area. */
+  standX?: number;
 }
 
 export const SETS: TalkSet[] = [
@@ -56,14 +58,16 @@ export const SETS: TalkSet[] = [
     vi: "góc văn phòng",
     vp: { x: 0.5, y: 0.45 },
     far: 6,
-    // Muse brings the desk forward over the left half; zoomed in from the bottom right it stands at the left edge, beside the character.
-    framing: { zoom: 1.3, x: 1, y: 1 },
+    // The desk is cut off by the left edge, so its cluttered end stays in the picture beside the character; a light zoom only trims the edges.
+    framing: { zoom: 1.05, x: 0.5, y: 1 },
+    // The cluttered desk end fills the left third, so the character stands right of centre, still inside the safe area.
+    standX: 0.62,
     references: ["refs/ep-001-office.jpg", "refs/ep-002-office.jpg", "refs/ep-003c-entrance.jpg"],
     seriesStyle: true,
     scene:
-      "Lolo's own desk corner in the team's office (from the series floor plan): pale cream walls, light wooden desks with low pale-grey dividers, the wide windows with light wooden blinds behind looking out on Hanoi rooftops, potted plants. At the left side, the corner of Lolo's light wooden desk with the half-dead pothos (trầu bà) in a pot on its corner, a monitor covered in sticky notes with no readable writing, papers and folders piled up, a coffee cup and a plastic cup of iced tea with a straw, a phone charging cable trailing off the desk, an office chair pushed back with a jacket hung over its back and a backpack on the floor beside it. At the right side, a tall potted plant by the next desk. Light beige floor tiles in the foreground",
+      "Lolo's own desk corner in the team's office (from the series floor plan): pale cream walls, light wooden desks with low pale-grey dividers, the wide windows with light wooden blinds behind looking out on Hanoi rooftops, potted plants. Lolo's light wooden desk is cut off by the left edge of the picture: only its right end shows, in the left fifth of the picture, and that end is cluttered: the half-dead pothos (trầu bà) in a pot on its corner, a monitor covered in sticky notes with no readable writing, papers and folders piled up, a coffee cup and a plastic cup of iced tea with a straw, a phone charging cable trailing down. In front of the desk end, also at the very left edge: an office chair pushed back with a jacket hung over its back, and a backpack on the floor. At the right edge, a tall potted plant by the next desk. Light beige floor tiles in the foreground",
     camera:
-      "Shallow scene, no deep room perspective: the camera is low, at about the knee height of an adult, facing the low divider and the windows straight on. The line where the floor meets the divider runs across the picture at about 60% of its height, so the floor fills the lower part and comes right up to the camera; the desk stands back against the divider in the left quarter of the picture and nothing of it comes forward of the divider line; the plant stands at the right edge; the whole floor in the lower 40% of the picture is clear from edge to edge, where a character will stand in the middle.",
+      "Shallow scene, no deep room perspective: the camera is low, at about the knee height of an adult, facing the low divider and the windows straight on. The line where the floor meets the divider runs across the picture at about 60% of its height, so the floor fills the lower part and comes right up to the camera. Everything on the left (desk end, chair, backpack) stays inside the left fifth of the picture and the plant inside the right fifth; the middle three fifths of the floor, from the divider down to the bottom edge, are clear, where a character will stand.",
   },
   {
     id: "van-phong-that",

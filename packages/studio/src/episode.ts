@@ -47,6 +47,7 @@ import { addCanon, SERIES_DIR, type CanonFact, type SeriesBible } from "./bible.
 import { generateSoftly, type MuseImage } from "./muse-image.js";
 import { type ChatMessage, type MuseSpark, S } from "./muse-spark.js";
 import { CHARACTERS_DIR, nameVi, type Profile } from "./profile.js";
+import { finishPanel, type Segmenter } from "./finish.js";
 import { iconLine } from "./prompts.js";
 import { type SeriesStyle, styleReference, styleText } from "./style.js";
 import { officeBrief, officePanelText, type Office } from "./office.js";
@@ -158,6 +159,8 @@ export interface StudioContext {
   safety?: SafetyPolicy;
   /** Redraw attempts per failed panel. */
   maxRedraws?: number;
+  /** SAM 3.1: when set, lettering first runs the focus pass (finish.ts) on each panel. */
+  segmenter?: Segmenter;
   log?: (s: string) => void;
   saveBible?: (b: SeriesBible) => void;
   saveMemory?: (slug: string, facts: string[], episode: string) => void;
@@ -735,7 +738,13 @@ export async function runStep(ctx: StudioContext, id: string, step: EpisodeStep)
       mkdirSync(out, { recursive: true });
       const pages: Array<{ n: number; file: string; overflow: number }> = [];
       for (const r of renders) {
-        const data = await fitPost(readFileSync(join(episodeDir(id, dir), r.file)));
+        let drawn: Buffer = readFileSync(join(episodeDir(id, dir), r.file));
+        if (ctx.segmenter) {
+          const cast = board.panels[r.n - 1].staging.map((s) => ctx.profiles.get(s.character)).filter((p): p is Profile => !!p);
+          drawn = (await finishPanel(drawn, ctx.segmenter, { characters: cast, log })).image;
+          writeFileSync(join(episodeDir(id, dir), "panels", `panel-${r.n}-finished.png`), drawn);
+        }
+        const data = await fitPost(drawn);
         const size = imageSize(data);
         const heads = readStep<{ reviews: PanelReview[] }>(id, "review", dir)?.reviews.find((v) => v.n === r.n)?.heads?.map((h) => ({ ...h, character: slugFor(ctx, h.character) }));
         const lines = bubbleLayout(script.panels[r.n - 1], board.panels[r.n - 1], size.width, size.height, heads);

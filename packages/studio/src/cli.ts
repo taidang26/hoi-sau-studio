@@ -14,7 +14,8 @@
  *   npm run studio -- episode headline <id> "…"   (quote band above a single panel)
  *   npm run studio -- episode new <id> --lead <slug> [--with a,b] [--format strip3|single] [--headline "câu trích"] --direction "…" [--credit "name: comment"]
  *   npm run studio -- episode new <id> --lead <slug> [--with a,b] --from-listen data/listen/<id>.json
- *   npm run studio -- episode run <id> [--from step] [--to step] [--mock]
+ *   npm run studio -- episode run <id> [--from step] [--to step] [--finish] [--mock]
+ *                    --finish: before lettering, SAM 3.1 keeps the panel's main characters sharp and softens the rest (finish.ts)
  *   npm run studio -- episode approve <id> [--post post.json] [--despite-warnings]
  *       the owner's sign-off; `channel publish` refuses anything not approved as it is
  *   npm run studio -- episode list
@@ -213,13 +214,21 @@ async function main(argv: string[]): Promise<void> {
 
   if (cmd === "episode" && args[0] === "run") {
     const id = args[1];
-    if (!id) throw new Error("usage: episode run <id> [--from step] [--to step] [--mock]");
+    if (!id) throw new Error("usage: episode run <id> [--from step] [--to step] [--finish] [--mock]");
     const step = (k: string) => {
       const v = opt(k);
       if (v && !EPISODE_STEPS.includes(v as EpisodeStep)) throw new Error(`${k} must be one of ${EPISODE_STEPS.join(", ")}`);
       return v as EpisodeStep | undefined;
     };
     const ctx = openStudio({ mock, log: console.log });
+    if (flags.has("--finish") && !mock) {
+      // SAM 3.1 lives in @hoi-sau/dance, which depends on this package, so it is loaded at run time.
+      const dance = "@hoi-sau/dance";
+      const { Sam } = (await import(dance).catch(() => {
+        throw new Error("--finish needs SAM 3.1 from @hoi-sau/dance (npm install at the repo root)");
+      })) as { Sam: { fromEnv(): import("./finish.js").Segmenter } };
+      ctx.segmenter = Sam.fromEnv();
+    }
     const ran = await runEpisode(ctx, id, { from: step("--from"), to: step("--to") });
     const letter = readStep<{ pages: Array<{ file: string }>; page?: string }>(id, "letter");
     console.log(ran.length ? `${id}: ran ${ran.join(" → ")}` : `${id}: every step is done; use --from to rerun`);

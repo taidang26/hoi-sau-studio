@@ -20,3 +20,4 @@ export { mockTransport, mockSparkTransport } from "./mock.js";
 export * from "./office.js";
 export * from "./brand-art.js";
 export * from "./edge-art.js";
+export { applyFocus, addTouchingInk, DEFAULT_PROPS, finishPanel, heldPhrases, segmentPhrases, type FinishOptions, type Segment, type Segmenter } from "./finish.js";

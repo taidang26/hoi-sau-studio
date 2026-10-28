@@ -127,7 +127,7 @@ test("pasted lines become voice patterns with a new line of ours, and the writer
   assert.equal(read.status, "done");
   const voice = read.ideas.find((i) => i.kind === "voice")!;
   assert.ok(voice.example);
-  assert.match(research.recipes([`hoi-sau:${voice.id}`]), new RegExp(voice.example!));
+  assert.ok(research.recipes([`hoi-sau:${voice.id}`]).includes(voice.example!));
   research.attach([`hoi-sau:${voice.id}`], "voice-ep");
   assert.deepEqual(research.sourcesOf("voice-ep"), [], "text is never compared as a drawing");
   research.remove("hoi-sau", clip.id);

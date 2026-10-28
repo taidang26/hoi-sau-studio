@@ -80,7 +80,7 @@ export function slugify(name: string): string {
 
 /** Added to every new character unless the draft already covers the topic. */
 const SAFETY: Array<[RegExp, string]> = [
-  [/chửi|tục/i, "Không chửi thề, nói tục, xúc phạm người khác"],
+  [/chửi|tục/i, "Chửi thề cảm thán thì che bằng dấu * (đ*m, v*l); không nói tục, không chửi xúc phạm người khác"],
   [/ngoại hình|vùng miền|giới tính/i, "Không chê ngoại hình, vùng miền, giới tính của bất kỳ ai"],
   [/nhãn hàng|người thật/i, "Không nhắc tên công ty, nhãn hàng, người thật"],
   [/chính trị|tôn giáo/i, "Không nói chuyện chính trị, tôn giáo"],

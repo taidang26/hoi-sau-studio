@@ -415,3 +415,13 @@ test("heads named by display or Vietnamese name map back to slugs", () => {
   assert.equal(slugFor(ctx, "cu-li"), "cu-li");
   assert.equal(slugFor(ctx, "Nobody"), "Nobody");
 });
+
+test("swears are always masked, the way Threads writes them", async () => {
+  const { maskSwears } = await import("./swears.js");
+  assert.equal(maskSwears("Đm deadline"), "Đ*m deadline");
+  assert.equal(maskSwears("thứ 7 cũng họp, vcl"), "thứ 7 cũng họp, v*l");
+  assert.equal(maskSwears("đéo ai làm"), "đ*o ai làm");
+  assert.equal(maskSwears("đ*m vẫn che rồi"), "đ*m vẫn che rồi");
+  assert.equal(maskSwears("vlog với dmm"), "vlog với d*m", "only whole words");
+  assert.equal(maskSwears("vãi cả chưởng"), "v*i cả chưởng");
+});

@@ -488,7 +488,7 @@ export const EN: Record<string, string> = {
   "Chỉ học cấu trúc: kiểu gag, bố cục, tư thế, màu, nhịp thoại, giọng văn. Ảnh gốc chỉ nằm trên máy này và không bao giờ làm ảnh mẫu khi vẽ; câu của người khác không bao giờ được chép nguyên.": "Learn structure only: gag type, layout, pose, colour, dialogue rhythm, voice. Source images stay on this machine and are never used as a drawing reference; other people's lines are never copied word for word.",
   "Thêm ảnh": "Add images",
   "Bấm để chọn ảnh, hoặc kéo ảnh vào đây": "Click to choose images, or drag them here",
-  "Ảnh chụp màn hình bài đăng cũng được": "Screenshots of posts work too",
+  "Ảnh chụp màn hình bài đăng hay comment Threads cũng được": "Screenshots of posts or Threads comments work too",
   "Link bài gốc (để ghi nguồn)": "Link to the original post (for credit)",
   "Thêm vào tư liệu": "Add to references",
   "Lấy từ Instagram": "Get from Instagram",

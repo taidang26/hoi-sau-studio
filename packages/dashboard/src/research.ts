@@ -115,6 +115,7 @@ const analysisSchema = S.obj({
       kind: S.enum([...IDEA_KINDS]),
       title: S.str("Three to seven words."),
       recipe: S.str("One or two sentences another artist could apply to different characters."),
+      example: S.str("For `voice` ideas: one new office line of ours, Hanoi spoken Vietnamese, at most 12 words. Otherwise an empty string."),
       fits: S.arr(S.str("A slug from our cast.")),
     }),
     1,
@@ -314,6 +315,7 @@ export class Research {
           "You study other creators' comics and short posts to learn craft, never to copy them.",
           "Write down only structure that transfers to different characters: the kind of gag and its setup, the panel layout and camera, a body pose or acting beat, the palette as a mood (warm/cool, contrast), and the rhythm of the dialogue.",
           "Never describe or name their characters, mascots, brand, logo or signature drawing style. Never quote their text. Never suggest tracing or redrawing the image.",
+          "If the image is a screenshot of posts or comments (Threads, Facebook, TikTok), it is about voice, not drawing: use kind `voice` for the sentence frame, the reversal or the slang (a slang phrase may be named, a whole line never), `rhythm` for the pacing, and write `example` as a new line our office characters could say. Skip anything vulgar, insulting or about real people.",
           "Write titles and recipes in Vietnamese. `fits` lists slugs of our characters whose personality suits the recipe, or is empty.",
           `Our cast: ${cast.map((c) => `${c.slug} (${c.name}): ${c.about}`).join("; ")}.`,
         ].join("\n"),
@@ -321,12 +323,12 @@ export class Research {
       { role: "user", content: [{ type: "text", text: clip.source.caption ? `Post caption, for context only: ${clip.source.caption}` : "Read this image." }, { type: "image_url", image_url: { url: dataUrl(readFileSync(this.fileOf(clip))) } }] },
     ];
     try {
-      const out = await this.opts.analyst().json<{ summary: string; ideas: Array<{ kind: IdeaKind; title: string; recipe: string; fits: string[] }> }>("research", analysisSchema, messages);
+      const out = await this.opts.analyst().json<{ summary: string; ideas: Array<{ kind: IdeaKind; title: string; recipe: string; example?: string; fits: string[] }> }>("research", analysisSchema, messages);
       const slugs = new Set(cast.map((c) => c.slug));
       return this.update(brand, clipId, (c) => {
         c.status = "done";
         c.summary = out.summary;
-        c.ideas = out.ideas.map((i) => ({ id: newId(), kind: i.kind, title: i.title, recipe: i.recipe, fits: i.fits.filter((f) => slugs.has(f)), usedIn: [] }));
+        c.ideas = out.ideas.map((i) => ({ id: newId(), kind: i.kind, title: i.title, recipe: i.recipe, ...(i.example?.trim() ? { example: i.example.trim() } : {}), fits: i.fits.filter((f) => slugs.has(f)), usedIn: [] }));
       });
     } catch (e) {
       this.update(brand, clipId, (c) => {
@@ -600,7 +602,7 @@ export function researchPage(r: Research, v: ResearchView): string {
   const add = `<div class="grid2 research-add">
 <form class="card form drop" method="post" action="/research/upload?brand=${esc(v.brand)}" enctype="multipart/form-data"><h2>🖼 ${esc(t("Thêm ảnh"))}</h2>
 <label>${esc(t("Link bài gốc (để ghi nguồn)"))} <span class="muted small">${esc(t("không bắt buộc, điền trước khi thả ảnh"))}</span><input name="link" type="url" placeholder="https://"></label>
-<label class="dropzone"><input type="file" name="files" accept="image/png,image/jpeg,image/webp" multiple required onchange="if(this.files.length){this.nextElementSibling.textContent=${esc(JSON.stringify(t("Đang thêm {n} ảnh…")))}.replace('{n}',this.files.length);this.form.requestSubmit()}"><span class="drop-say">${esc(t("Bấm để chọn ảnh, hoặc kéo ảnh vào đây"))}</span><small class="muted">${esc(t("Ảnh chụp màn hình bài đăng cũng được"))}</small></label>
+<label class="dropzone"><input type="file" name="files" accept="image/png,image/jpeg,image/webp" multiple required onchange="if(this.files.length){this.nextElementSibling.textContent=${esc(JSON.stringify(t("Đang thêm {n} ảnh…")))}.replace('{n}',this.files.length);this.form.requestSubmit()}"><span class="drop-say">${esc(t("Bấm để chọn ảnh, hoặc kéo ảnh vào đây"))}</span><small class="muted">${esc(t("Ảnh chụp màn hình bài đăng hay comment Threads cũng được"))}</small></label>
 <noscript><div class="row-actions"><button class="btn on">${esc(t("Thêm vào tư liệu"))}</button></div></noscript></form>
 <script>/* An image dropped beside the zone would open in the tab and leave the page. */addEventListener("dragover",function(e){if(!(e.target instanceof HTMLInputElement))e.preventDefault()});addEventListener("drop",function(e){if(!(e.target instanceof HTMLInputElement))e.preventDefault()})</script>
 <form class="card form" method="post" action="/research/text?brand=${esc(v.brand)}"><h2>🧵 ${esc(t("Dán câu hay"))}</h2>

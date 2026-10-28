@@ -47,7 +47,7 @@ import { addCanon, SERIES_DIR, type CanonFact, type SeriesBible } from "./bible.
 import { generateSoftly, type MuseImage } from "./muse-image.js";
 import { type ChatMessage, type MuseSpark, S } from "./muse-spark.js";
 import { CHARACTERS_DIR, nameVi, type Profile } from "./profile.js";
-import { finishPanel, type Segmenter } from "./finish.js";
+import { finishPanel, recolourPanel, type Segmenter } from "./finish.js";
 import { iconLine } from "./prompts.js";
 import { type SeriesStyle, styleReference, styleText } from "./style.js";
 import { officeBrief, officePanelText, type Office } from "./office.js";
@@ -161,6 +161,8 @@ export interface StudioContext {
   maxRedraws?: number;
   /** SAM 3.1: when set, lettering first runs the focus pass (finish.ts) on each panel. */
   segmenter?: Segmenter;
+  /** Recolour each approved panel with Muse Image (soft shading, one muted tone) before lettering. */
+  recolour?: boolean;
   log?: (s: string) => void;
   saveBible?: (b: SeriesBible) => void;
   saveMemory?: (slug: string, facts: string[], episode: string) => void;
@@ -465,6 +467,7 @@ const reviewSchema = S.obj({
   issues: S.arr(S.obj({ character: S.str(), feature: S.str("which signature feature"), problem: S.str() })),
   fix: S.str("English edit instruction naming only what to change, or empty if pass"),
   heads: S.arr(S.obj({ character: S.str("cast slug"), x: S.num("head centre, share of panel width 0-1"), y: S.num("head centre, share of panel height 0-1") })),
+  counts: S.arr(S.obj({ character: S.str("cast slug"), count: S.num("how many times this character is drawn in the panel") })),
 });
 
 const canonSchema = S.obj({
@@ -711,7 +714,7 @@ export async function runStep(ctx: StudioContext, id: string, step: EpisodeStep)
         let current = r;
         let verdict = await reviewPanel(ctx, ep, script.panels[r.n - 1], current, dir);
         let redrawn = false;
-        for (let attempt = 0; !verdict.pass && attempt < (ctx.maxRedraws ?? 1); attempt++) {
+        for (let attempt = 0; !verdict.pass && attempt < (ctx.maxRedraws ?? 1) + (isDuplicate(verdict) ? 1 : 0); attempt++) {
           log(`${id}: redraw panel ${r.n}: ${verdict.fix}`);
           const res = await generateSoftly(ctx.image, {
             prompt: `Edit this panel. Change only this: ${verdict.fix}. Keep everything else exactly the same: composition, background, other characters, colours. No text.`,
@@ -739,6 +742,15 @@ export async function runStep(ctx: StudioContext, id: string, step: EpisodeStep)
       const pages: Array<{ n: number; file: string; overflow: number }> = [];
       for (const r of renders) {
         let drawn: Buffer = readFileSync(join(episodeDir(id, dir), r.file));
+        if (ctx.recolour) {
+          // Kept beside the panel, so lettering again does not pay for another recolour.
+          const recoloured = join(episodeDir(id, dir), "panels", `panel-${r.n}-recoloured.png`);
+          if (!existsSync(recoloured)) {
+            log(`${id}: recolour panel ${r.n}`);
+            writeFileSync(recoloured, (await recolourPanel(ctx.image, drawn, panelSize(ep, r.n), (m) => log(`${id}: recolour ${r.n}: ${m}`))).image);
+          }
+          drawn = readFileSync(recoloured);
+        }
         if (ctx.segmenter) {
           const cast = board.panels[r.n - 1].staging.map((s) => ctx.profiles.get(s.character)).filter((p): p is Profile => !!p);
           drawn = (await finishPanel(drawn, ctx.segmenter, { characters: cast, log })).image;
@@ -794,6 +806,7 @@ async function reviewPanel(ctx: StudioContext, ep: EpisodeSpec, sp: ScriptPanel,
           return `${p.name} must have: ${p.look.signature.join("; ")}.${p.look.icon ? ` Its identifying item must be clearly visible: ${p.look.icon}.` : ""} Palette: ${p.look.palette.map((s) => s.hex).join(", ")}.`;
         }),
         "Fail the panel if a signature feature is wrong or missing, a character is off-model, there is drawn text, a speech bubble or a thought cloud, a human figure anywhere (every coworker is an animal), or anything unsafe. The first image is the panel; any others are the locked model sheets.",
+        "Count every cast character: each one must be drawn exactly once. Fail the panel if any of them appears twice or more (for example a second copy in the foreground or background).",
         `Also give, for every cast character you can see (by slug: ${sp.characters.map((c) => `${c} = ${ctx.profiles.get(c)!.name}`).join(", ")}), where the centre of their head is in the panel, as shares of its width and height (0 is left or top, 1 is right or bottom). Speech tails will aim there.`,
         `Unsafe means anything on this list, even in the background: ${safetyOf(ctx).topics.map((t) => t.describe).join("; ")}.`,
       ].join("\n"),
@@ -804,8 +817,42 @@ async function reviewPanel(ctx: StudioContext, ep: EpisodeSpec, sp: ScriptPanel,
       return sheet ? [{ type: "image_url" as const, image_url: { url: sheet } }] : [];
     }),
   ];
-  return ctx.spark.json("review", reviewSchema, [{ role: "user", content }]);
+  const verdict = await ctx.spark.json<Omit<PanelReview, "n" | "redrawn"> & { counts?: Array<{ character: string; count: number }> }>("review", reviewSchema, [{ role: "user", content }]);
+  return withDuplicateCheck(verdict, (c) => ctx.profiles.get(slugFor(ctx, c))?.name ?? c);
 }
+
+/** A cast member drawn more than once fails the panel, and the fix says to remove the extra copy. */
+export function withDuplicateCheck<
+  T extends {
+    pass: boolean;
+    fix: string;
+    issues: Array<{ character: string; feature: string; problem: string }>;
+    counts?: Array<{ character: string; count: number }>;
+    heads?: Array<{ character: string; x: number; y: number }>;
+  },
+>(verdict: T, nameOf: (character: string) => string = (c) => c, action = ""): Omit<T, "counts"> {
+  const { counts = [], ...rest } = verdict;
+  const twice = counts.filter((c) => c.count > 1);
+  if (!twice.length) return rest;
+  // Where each copy is, from the head positions, so the edit knows which one to erase.
+  const pct = (v: number) => `${Math.round(v * 100)}%`;
+  const remove = twice
+    .map((c) => {
+      const at = (rest.heads ?? []).filter((h) => h.character === c.character).map((h) => `one with its head about ${pct(h.x)} from the left and ${pct(h.y)} from the top`);
+      const where = at.length > 1 ? ` (${at.join("; ")})` : "";
+      return `${nameOf(c.character)} is drawn ${c.count} times${where}: keep only the copy doing the scene's action${action ? ` (${action})` : ""} and erase the other${c.count > 2 ? "s" : ""} completely, painting the background over the spot`;
+    })
+    .join(". ");
+  return {
+    ...rest,
+    pass: false,
+    issues: [...rest.issues, ...twice.map((c) => ({ character: c.character, feature: "drawn once", problem: `appears ${c.count} times` }))],
+    fix: [remove, rest.fix].filter(Boolean).join(". "),
+  };
+}
+
+/** A failed review is redrawn up to maxRedraws times; a panel with a cast member drawn twice gets one more try. */
+export const isDuplicate = (v: { issues: Array<{ feature: string }> }) => v.issues.some((i) => i.feature === "drawn once");
 
 /** The gate said no. The message lists every issue so the editor can fix the direction or the script. */
 export class SafetyError extends Error {

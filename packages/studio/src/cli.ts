@@ -14,8 +14,9 @@
  *   npm run studio -- episode headline <id> "…"   (quote band above a single panel)
  *   npm run studio -- episode new <id> --lead <slug> [--with a,b] [--format strip3|single] [--headline "câu trích"] --direction "…" [--credit "name: comment"]
  *   npm run studio -- episode new <id> --lead <slug> [--with a,b] --from-listen data/listen/<id>.json
- *   npm run studio -- episode run <id> [--from step] [--to step] [--finish] [--mock]
- *                    --finish: before lettering, SAM 3.1 keeps the panel's main characters sharp and softens the rest (finish.ts)
+ *   npm run studio -- episode run <id> [--from step] [--to step] [--finish [--no-recolour]] [--mock]
+ *                    --finish: before lettering, Muse Image recolours each panel (soft shading, one muted tone), then
+ *                    SAM 3.1 keeps the panel's main characters sharp and softens the rest (finish.ts)
  *   npm run studio -- episode approve <id> [--post post.json] [--despite-warnings]
  *       the owner's sign-off; `channel publish` refuses anything not approved as it is
  *   npm run studio -- episode list
@@ -228,6 +229,7 @@ async function main(argv: string[]): Promise<void> {
         throw new Error("--finish needs SAM 3.1 from @hoi-sau/dance (npm install at the repo root)");
       })) as { Sam: { fromEnv(): import("./finish.js").Segmenter } };
       ctx.segmenter = Sam.fromEnv();
+      ctx.recolour = !flags.has("--no-recolour");
     }
     const ran = await runEpisode(ctx, id, { from: step("--from"), to: step("--to") });
     const letter = readStep<{ pages: Array<{ file: string }>; page?: string }>(id, "letter");

@@ -9,7 +9,9 @@ const profile = (look: Partial<Profile["look"]>, species = "slow loris (cu li)",
 
 test("segmentPhrases: colour + garment first, hyphens spaced, then species", () => {
   const p = profile({ description: "A chubby slow loris. Wears an oversized mustard-yellow hoodie with sleeves past the wrists." });
-  assert.deepEqual(segmentPhrases(p), ["animal in mustard yellow hoodie", "slow loris", "cartoon animal"]);
+  assert.deepEqual(segmentPhrases(p), ["animal in mustard yellow hoodie", "animal in yellow hoodie", "slow loris", "cartoon animal"]);
+  const rico = profile({ description: "Wears a tight slim-fit lilac shirt, a skinny black tie." }, "ferret-badger (chồn bạc má)", "Rico");
+  assert.deepEqual(segmentPhrases(rico), ["animal in lilac shirt", "animal in purple shirt", "ferret badger", "cartoon animal"]);
   const boss = profile({ description: "Wears a black snapback cap and a sharp navy-blue boss suit." }, "binturong (cầy mực)", "Bino");
   assert.equal(segmentPhrases(boss)[0], "animal in navy blue suit");
 });
@@ -81,4 +83,54 @@ test("finishPanel leaves the panel alone when no character is found", async () =
   const r = await finishPanel(png, none, { characters: [profile({})] });
   assert.equal(r.focusShare, 0);
   assert.equal(r.image, png);
+});
+
+test("withDuplicateCheck fails a panel with a cast member drawn twice and says to remove the copy", async () => {
+  const { withDuplicateCheck } = await import("./episode.js");
+  const ok = withDuplicateCheck({ pass: true, fix: "", issues: [], counts: [{ character: "cu-li", count: 1 }] });
+  assert.equal(ok.pass, true);
+  assert.equal("counts" in ok, false);
+  const twice = withDuplicateCheck({ pass: true, fix: "", issues: [], counts: [{ character: "cu-li", count: 2 }, { character: "cay-muc", count: 1 }] }, () => "Lolo");
+  assert.equal(twice.pass, false);
+  assert.match(twice.fix, /Lolo is drawn 2 times: keep only the copy doing the scene's action and erase the other completely/);
+  const placed = withDuplicateCheck(
+    { pass: true, fix: "", issues: [], counts: [{ character: "cu-li", count: 2 }], heads: [{ character: "cu-li", x: 0.15, y: 0.47 }, { character: "cu-li", x: 0.2, y: 0.75 }] },
+    () => "Lolo",
+    "reclining with tea",
+  );
+  assert.match(placed.fix, /head about 15% from the left and 47% from the top; one with its head about 20% from the left and 75% from the top\): keep only the copy doing the scene's action \(reclining with tea\)/);
+  assert.deepEqual(twice.issues, [{ character: "cu-li", feature: "drawn once", problem: "appears 2 times" }]);
+});
+
+// A panel with clear line art: boxes at different places, so alignment has something to lock on to.
+async function lineArt(): Promise<Buffer> {
+  const boxes = [[60, 80, 200, 260], [300, 120, 460, 420], [120, 420, 380, 600], [420, 520, 500, 620]]
+    .map(([x0, y0, x1, y1]) => `<rect x="${x0}" y="${y0}" width="${x1 - x0}" height="${y1 - y0}" fill="#f5c542" stroke="#000" stroke-width="6"/>`)
+    .join("");
+  return sharp(Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="512" height="640"><rect width="512" height="640" fill="#efe6d8"/>${boxes}</svg>`)).png().toBuffer();
+}
+
+test("alignBack undoes an edit that zoomed into the padded panel", async () => {
+  const { alignBack, framingZoom, padPanel } = await import("./finish.js");
+  const src = await lineArt();
+  const padded = await padPanel(src);
+  const zoomed = await sharp(padded).extract({ left: 23, top: 33, width: 466, height: 582 }).resize(512, 640).png().toBuffer(); // about 1.1x, a little low
+  assert.ok((await framingZoom(padded, zoomed)) >= 1.05, "the edit zoomed into what it was given");
+  const back = await alignBack(src, zoomed);
+  assert.ok((await framingZoom(src, back)) < 1.05);
+});
+
+test("recolourPanel pads the panel, finds it in the edit and returns it at its own size", async () => {
+  const { recolourPanel, RECOLOUR_PROMPT } = await import("./finish.js");
+  const src = await lineArt();
+  let seen: any;
+  // The "edit" hands back exactly what it was given, so the panel must come back unchanged in framing.
+  const image = { generate: async (turn: any) => ((seen = turn), { id: "r1", image: Buffer.from(String(turn.references[0]).split(",")[1], "base64"), usage: {}, note: "" }) };
+  const out = await recolourPanel(image as any, src, "1024x1280");
+  assert.ok(seen.prompt.startsWith(RECOLOUR_PROMPT));
+  assert.equal(seen.size, "1024x1280");
+  assert.equal(out.recoloured, true);
+  assert.ok(out.zoom < 1.05);
+  const meta = await sharp(out.image).metadata();
+  assert.deepEqual([meta.width, meta.height], [512, 640]);
 });

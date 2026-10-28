@@ -12,7 +12,7 @@ import sharp from "sharp";
 import { characterRefs, generateSoftly, styleReference, styleText, type StudioContext } from "@hoi-sau/studio";
 import type { Sam } from "@hoi-sau/dance";
 import { GESTURES, type Gesture } from "./gestures.js";
-import { changedBox, maskBox, patchFeature, readRgb, unionBox, writePng, type Box, type Raster } from "./patch.js";
+import { changedBox, fillHoles, maskBox, patchFeature, readRgb, unionBox, writePng, type Box, type Raster } from "./patch.js";
 
 const EXPIRED = /referenced response not found|expired/i;
 
@@ -182,6 +182,20 @@ export async function cutTalkArt(sam: Sam, dir: string, art: TalkArt, phrase: st
     const mask = Buffer.alloc(img.width * img.height);
     const main = segs.reduce((a, b) => (b.area > a.area ? b : a));
     for (let i = 0; i < mask.length; i++) if (main.mask[i]) mask[i] = 255;
+    // SAM sometimes returns a sleeve or a hand as its own find: a find that lies mostly inside the character's box is part of it.
+    const box = maskBox(main.mask, img.width, img.height)!;
+    for (const s of segs) {
+      if (s === main) continue;
+      let inside = 0, all = 0;
+      for (let i = 0; i < mask.length; i++) {
+        if (!s.mask[i]) continue;
+        all++;
+        const x = i % img.width, y = (i / img.width) | 0;
+        if (x >= box.x && x < box.x + box.w && y >= box.y && y < box.y + box.h) inside++;
+      }
+      if (all && inside / all > 0.8) for (let i = 0; i < mask.length; i++) if (s.mask[i]) mask[i] = 255;
+    }
+    const filled = fillHoles(mask, img);
     // Keep the desk in front too, so the character sits behind it in the new room instead of ending in a straight cut.
     if (opts.keep) {
       // Only what reaches the bottom of the picture is the desk in front; a shelf or desk further back belongs to the old room.
@@ -194,7 +208,7 @@ export async function cutTalkArt(sam: Sam, dir: string, art: TalkArt, phrase: st
     ga.mask = file;
     let kept = 0;
     for (const v of mask) if (v) kept++;
-    opts.log?.(`${id}: cut out (${Math.round((100 * kept) / mask.length)}% of the picture)`);
+    opts.log?.(`${id}: cut out (${Math.round((100 * kept) / mask.length)}% of the picture${filled ? `, ${Math.round((100 * filled) / mask.length)}% filled in` : ""})`);
   }
   writeFileSync(join(dir, "talk.json"), JSON.stringify(art, null, 2) + "\n");
   return art;

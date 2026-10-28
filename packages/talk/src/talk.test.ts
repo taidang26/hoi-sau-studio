@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import sharp from "sharp";
-import { align, pasteOval, type Raster } from "./patch.js";
+import { align, fillHoles, pasteOval, type Raster } from "./patch.js";
 import { mockScript, PACE, scriptProblems, syllables } from "./script.js";
 import { blinkTrack, chunkWords, wordTimes } from "./timeline.js";
 import { hummedLine, joinLines, mouthTrack, RATE, ttsArg, voiceShape, wavBytes } from "./voice.js";
@@ -208,4 +208,20 @@ test("a Seamless script needs more words for the same seconds", () => {
   const s = { title: "t", caption: "c", lines: [line(15), { ...line(15), gesture: "shrug" }, { ...line(15), gesture: "think" }, line(15), line(15), line(15)] };
   assert.deepEqual(scriptProblems(s, 25, PACE.mms), []);
   assert.match(scriptProblems(s, 25 * 1.5, PACE.seamless).join(), /only/);
+});
+
+test("cut holes: a missed jacket patch is filled, the wall between arm and body is not", () => {
+  const w = 12, h = 12;
+  const data = Buffer.alloc(w * h * 3, 255);
+  const mask = new Uint8Array(w * h);
+  for (let y = 2; y < 10; y++) for (let x = 2; x < 10; x++) {
+    mask[y * w + x] = 255;
+    data.fill(0, (y * w + x) * 3, (y * w + x) * 3 + 1); // blue-ish character
+  }
+  mask[4 * w + 4] = 0; // a hole the character's colour: SAM missed it
+  mask[7 * w + 7] = 0; // a hole showing the white wall
+  data.fill(255, (7 * w + 7) * 3, (7 * w + 7) * 3 + 3);
+  assert.equal(fillHoles(mask, { data, width: w, height: h }), 1);
+  assert.equal(mask[4 * w + 4], 255);
+  assert.equal(mask[7 * w + 7], 0);
 });

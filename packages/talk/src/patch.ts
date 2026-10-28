@@ -130,3 +130,61 @@ export function patchFeature(base: Raster, edit: Raster, feature: Box, k = 1.7):
   const shift = align(base, edit, box);
   return { image: pasteOval(base, edit, box, shift.dx, shift.dy), box, shift: { dx: shift.dx, dy: shift.dy } };
 }
+
+/**
+ * Closes holes in a character cut-out (0/255 mask, changed in place): a region
+ * the background cannot reach from the picture's edge is filled when its colour
+ * is far from the background's, so a jacket SAM missed comes back while the
+ * wall seen between an arm and the body stays out. Returns the pixels filled.
+ */
+export function fillHoles(mask: Uint8Array, img: Raster, minDistance = 40): number {
+  const { width: w, height: h, data } = img;
+  const seen = new Uint8Array(w * h);
+  const stack: number[] = [];
+  const push = (i: number) => {
+    if (!mask[i] && !seen[i]) {
+      seen[i] = 1;
+      stack.push(i);
+    }
+  };
+  for (let x = 0; x < w; x++) push(x), push((h - 1) * w + x);
+  for (let y = 0; y < h; y++) push(y * w), push(y * w + w - 1);
+  const bg = [0, 0, 0];
+  let nbg = 0;
+  while (stack.length) {
+    const i = stack.pop()!;
+    for (let c = 0; c < 3; c++) bg[c] += data[i * 3 + c];
+    nbg++;
+    const x = i % w;
+    if (x > 0) push(i - 1);
+    if (x < w - 1) push(i + 1);
+    if (i >= w) push(i - w);
+    if (i < w * (h - 1)) push(i + w);
+  }
+  if (nbg) for (let c = 0; c < 3; c++) bg[c] /= nbg;
+  let filled = 0;
+  for (let start = 0; start < w * h; start++) {
+    if (mask[start] || seen[start]) continue;
+    // One hole: collect it, then keep or fill it by its average colour.
+    const hole: number[] = [];
+    seen[start] = 1;
+    stack.push(start);
+    const sum = [0, 0, 0];
+    while (stack.length) {
+      const i = stack.pop()!;
+      hole.push(i);
+      for (let c = 0; c < 3; c++) sum[c] += data[i * 3 + c];
+      const x = i % w;
+      if (x > 0) push(i - 1);
+      if (x < w - 1) push(i + 1);
+      if (i >= w) push(i - w);
+      if (i < w * (h - 1)) push(i + w);
+    }
+    const d = Math.hypot(...sum.map((s, c) => s / hole.length - bg[c]));
+    if (d >= minDistance) {
+      for (const i of hole) mask[i] = 255;
+      filled += hole.length;
+    }
+  }
+  return filled;
+}

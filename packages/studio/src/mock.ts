@@ -110,8 +110,8 @@ export function mockSparkTransport(opts: { failReview?: number[] } = {}): { tran
     } else if (name === "review") {
       reviews++;
       out = opts.failReview?.includes(reviews)
-        ? { pass: false, issues: [{ character: lead.slug, feature: "palette", problem: "fur colour drifted" }], fix: "restore the fur colour from the model sheet" }
-        : { pass: true, issues: [], fix: "" };
+        ? { pass: false, issues: [{ character: lead.slug, feature: "palette", problem: "fur colour drifted" }], fix: "restore the fur colour from the model sheet", heads: [] }
+        : { pass: true, issues: [], fix: "", heads: [] };
     } else if (name === "safety") {
       // Flags texts with an obviously unsafe word; the rule half of the gate does the rest.
       const texts: Array<{ where: string; text: string }> = JSON.parse(text.match(/TEXTS_JSON: (\[.*\])/)?.[1] ?? "[]");

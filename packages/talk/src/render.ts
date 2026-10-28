@@ -10,7 +10,7 @@ import { join } from "node:path";
 import sharp from "sharp";
 import { ffmpeg } from "@hoi-sau/motion";
 import type { TalkArt } from "./art.js";
-import { CaptionCache, titleOverlay, type Overlay } from "./captions.js";
+import { CAPTION_BAND, CaptionCache, titleOverlay, type Overlay } from "./captions.js";
 import { pasteOval, readRgb, type Raster } from "./patch.js";
 import { FPS, OUT, PICTURE, type Chunk, type Frame } from "./timeline.js";
 import { wavBytes, type Voice } from "./voice.js";
@@ -31,10 +31,35 @@ async function flatten(base: Buffer, layers: sharp.OverlayOptions[]): Promise<Ra
 }
 
 /** Where the cut-out character stands on a photo: bottom-centred, this share of the frame height (a waist-up cut is taller and touches the bottom). */
-export const ON_PHOTO = { height: 0.62, bottom: 0.04, cutHeight: 0.42 };
+export const ON_PHOTO = { height: 0.5, bottom: 0.15, cutHeight: 0.42 };
 
 /** A background photo filling the frame, a touch soft so the character reads first. */
-export const photoBackdrop = (photo: string) => sharp(photo).rotate().removeAlpha().resize(OUT.w, OUT.h, { fit: "cover" }).blur(1.5).png().toBuffer();
+export async function photoBackdrop(photo: string): Promise<Buffer> {
+  const plate = await sharp(photo).rotate().removeAlpha().resize(OUT.w, OUT.h, { fit: "cover" }).blur(1.5).png().toBuffer();
+  return finishBackdrop(plate);
+}
+
+/**
+ * The backdrop only, never the character: a touch warmer, a fine paper grain
+ * and soft dark corners, so the cut-out character is the brightest, cleanest
+ * thing in the frame. The grain is fixed because the backdrop never moves.
+ */
+export async function finishBackdrop(plate: Buffer, opts: { grain?: number; vignette?: number } = {}): Promise<Buffer> {
+  const N = OUT.w * OUT.h;
+  let s = 11;
+  const rand = () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
+  const amp = (opts.grain ?? 0.035) * 255 * 2.5;
+  const noise = Buffer.alloc(N * 4);
+  for (let i = 0; i < N; i++) {
+    const v = Math.max(0, Math.min(255, 128 + (rand() - 0.5) * 2 * amp));
+    noise[i * 4] = noise[i * 4 + 1] = noise[i * 4 + 2] = v;
+    noise[i * 4 + 3] = 255;
+  }
+  const vig = `<svg xmlns="http://www.w3.org/2000/svg" width="${OUT.w}" height="${OUT.h}"><defs><radialGradient id="v" cx="50%" cy="50%" r="75%"><stop offset="0.6" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#2a1a0e" stop-opacity="${opts.vignette ?? 0.3}"/></radialGradient></defs><rect width="100%" height="100%" fill="url(#v)"/></svg>`;
+  const warm = await sharp(plate).removeAlpha().linear([1.03, 1.0, 0.94], [4, 2, 0]).png().toBuffer();
+  const grained = await sharp(warm).composite([{ input: await sharp(noise, { raw: { width: OUT.w, height: OUT.h, channels: 4 } }).png().toBuffer(), blend: "soft-light" }]).png().toBuffer();
+  return sharp(grained).composite([{ input: Buffer.from(vig) }]).removeAlpha().png().toBuffer();
+}
 
 /**
  * A plain backdrop made in code, no image model: one soft colour, a little
@@ -190,7 +215,8 @@ export async function renderTalk(r: RenderInput): Promise<{ video: string; secon
     writeFileSync(wav, wavBytes(r.voice.pcm, r.voice.rate));
   }
   const pics = new Pictures(r.art, r.artDir, r.background ? await backdropFor(r.background) : undefined);
-  const captions = new CaptionCache(r.chunks);
+  // On a backdrop the character stands in the middle, so the words sit on the ground under it, clear of the body.
+  const captions = new CaptionCache(r.chunks, r.background ? OUT.h - CAPTION_BAND.h - 40 : CAPTION_BAND.y);
   const title = r.title ? await titleOverlay(r.title) : undefined;
 
   const args = ["-hide_banner", "-loglevel", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", `${OUT.w}x${OUT.h}`, "-r", String(FPS), "-i", "pipe:0", "-i", wav];

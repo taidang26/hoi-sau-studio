@@ -76,11 +76,14 @@ export function titleSvg(title: string): string {
 
 export class CaptionCache {
   private readonly map = new Map<string, Promise<Overlay>>();
-  constructor(private readonly chunks: Chunk[]) {}
+  constructor(
+    private readonly chunks: Chunk[],
+    private readonly y = CAPTION_BAND.y,
+  ) {}
   get(chunk: number, word: number): Promise<Overlay> {
     const key = `${chunk}:${word}`;
     let o = this.map.get(key);
-    if (!o) this.map.set(key, (o = rgba(captionSvg(this.chunks[chunk], word), CAPTION_BAND.y)));
+    if (!o) this.map.set(key, (o = rgba(captionSvg(this.chunks[chunk], word), this.y)));
     return o;
   }
 }

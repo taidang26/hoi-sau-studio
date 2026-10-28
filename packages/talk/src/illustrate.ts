@@ -242,7 +242,8 @@ export const LOOK = [
   "The background is drawn loosely and lazily: a few sketchy lines and pale flat colour washes, with at most two to four simple props, only the ones the scene needs. No crowd, no extra people; anyone else is drawn simply and faded.",
   "No sparkles, stars, hearts, sweat drops, anger marks, motion lines, speed lines, dust puffs or emoji-like symbols.",
   "Objects face the right way: a screen faces whoever is using it, a character's body faces what he works on, paws hold things naturally, every character has exactly two arms.",
-  "Keep the top fifth and the bottom fifth of the picture calm (a speech bubble and captions go there).",
+  "The picture fills the whole frame edge to edge: no borders, no empty colour bands at the top or bottom. Keep the top fifth and the bottom fifth calm (a speech bubble and captions go there).",
+  "Only draw a computer or phone when the scene needs one; a screen nobody in the scene uses never glows toward the viewer.",
   "Absolutely no text, letters, numbers, signs, speech bubbles or captions anywhere; a clock shows hands only.",
 ].join(" ");
 
@@ -262,7 +263,8 @@ export async function checkPicture(ctx: StudioContext, slug: string, act: string
         `The frame should show: ${act}.`,
         `Fail it for: ${p.name} off-model (${p.look.signature.join("; ")}); ${p.name} drawn more than once (unless the scene asks for a copy such as a ghost); any drawn text, letters, numbers or speech bubble; a human;`,
         "extra arms or hands, a paw holding something wrongly; objects facing the wrong way (a monitor or phone screen must face the character using it, his body must face what he works on; eyes may look at the viewer); a clock with more or fewer than two hands;",
-        "a busy background (crowds, many props) or sparkles, sweat drops, motion lines. If it fails, write the fix as a short edit instruction.",
+        "a busy background (crowds, many props) or sparkles, sweat drops, motion lines; a glowing screen facing the viewer while the character uses it; a misshapen or broken prop (a wallet must look like a normal bifold wallet); empty colour bands across the top or bottom.",
+        "If it fails, write the fix as a short edit instruction.",
       ].join(" "),
     },
     { type: "image_url", image_url: { url: dataUrl(png) } },

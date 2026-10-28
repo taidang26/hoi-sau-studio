@@ -11,6 +11,7 @@ import { sleep, type GraphClient } from "./graph.js";
 import type { Format, Platform } from "./index.js";
 import { journalKey, MAIN_BRAND } from "./brands.js";
 import { publishThreadsPost } from "./threads.js";
+import { postTikTokVideo, type TikTokClient, type TikTokMode } from "./tiktok.js";
 import { validatePost } from "./validate.js";
 
 export interface EpisodePost {
@@ -37,6 +38,8 @@ export interface PublishedPost {
   publishedAt: string;
   /** Brand that posted it; absent for the main brand. */
   brand?: string;
+  /** TikTok draft: waiting in the TikTok inbox for the owner to post it. postId is then the publish id. */
+  inbox?: boolean;
 }
 
 export type JournalEntry =
@@ -56,6 +59,8 @@ export interface Targets {
   igUserId?: string;
   /** Threads profile and a client carrying its own Threads token. */
   threads?: { client: GraphClient; userId: string };
+  /** TikTok account, with a client carrying its access token. */
+  tiktok?: { client: TikTokClient; openId: string; mode: TikTokMode };
 }
 
 export interface PublishOptions {
@@ -66,6 +71,8 @@ export interface PublishOptions {
   brand?: string;
   /** Base for relative mediaUrls, e.g. https://hoisau.dangtrantai.com/media/. Defaults to MEDIA_BASE_URL. */
   mediaBaseUrl?: string;
+  /** TikTok direct posts: privacy level, default PUBLIC_TO_EVERYONE. */
+  tiktokPrivacy?: string;
 }
 
 export class PublishError extends Error {
@@ -102,7 +109,7 @@ interface Job {
   beforePublish: BeforePublish;
 }
 
-type Publisher = (job: Job) => Promise<{ postId: string; permalink?: string }>;
+type Publisher = (job: Job) => Promise<{ postId: string; permalink?: string; inbox?: boolean }>;
 
 const publishers: Record<Platform, Publisher> = {
   facebook: (job) => facebookPublishers[job.post.format](job),
@@ -112,7 +119,18 @@ const publishers: Record<Platform, Publisher> = {
     const { client, userId } = targets.threads;
     return publishThreadsPost(client, userId, post, post.caption, { ...options, beforePublish });
   },
+  // TikTok cannot fetch from our site without domain verification, so the file is downloaded and uploaded.
+  tiktok: async ({ post, targets, options, beforePublish }) => {
+    if (!targets.tiktok) throw new PublishError("No TikTok account is configured.", "NO_TIKTOK_ACCOUNT");
+    const { client, mode } = targets.tiktok;
+    const video = await client.download(post.mediaUrls[0]);
+    const res = await postTikTokVideo(client, video, { ...options, mode, title: post.caption, privacy: options.tiktokPrivacy, beforePublish });
+    return { postId: res.postId ?? res.publishId, permalink: res.permalink, ...(res.status === "SEND_TO_USER_INBOX" ? { inbox: true } : {}) };
+  },
 };
+
+/** Whether a platform takes this kind of post at all (TikTok: videos only). */
+export const platformTakes = (platform: Platform, format: Format) => platform !== "tiktok" || format === "reels-9x16";
 
 export async function publishEpisode(
   platform: Platform,
@@ -142,9 +160,9 @@ export async function publishEpisode(
   const beforePublish: BeforePublish = (containerId) =>
     journal.set(key, { state: "publishing", startedAt: new Date().toISOString(), containerId });
 
-  const { postId, permalink } = await publishers[platform]({ post, targets, options, beforePublish });
+  const { postId, permalink, inbox } = await publishers[platform]({ post, targets, options, beforePublish });
   const brand = options.brand && options.brand !== MAIN_BRAND ? { brand: options.brand } : {};
-  const result: PublishedPost = { platform, postId, permalink, publishedAt: new Date().toISOString(), ...brand };
+  const result: PublishedPost = { platform, postId, permalink, publishedAt: new Date().toISOString(), ...brand, ...(inbox ? { inbox } : {}) };
   await journal.set(key, { state: "published", ...result });
   return result;
 }

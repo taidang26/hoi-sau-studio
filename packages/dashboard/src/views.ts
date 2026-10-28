@@ -38,7 +38,7 @@ export interface Abilities {
 const time = (iso: string) =>
   new Date(iso).toLocaleString(locale(), { timeZone: "Asia/Ho_Chi_Minh", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 
-const PLATFORM = { facebook: "Facebook", instagram: "Instagram", threads: "Threads" } as const;
+const PLATFORM = { facebook: "Facebook", instagram: "Instagram", threads: "Threads", tiktok: "TikTok" } as const;
 const platformName = (p: string) => (PLATFORM as Record<string, string>)[p] ?? p;
 const FORMAT: Record<string, string> = { "carousel-4x5": "Nhiều ảnh, vuốt ngang", "image-4x5": "Một ảnh", "reels-9x16": "Video dọc (Reels)" };
 const formatName = (f: string) => (FORMAT[f] ? t(FORMAT[f]) : f);
@@ -382,7 +382,7 @@ export function episodesPage(s: State): string {
       const n = s.comments.filter((c) => c.postId === e.postId).length;
       const st = s.stats.find((x) => x.episodeId === e.episodeId);
       return `<tr><td><b>${esc(episodeName(s, e.episodeId))}</b></td><td>${esc(s.characters.find((c) => c.profile.slug === e.character)?.profile.name ?? e.character)}</td><td>${brandLink(s, e.brand)}</td><td><span class="tag ${e.platform}">${PLATFORM[e.platform]}</span></td><td>${esc(formatName(e.format))}</td>
-<td>${e.state === "published" ? `<span class="dot ok"></span>${esc(t("Đã đăng"))}` : `<span class="dot warn"></span>${esc(t("Đang đăng"))}`}</td><td>${time(e.at)}</td><td>${e.postId ? `<a href="/comments?episode=${esc(e.episodeId)}">${n}</a>` : "–"}</td><td title="${st ? esc(t("{a} người bình luận, {s} chia sẻ, {v} lưu", { a: st.authors, s: st.shares, v: st.saves })) : ""}">${st ? st.score : "–"}</td><td>${e.permalink ? `<a href="${esc(e.permalink)}" target="_blank" rel="noopener">${esc(t("Mở"))} ↗</a>` : ""}</td></tr>`;
+<td>${postState(e)}</td><td>${time(e.at)}</td><td>${e.postId ? `<a href="/comments?episode=${esc(e.episodeId)}">${n}</a>` : "–"}</td><td title="${st ? esc(t("{a} người bình luận, {s} chia sẻ, {v} lưu", { a: st.authors, s: st.shares, v: st.saves })) : ""}">${st ? st.score : "–"}</td><td>${e.permalink ? `<a href="${esc(e.permalink)}" target="_blank" rel="noopener">${esc(t("Mở"))} ↗</a>` : ""}</td></tr>`;
     })
     .join("");
   const ids = [...new Set(s.episodes.map((e) => e.episodeId))];
@@ -521,6 +521,9 @@ const brandName = (s: State, id: string) => s.brands.find((b) => b.brand.id === 
 const brandLink = (s: State, id: string) => `<a href="/channels/${esc(id)}">${esc(brandName(s, id))}</a>`;
 
 /** Connected and on, needs connecting, paused or not created yet. */
+const postState = (e: { state: string; inbox?: boolean }) =>
+  e.state !== "published" ? `<span class="dot warn"></span>${esc(t("Đang đăng"))}` : e.inbox ? `<span class="dot warn"></span>${esc(t("Trong nháp TikTok"))}` : `<span class="dot ok"></span>${esc(t("Đã đăng"))}`;
+
 function channelDot(c: BrandView["channels"][number]): [string, string] {
   if (c.status === "live") return c.missing.length ? ["bad", "Chưa kết nối"] : ["ok", "Đang bật"];
   return STATUS[c.status];
@@ -591,7 +594,7 @@ export interface BrandControls {
   choose?: { id: string; pages: Array<{ id: string; name: string; instagram?: string }> };
 }
 
-const PLATFORM_ICON: Record<string, string> = { facebook: "f", instagram: "◎", threads: "@" };
+const PLATFORM_ICON: Record<string, string> = { facebook: "f", instagram: "◎", threads: "@", tiktok: "♪" };
 
 export function brandPage(s: State, id: string, ctl: BrandControls = { canConnect: false, needsAppKeys: false, canDrawArt: false }): string | undefined {
   const b = s.brands.find((x) => x.brand.id === id);
@@ -607,7 +610,13 @@ export function brandPage(s: State, id: string, ctl: BrandControls = { canConnec
       else if (!ctl.canConnect) action = "";
       else if (c.platform === "threads")
         action = `<details class="threads-connect"><summary class="btn${connected ? "" : " on"}">${esc(t(connected ? "Kết nối lại" : "Kết nối Threads"))}</summary><form method="post" action="/channels/${esc(b.brand.id)}/threads"><ol class="howto small"><li>${t('Mở <a href="https://developers.facebook.com/apps" target="_blank" rel="noopener">ứng dụng Threads</a> → Dùng thử → Tạo mã người dùng.')}</li><li>${esc(t("Bấm Sao chép cạnh mã, dán vào ô dưới."))}</li></ol><input name="token" placeholder="${esc(t("Dán mã Threads"))}" required autocomplete="off"><button class="btn on">${esc(t("Lưu"))}</button></form></details>`;
-      else if (c.platform === "instagram") action = fbConnected ? (connected ? `<span class="muted small">${esc(t("Đi kèm Trang Facebook"))}</span>` : `<span class="muted small">${esc(t("Liên kết Instagram với Trang trong ứng dụng Instagram, rồi kết nối Facebook lại."))}</span>`) : `<span class="muted small">${esc(t("Kết nối Facebook trước"))}</span>`;
+      else if (c.platform === "tiktok") {
+        const how = t(c.mode === "direct" ? "Đăng thẳng lên TikTok" : "Video vào hộp nháp TikTok, bạn thêm nhạc rồi đăng");
+        const draft = connected
+          ? `<details class="threads-connect"><summary class="btn">${esc(t("Gửi video vào nháp"))}</summary><form method="post" action="/channels/${esc(b.brand.id)}/tiktok/draft"><input name="url" type="url" placeholder="https://hoisau.web.app/media/…/video.mp4" required autocomplete="off"><button class="btn on">${esc(t("Gửi"))}</button></form></details>`
+          : "";
+        action = `<span class="muted small">${esc(how)}</span><a class="btn${connected ? "" : " on"}" href="/connect/tiktok?brand=${esc(b.brand.id)}">${esc(t(connected ? "Kết nối lại" : "Kết nối TikTok"))}</a>${draft}`;
+      } else if (c.platform === "instagram") action = fbConnected ? (connected ? `<span class="muted small">${esc(t("Đi kèm Trang Facebook"))}</span>` : `<span class="muted small">${esc(t("Liên kết Instagram với Trang trong ứng dụng Instagram, rồi kết nối Facebook lại."))}</span>`) : `<span class="muted small">${esc(t("Kết nối Facebook trước"))}</span>`;
       else action = `<a class="btn${connected ? "" : " on"}" href="/connect/facebook?brand=${esc(b.brand.id)}">${esc(t(connected ? "Kết nối lại" : "Kết nối Facebook"))}</a>`;
       return `<li class="acct ${c.platform}"><span class="p-ico">${PLATFORM_ICON[c.platform] ?? ""}</span><div class="acct-name"><b>${esc(platformName(c.platform))}</b><span><span class="dot ${cls}"></span>${esc(t(label))}</span></div><div class="acct-actions">${action}${toggle}</div></li>`;
     })
@@ -615,7 +624,7 @@ export function brandPage(s: State, id: string, ctl: BrandControls = { canConnec
   const eps = s.episodes.filter((e) => e.brand === b.brand.id);
   const posts = eps
     .slice(0, 12)
-    .map((e) => `<tr><td><b>${esc(episodeName(s, e.episodeId))}</b></td><td><span class="tag ${e.platform}">${esc(platformName(e.platform))}</span></td><td>${esc(formatName(e.format))}</td><td>${e.state === "published" ? `<span class="dot ok"></span>${esc(t("Đã đăng"))}` : `<span class="dot warn"></span>${esc(t("Đang đăng"))}`}</td><td>${time(e.at)}</td><td>${e.permalink ? `<a href="${esc(e.permalink)}" target="_blank" rel="noopener">${esc(t("Mở"))} ↗</a>` : ""}</td></tr>`)
+    .map((e) => `<tr><td><b>${esc(episodeName(s, e.episodeId))}</b></td><td><span class="tag ${e.platform}">${esc(platformName(e.platform))}</span></td><td>${esc(formatName(e.format))}</td><td>${postState(e)}</td><td>${time(e.at)}</td><td>${e.permalink ? `<a href="${esc(e.permalink)}" target="_blank" rel="noopener">${esc(t("Mở"))} ↗</a>` : ""}</td></tr>`)
     .join("");
   const picked = new Set(s.directions.map((d) => d.commentId));
   const comments = filterComments(s, { brand: b.brand.id });

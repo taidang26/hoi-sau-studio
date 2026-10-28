@@ -2,7 +2,7 @@
 
 Gets each episode in front of people and brings their comments back.
 
-- **Publish** an episode to Facebook, Instagram and Threads, for the main Hồi Sau brand and for the brand of the character who leads it (`channels.yaml`).
+- **Publish** an episode to Facebook, Instagram, Threads and TikTok, for the main Hồi Sau brand and for the brand of the character who leads it (`channels.yaml`).
 - **Comments**: pull comments and Threads replies of every published episode into `data/comments.json` for the listening step in `packages/story`.
 - **Insights**: reach, reactions, shares, saves and views of every published post into `data/insights.json`, which the coach in `packages/story` and the dashboard read.
 - **Talking back**: send the character comments a person approved.
@@ -31,6 +31,20 @@ Threads (separate login, token lasts about 60 days):
 4. Generate a token in the use case's User Token Generator and click Copy next to it, then run `npm run channel -- threads-setup` (it reads the token from the clipboard, so it is never pasted into a terminal; passing it as an argument also works).
 5. `check` shows the days left; `threads-refresh` extends it.
 
+TikTok (its own app at developers.tiktok.com, not Meta):
+
+1. At [developers.tiktok.com](https://developers.tiktok.com/apps) create an app (type Web). Website, Terms and Privacy: `https://hoisau.dangtrantai.com`, `/terms`, `/privacy` (verify the URL prefix `https://hoisau.dangtrantai.com/` under URL properties).
+2. Add the products **Login Kit** and **Content Posting API**. Scopes: `user.info.basic`, `video.upload` (plus `video.publish` for direct mode). Register the redirect URI `https://hoisau.dangtrantai.com/tiktok-callback`: TikTok only redirects to HTTPS, and that page forwards the code to the login waiting on localhost (the port rides in the state).
+3. Until TikTok reviews the app, use its **Sandbox** and add the brand's TikTok account as a target user.
+4. Put `TIKTOK_CLIENT_KEY` and `TIKTOK_CLIENT_SECRET` in `.env` (or the dashboard's Settings), then `npm run channel -- tiktok-login` (or **Kết nối TikTok** on the Kênh page). The access token lasts 24 hours and renews itself from the 365-day refresh token before each upload.
+
+`mode` in `channels.yaml` picks how videos go out:
+
+- `draft` (default): the video lands in the TikTok inbox and the owner adds caption and trending sound in the app, then posts. Works before TikTok's audit. TikTok holds at most 5 unfinished drafts per 24 hours, so post them as they come.
+- `direct`: posted with the episode caption and TikTok's AI-generated label, privacy `TIKTOK_PRIVACY` (default `PUBLIC_TO_EVERYONE`). Before the audit TikTok only allows this on a private account.
+
+TikTok takes vertical videos only; `publish` skips it for image episodes. Videos are downloaded from their public URL and uploaded as files, so the site's domain needs no verification at TikTok. `tiktok-draft <file or link>` sends any video (for example a talking-character clip) to the inbox.
+
 For a character brand add `--brand <id>` (for example `--brand lolo`); its `.env` names are listed in `channels.yaml`.
 
 ## Commands
@@ -42,6 +56,8 @@ For a character brand add `--brand <id>` (for example `--brand lolo`); its `.env
 | `setup <token>` | Page id, Page token and Instagram id into `.env` |
 | `threads-setup [token]` / `threads-refresh` | Threads profile and 60-day token; extend it |
 | `check` | Token validity, missing permissions, Threads days left |
+| `tiktok-login [port]` / `tiktok-check` | TikTok Login in the browser, tokens to `.env`; check it still works |
+| `tiktok-draft <video.mp4 or link>` | Any video into the TikTok inbox as a draft |
 | `publish <episode.json> [platform...]` | Post to the episode's brands, or `--brand <id>`. Refuses an episode the owner has not approved, or one changed since (`episodes/<id>/approval.json`, [docs/safety.md](../../docs/safety.md)); `EPISODES_DIR` overrides the folder |
 | `comments` | Pull comments of every published episode |
 | `insights` | Pull per-post numbers of every published episode into `data/insights.json` |

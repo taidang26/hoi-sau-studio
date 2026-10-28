@@ -1,11 +1,11 @@
 /**
- * @hoi-sau/channel: the series' presence on Facebook, Instagram and Threads.
+ * @hoi-sau/channel: the series' presence on Facebook, Instagram, Threads and TikTok.
  * Publishes episodes for each brand, pulls comments and per-post numbers back
  * for listening and the coach, and keeps the inbox. Characters answer
  * comments once a person approves.
  */
 
-export type Platform = "facebook" | "instagram" | "threads";
+export type Platform = "facebook" | "instagram" | "threads" | "tiktok";
 
 /**
  * - carousel-4x5: two or more 4:5 panels, swiped
@@ -20,6 +20,7 @@ export * from "./login.js";
 export * from "./validate.js";
 export * from "./publish.js";
 export * from "./threads.js";
+export * from "./tiktok.js";
 export * from "./comments.js";
 export * from "./inbox.js";
 export * from "./insights.js";

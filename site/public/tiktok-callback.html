@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Đăng nhập TikTok</title>
+<meta name="referrer" content="no-referrer">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<main>
+  <h1>Đang chuyển về máy bạn…</h1>
+  <p class="muted">Trang này chỉ chuyển mã đăng nhập của TikTok về Hồi Sau Dashboard hoặc lệnh <code>npm run channel -- tiktok-login</code> đang chạy trên máy bạn. Mã không được lưu ở đây.</p>
+</main>
+<script>
+  // TikTok only redirects to HTTPS. The state starts with the local port ("p4321.…"), so the code goes back to whoever asked.
+  var port = (new URLSearchParams(location.search).get("state") || "").match(/^p(\d{2,5})\./);
+  location.replace("http://localhost:" + (port ? port[1] : "8765") + "/connect/tiktok/callback" + location.search);
+</script>
+</body>
+</html>

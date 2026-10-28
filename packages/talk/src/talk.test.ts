@@ -108,7 +108,8 @@ test("a cut-out character stands bottom-centre on the photo", async () => {
   const out = await onPhoto(pic, mask, await photoBackdrop(photo));
   assert.equal(out.width, OUT.w);
   const px = (x: number, y: number) => [...out.data.subarray((y * out.width + x) * 3, (y * out.width + x) * 3 + 3)];
-  const mid = Math.round(OUT.h * (1 - ON_PHOTO.bottom - ON_PHOTO.height / 2));
+  // The red block's bottom edge is cut straight across, so it stands as a waist-up cut, flush with the bottom.
+  const mid = Math.round(OUT.h * (1 - ON_PHOTO.cutHeight / 2));
   assert.ok(px(540, mid)[0] > 200 && px(540, mid)[2] < 60, "the character in the middle");
   assert.ok(px(60, mid)[2] > 120, "the photo at the side, not the drawn white");
   // A see-through cut: outside the mask, inside the character's box, is the photo.

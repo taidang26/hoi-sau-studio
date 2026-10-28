@@ -15,6 +15,10 @@ export interface TalkSet {
   scene: string;
   /** Where the scene recedes to, as shares of the 1080x1920 frame (estimated by eye on the drawn set). */
   vp?: { x: number; y: number };
+  /** Blur at the farthest point (sigma); a shallow set with a wall close behind needs less than a deep street. */
+  far?: number;
+  /** Camera for this set, in place of the default standing eye-level view down a street. */
+  camera?: string;
 }
 
 export const SETS: TalkSet[] = [
@@ -24,6 +28,16 @@ export const SETS: TalkSet[] = [
     vp: { x: 0.58, y: 0.72 },
     scene:
       "a quiet residential alley in Hanoi in the morning: narrow tube houses of different heights with balconies and rooftop water tanks, a big tangle of black electric wires across the sky between concrete poles, a leafy tree on one side, pink bougainvillea over a gate, two motorbikes parked by a wall, a clean concrete street in front",
+  },
+  {
+    id: "via-he-cua-cuon",
+    vi: "vỉa hè trước cửa cuốn",
+    vp: { x: 0.5, y: 0.45 },
+    far: 3,
+    scene:
+      "a Hanoi pavement in front of a narrow tube-house shop that is closed: a grey metal roll-up shutter (cua cuon) with horizontal ribs fills the wall about one to two metres behind, a little faded paint and a power meter box on the wall beside it, a red plastic stool and a potted plant at one side by the wall, square pavement tiles in the foreground, a few fallen bougainvillea petals",
+    camera:
+      "Shallow scene, no deep street perspective: the camera is low, at about the knee height of an adult, facing the shutter straight on. The line where the pavement meets the wall runs across the picture at about 62% of its height, so the pavement fills the lower part and comes right up to the camera; the middle of the pavement is clear, where a character will stand in front of the shutter.",
   },
   {
     id: "van-phong-that",
@@ -71,7 +85,7 @@ export function setPrompt(s: TalkSet): string {
     `Background plate for a vertical cartoon talking video: ${s.scene}.`,
     "Style: hand-drawn comic illustration with thin, slightly loose ink lines and flat, muted, washed-out colours like a faded watercolour; soft hazy daylight, low contrast, the far background paler and simpler (atmospheric perspective). Calm and real, like a sketch of an actual place.",
     "No sparkles, no stars, no motion lines, no puffs, no stickers, no decorations, no cute props. No people, no animals, no characters. No readable text, letters, signs or logos.",
-    "Eye-level camera at standing head height, one-point perspective down the middle, the centre of the frame calm so a character can stand in front.",
+    s.camera ?? "Eye-level camera at standing head height, one-point perspective down the middle, the centre of the frame calm so a character can stand in front.",
   ].join(" ");
 }
 
@@ -92,11 +106,14 @@ export async function drawSets(ctx: StudioContext, dir: string, opts: { only?: s
   return out;
 }
 
-/** The vanishing point of a drawn set, from its file name (series/sets/<id>.png); undefined for photos. */
-export function vanishingPointFor(file: string): { x: number; y: number } | undefined {
+/** The drawn set a backdrop file is (series/sets/<id>.png); undefined for photos. */
+export function setFor(file: string): TalkSet | undefined {
   const id = file.replace(/\\/g, "/").split("/").pop()?.replace(/\.png$/i, "");
-  return SETS.find((s) => s.id === id)?.vp;
+  return SETS.find((s) => s.id === id);
 }
+
+/** The vanishing point of a drawn set, from its file name; undefined for photos. */
+export const vanishingPointFor = (file: string) => setFor(file)?.vp;
 
 /** --bg takes a set id or a path to a photo. */
 export function resolveBackground(bg: string, dir: string): string {

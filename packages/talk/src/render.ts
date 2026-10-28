@@ -12,7 +12,7 @@ import { ffmpeg } from "@hoi-sau/motion";
 import type { TalkArt } from "./art.js";
 import { CAPTION_BAND, CAPTION_ON_BACKDROP, CaptionCache, titleOverlay, type Overlay } from "./captions.js";
 import { pasteOval, readRgb, type Raster } from "./patch.js";
-import { vanishingPointFor } from "./sets.js";
+import { setFor, vanishingPointFor } from "./sets.js";
 import { FPS, OUT, PICTURE, SAFE, SAFE_CX, type Chunk, type Frame } from "./timeline.js";
 import { wavBytes, type Voice } from "./voice.js";
 
@@ -46,7 +46,7 @@ export const FEET_Y = 1 - ON_PHOTO.bottom;
 /** A background photo or drawn set filling the frame, focused like a camera on the character standing in front of it. */
 export async function photoBackdrop(photo: string, vp = vanishingPointFor(photo) ?? VANISHING_POINT): Promise<Buffer> {
   const plate = await sharp(photo).rotate().removeAlpha().resize(OUT.w, OUT.h, { fit: "cover" }).png().toBuffer();
-  return finishBackdrop(await depthBlur(plate, { vp }));
+  return finishBackdrop(await depthBlur(plate, { vp, far: setFor(photo)?.far }));
 }
 
 /**
@@ -199,8 +199,8 @@ export async function onPhoto(png: Buffer, mask: Buffer, backdrop: Buffer): Prom
     .png()
     .toBuffer();
   return flatten(backdrop, [
-    // Centred on the line the feet stand on, so most of it shows on the road around them.
-    { input: shadow, left: x + Math.round((width - sw) / 2), top: y + height - Math.round(sh * 0.4) },
+    // Its centre a little above the soles, so it starts right under the feet (no gap) and spreads out around them.
+    { input: shadow, left: x + Math.round((width - sw) / 2), top: y + height - Math.round(sh * 0.62) },
     { input: sized, left: x, top: y },
   ]);
 }

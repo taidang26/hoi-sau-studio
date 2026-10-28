@@ -158,4 +158,9 @@ test("depth of field: the near ground and side walls stay sharp, the end of the 
   const { vanishingPointFor } = await import("./sets.js");
   assert.deepEqual(vanishingPointFor("C:\\x\\series\\sets\\hem-ha-noi.png"), { x: 0.58, y: 0.72 });
   assert.equal(vanishingPointFor("photo.jpg"), undefined);
+  const { setFor, setPrompt } = await import("./sets.js");
+  const shutter = setFor("series/sets/via-he-cua-cuon.png")!;
+  assert.equal(shutter.far, 3, "a shallow set blurs less");
+  assert.match(setPrompt(shutter), /knee height/);
+  assert.doesNotMatch(setPrompt(shutter), /standing head height/);
 });

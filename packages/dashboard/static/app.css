@@ -616,6 +616,10 @@ img.sheet { max-width: 100%; }
 .clip img { width: 100%; aspect-ratio: 4 / 5; object-fit: cover; border-radius: var(--r-sm); border: 1px solid var(--hairline); background: #fff; }
 .clip figcaption { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
 .clip figcaption form { margin-left: auto; }
+/* Text clips: pasted lines and Threads replies. */
+.text-tile { display: grid; place-items: center; width: 44px; height: 55px; flex: none; border-radius: 8px; border: 1px solid var(--hairline); background: var(--paper, #fff); font-size: 22px; }
+.clip-text { margin: 0; aspect-ratio: 4 / 5; overflow: hidden; padding: 10px 12px; border-radius: var(--r-sm); border: 1px solid var(--hairline); background: #fff; white-space: pre-line; font-size: 13px; line-height: 1.45; }
+.idea .example { font-weight: 600; font-style: italic; }
 .btn.tiny { padding: 3px 9px; font-size: 12px; }
 .notes, .compare { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; }
 .notes li, .compare li { display: flex; gap: 12px; align-items: flex-start; }

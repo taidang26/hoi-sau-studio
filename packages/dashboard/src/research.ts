@@ -315,7 +315,7 @@ export class Research {
           "You study other creators' comics and short posts to learn craft, never to copy them.",
           "Write down only structure that transfers to different characters: the kind of gag and its setup, the panel layout and camera, a body pose or acting beat, the palette as a mood (warm/cool, contrast), and the rhythm of the dialogue.",
           "Never describe or name their characters, mascots, brand, logo or signature drawing style. Never quote their text. Never suggest tracing or redrawing the image.",
-          "If the image is a screenshot of posts or comments (Threads, Facebook, TikTok), it is about voice, not drawing: use kind `voice` for the sentence frame, the reversal or the slang (a slang phrase may be named, a whole line never), `rhythm` for the pacing, and write `example` as a new line our office characters could say, typed the way Threads writes. Keep swearing if the source swears, but always masked with * (\"đ*m\", \"v*l\"). Skip insults at someone, sexual words and anything about real people.",
+          "If the image is a screenshot of posts or comments (Threads, Facebook, TikTok), it is about voice, not drawing: use kind `voice` for the sentence frame, the reversal or the slang (a slang phrase may be named, a whole line never), `rhythm` for the pacing, and write `example` as a new line our office characters could say, typed the way Threads writes. Leave the swearing out: carry the voice with rhythm and typing instead. Skip insults at someone, sexual words and anything about real people.",
           "Write titles and recipes in Vietnamese. `fits` lists slugs of our characters whose personality suits the recipe, or is empty.",
           `Our cast: ${cast.map((c) => `${c.slug} (${c.name}): ${c.about}`).join("; ")}.`,
         ].join("\n"),
@@ -348,7 +348,7 @@ export class Research {
           "You study how young Vietnamese write on Threads (comments, replies, short posts) so an office comic can sound like them, never to copy them.",
           "Pull out patterns that transfer: a sentence frame with slots (e.g. \"[khen] tưởng mình [chê]\"), a reversal or fake-praise move, the beat of short lines, a slang word or phrase and what it means right now.",
           "Use kind `voice` for frames and slang, `rhythm` for how lines are paced. A slang phrase may be named; never repeat a whole line from the source.",
-          "For each pattern write `example`: one new line our characters could say or our caption could use, typed the way young people write on Threads (lowercase-casual, t/m/ko/đc, \"=)))\", trailing \"…\"), Hà Nội speech, punchy, at most 12 words, set in an office, without explaining the joke. Keep the swearing if the source swears, always masked with * (\"đ*m\", \"v*l\", \"đ*o\").",
+          "For each pattern write `example`: one new line our characters could say or our caption could use, typed the way young people write on Threads (lowercase-casual, t/m/ko/đc, \"=)))\", trailing \"…\"), Hà Nội speech, punchy, at most 12 words, set in an office, without explaining the joke. Leave the swearing out even if the source swears: carry the voice with rhythm and typing instead.",
           "Skip insults aimed at someone, sexual words, and anything mocking a body, a region, a gender, a real person or a brand. Write titles, recipes and examples in Vietnamese. `fits` lists slugs of our characters whose personality suits it, or is empty.",
           `Our cast: ${cast.map((c) => `${c.slug} (${c.name}): ${c.about}`).join("; ")}.`,
         ].join("\n"),
@@ -495,7 +495,7 @@ const SAMPLE_IDEAS: Array<Omit<Idea, "id" | "usedIn" | "fits"> & { fits: number[
 
 const SAMPLE_VOICE = [
   { kind: "voice" as const, title: "Khen ngược", recipe: "Khung “[khen] tưởng mình [chê]”: khen mà như chê, dùng khi ai đó làm quá tốt một việc vô bổ.", example: "đi làm đúng giờ tưởng mình bị phạt =)))", fits: [0] },
-  { kind: "voice" as const, title: "Khựng lại: “Ủa? Từ từ…”", recipe: "Đọc đến chi tiết bất ngờ thì khựng, hai chữ rồi dấu ba chấm; câu sau mới là cú lật.", example: "ủa từ từ… mail tăng lương là gửi nhầm phòng á đ*m", fits: [0, 1] },
+  { kind: "voice" as const, title: "Khựng lại: “Ủa? Từ từ…”", recipe: "Đọc đến chi tiết bất ngờ thì khựng, hai chữ rồi dấu ba chấm; câu sau mới là cú lật.", example: "ủa từ từ… mail tăng lương là gửi nhầm phòng á", fits: [0, 1] },
   { kind: "voice" as const, title: "“Cổ điển. Tôn trọng.”", recipe: "Hai câu cụt khen mỉa một thói quen cũ mà ai cũng ngán nhưng vẫn làm tới nơi.", example: "16h59 thứ 6 giao việc. cổ điển. tôn trọng.", fits: [1] },
   { kind: "rhythm" as const, title: "Ba câu, câu cuối một chữ", recipe: "Hai reply dài kể lể, reply cuối chỉ một chữ chốt lại cả chuỗi.", example: "deadline mai. sếp nghỉ phép. t cũng nghỉ… việc", fits: [] },
 ];

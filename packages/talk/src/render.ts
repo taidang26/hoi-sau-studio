@@ -31,7 +31,7 @@ async function flatten(base: Buffer, layers: sharp.OverlayOptions[]): Promise<Ra
 }
 
 /** Where the cut-out character stands on a photo: bottom-centred, this share of the frame height (a waist-up cut is taller and touches the bottom). */
-export const ON_PHOTO = { height: 0.5, bottom: 0.15, cutHeight: 0.42 };
+export const ON_PHOTO = { height: 0.44, bottom: 0.15, cutHeight: 0.36 };
 
 /** A background photo filling the frame, a touch soft so the character reads first. */
 export async function photoBackdrop(photo: string): Promise<Buffer> {

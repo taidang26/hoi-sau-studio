@@ -76,6 +76,7 @@ export async function drawSets(ctx: StudioContext, dir: string, opts: { only?: s
 
 /** --bg takes a set id or a path to a photo. */
 export function resolveBackground(bg: string, dir: string): string {
+  if (bg === "plain" || bg.startsWith("plain:")) return bg;
   const set = join(dir, `${bg}.png`);
   return SETS.some((s) => s.id === bg) ? set : bg;
 }

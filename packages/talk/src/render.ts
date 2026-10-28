@@ -37,6 +37,29 @@ export const ON_PHOTO = { height: 0.62, bottom: 0.04, cutHeight: 0.42 };
 export const photoBackdrop = (photo: string) => sharp(photo).rotate().removeAlpha().resize(OUT.w, OUT.h, { fit: "cover" }).blur(1.5).png().toBuffer();
 
 /**
+ * A plain backdrop made in code, no image model: one soft colour, a little
+ * light behind the character's head, a faint dot pattern and a gentle
+ * vignette, so it reads as a deliberate studio wall rather than empty.
+ */
+export function plainBackdrop(color = "#CFE3EE"): Promise<Buffer> {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${OUT.w}" height="${OUT.h}">
+  <defs>
+    <radialGradient id="light" cx="50%" cy="42%" r="55%"><stop offset="0" stop-color="#fff" stop-opacity="0.45"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+    <radialGradient id="edge" cx="50%" cy="50%" r="75%"><stop offset="0.6" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity="0.12"/></radialGradient>
+    <pattern id="dots" width="44" height="44" patternUnits="userSpaceOnUse"><circle cx="22" cy="22" r="3" fill="#fff" fill-opacity="0.35"/></pattern>
+  </defs>
+  <rect width="100%" height="100%" fill="${color}"/>
+  <rect width="100%" height="100%" fill="url(#dots)"/>
+  <rect width="100%" height="100%" fill="url(#light)"/>
+  <rect width="100%" height="100%" fill="url(#edge)"/>
+</svg>`;
+  return sharp(Buffer.from(svg)).png().toBuffer();
+}
+
+/** --bg plain or plain:#hex gives a plain backdrop; anything else is a picture file. */
+export const backdropFor = (bg: string) => (bg === "plain" || bg.startsWith("plain:") ? plainBackdrop(bg.slice(6) || undefined) : photoBackdrop(bg));
+
+/**
  * The character cut out with its SAM mask and stood on the photo, with a soft
  * contact shadow under it.
  */
@@ -166,7 +189,7 @@ export async function renderTalk(r: RenderInput): Promise<{ video: string; secon
     wav = r.out.replace(/\.mp4$/, "") + ".voice.wav";
     writeFileSync(wav, wavBytes(r.voice.pcm, r.voice.rate));
   }
-  const pics = new Pictures(r.art, r.artDir, r.background ? await photoBackdrop(r.background) : undefined);
+  const pics = new Pictures(r.art, r.artDir, r.background ? await backdropFor(r.background) : undefined);
   const captions = new CaptionCache(r.chunks);
   const title = r.title ? await titleOverlay(r.title) : undefined;
 

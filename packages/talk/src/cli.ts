@@ -7,7 +7,7 @@
  *                    lip-sync to an existing sound: Muse Voice Transcribe times the words, Muse Spark picks gestures
  *   npm run talk -- cut <slug> [--phrase "cartoon character"] [--keep desk|none] [--force]  SAM 3.1 cuts the character (and desk) out
  *   npm run talk -- sets [--only office,cafe] [--force]                    Muse Image draws empty background sets in series/sets/
- *                    make/sync take --bg office|pantry|phong-tro|cafe or --bg photo.jpg: the cut-out character stands in front of it
+ *                    make/sync take --bg plain[:#hex], office|pantry|phong-tro|cafe, or photo.jpg: the cut-out character stands in front of it
  *   npm run talk -- demo                                                   offline: mock pictures, hummed voice
  */
 
@@ -100,6 +100,11 @@ async function make(slug: string, o: MakeOptions) {
   console.log(`${r.video} (${info.duration.toFixed(1)} s, ${info.width}x${info.height})`);
   console.log(problems.length ? `Reels check: ${problems.join("; ")}` : "Reels check: ok for Facebook/Instagram Reels and TikTok");
 }
+
+const backgroundArg = (bg: string) => {
+  const r = resolveBackground(bg, SETS_DIR);
+  return r.startsWith("plain") ? r : fromCwd(r);
+};
 
 /** A sample's words from a transcript.json, a script.json or plain text. */
 function sampleText(file: string): string {
@@ -219,7 +224,7 @@ async function main() {
       await sync(slug, fromCwd(media), {
         mock,
         lyrics: opt.lyrics ? fromCwd(opt.lyrics as string) : undefined,
-        background: opt.bg ? fromCwd(resolveBackground(opt.bg as string, SETS_DIR)) : undefined,
+        background: opt.bg ? backgroundArg(opt.bg as string) : undefined,
         vocals: opt.vocals ? fromCwd(opt.vocals as string) : undefined,
         start: opt.start ? Number(opt.start) : undefined,
         duration: opt.duration ? Number(opt.duration) : undefined,
@@ -237,7 +242,7 @@ async function main() {
       await make(slug, {
         mock,
         topic: opt.topic as string | undefined,
-        background: opt.bg ? fromCwd(resolveBackground(opt.bg as string, SETS_DIR)) : undefined,
+        background: opt.bg ? backgroundArg(opt.bg as string) : undefined,
         like: opt.like ? fromCwd(opt.like as string) : undefined,
         seconds: Number(opt.seconds ?? 30),
         script: opt.script ? fromCwd(opt.script as string) : undefined,

@@ -163,5 +163,22 @@ test("depth of field: the near ground and side walls stay sharp, the end of the 
   assert.equal(shutter.far, 3, "a shallow set blurs less");
   assert.match(setPrompt(shutter), /knee height/);
   assert.doesNotMatch(setPrompt(shutter), /standing head height/);
-  assert.equal(setFor("van-phong-goc.png")?.far, 3, "the office corner is shallow too");
+  const office = setFor("van-phong-goc.png")!;
+  assert.equal(office.far, 6, "the office corner is blurred behind like a portrait lens");
+  const officePrompt = setPrompt(office, "SERIES STYLE TEXT");
+  assert.match(officePrompt, /Style: SERIES STYLE TEXT/);
+  assert.match(officePrompt, /same place as in the reference comic panels/);
+  assert.doesNotMatch(officePrompt, /faded watercolour/);
+  assert.match(setPrompt(shutter), /faded watercolour/, "street sets keep the watercolour look");
+  // Framing: zoomed in from the bottom right, the picture's bottom-right corner stays in the frame's corner.
+  const { framePlate } = await import("./render.js");
+  const { mkdtempSync, writeFileSync } = await import("node:fs");
+  const { join } = await import("node:path");
+  const { tmpdir } = await import("node:os");
+  const pic = join(mkdtempSync(join(tmpdir(), "talk-")), "set.png");
+  writeFileSync(pic, await sharp({ create: { width: 1024, height: 1536, channels: 3, background: "#ffffff" } }).composite([{ input: { create: { width: 40, height: 40, channels: 3, background: "#ff0000" } }, left: 984, top: 1496 }]).png().toBuffer());
+  const framed = await sharp(await framePlate(pic, { zoom: 1.3, x: 1, y: 1 })).raw().toBuffer({ resolveWithObject: true });
+  assert.deepEqual([framed.info.width, framed.info.height], [OUT.w, OUT.h]);
+  const k = ((OUT.h - 5) * OUT.w + (OUT.w - 5)) * 3;
+  assert.ok(framed.data[k] > 200 && framed.data[k + 1] < 60, "bottom-right corner kept");
 });

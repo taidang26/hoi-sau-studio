@@ -45,8 +45,21 @@ export const FEET_Y = 1 - ON_PHOTO.bottom;
 
 /** A background photo or drawn set filling the frame, focused like a camera on the character standing in front of it. */
 export async function photoBackdrop(photo: string, vp = vanishingPointFor(photo) ?? VANISHING_POINT): Promise<Buffer> {
-  const plate = await sharp(photo).rotate().removeAlpha().resize(OUT.w, OUT.h, { fit: "cover" }).png().toBuffer();
-  return finishBackdrop(await depthBlur(plate, { vp, far: setFor(photo)?.far }));
+  const set = setFor(photo);
+  const plate = await framePlate(photo, set?.framing);
+  return finishBackdrop(await depthBlur(plate, { vp, far: set?.far }));
+}
+
+/** The picture filling the frame ("cover"), zoomed in further and moved when the set asks for it (TalkSet.framing). */
+export async function framePlate(photo: string, framing?: { zoom: number; x: number; y: number }): Promise<Buffer> {
+  const img = sharp(photo).rotate().removeAlpha();
+  if (!framing || framing.zoom <= 1) return img.resize(OUT.w, OUT.h, { fit: "cover" }).png().toBuffer();
+  const { width = OUT.w, height = OUT.h } = await sharp(photo).metadata();
+  const cover = Math.max(OUT.w / width, OUT.h / height) * framing.zoom;
+  const w = Math.round(width * cover), h = Math.round(height * cover);
+  const left = Math.round((w - OUT.w) * Math.min(1, Math.max(0, framing.x)));
+  const top = Math.round((h - OUT.h) * Math.min(1, Math.max(0, framing.y)));
+  return img.resize(w, h).extract({ left, top, width: OUT.w, height: OUT.h }).png().toBuffer();
 }
 
 /**

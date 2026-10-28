@@ -1,13 +1,15 @@
 /**
  * Background sets the cut-out characters stand in front of: real Vietnamese
- * places drawn once by Muse Image as faded watercolour sketches, shared by
- * every character so the channel has one recognisable world.
+ * places drawn once by Muse Image, shared by every character so the channel
+ * has one recognisable world. Street sets are faded watercolour sketches; the
+ * office is drawn in the series comic style from the published panels, so the
+ * comic and the videos are the same office.
  * Real photos (--bg photo.jpg) work the same way.
  */
 
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
-import { generateSoftly, type StudioContext } from "@hoi-sau/studio";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { extname, join } from "node:path";
+import { generateSoftly, styleText, type StudioContext } from "@hoi-sau/studio";
 
 export interface TalkSet {
   id: string;
@@ -19,6 +21,16 @@ export interface TalkSet {
   far?: number;
   /** Camera for this set, in place of the default standing eye-level view down a street. */
   camera?: string;
+  /** Published comic panels showing this place (paths under series/sets/), given to Muse Image so the set is the same place. */
+  references?: string[];
+  /** Drawn in the series comic style (series/style.yaml) instead of the faded watercolour. */
+  seriesStyle?: boolean;
+  /**
+   * How the drawn set fills the frame: zoomed in by `zoom` past "cover", the window placed at
+   * `x`/`y` (0 left/top .. 1 right/bottom). Moves furniture that comes forward out from under the
+   * character's feet. `vp` is measured on the framed picture.
+   */
+  framing?: { zoom: number; x: number; y: number };
 }
 
 export const SETS: TalkSet[] = [
@@ -43,11 +55,15 @@ export const SETS: TalkSet[] = [
     id: "van-phong-goc",
     vi: "góc văn phòng",
     vp: { x: 0.5, y: 0.45 },
-    far: 3,
+    far: 6,
+    // Muse brings the desk forward over the left half; zoomed in from the bottom right it stands at the left edge, beside the character.
+    framing: { zoom: 1.3, x: 1, y: 1 },
+    references: ["refs/ep-001-office.jpg", "refs/ep-002-office.jpg", "refs/ep-003c-entrance.jpg"],
+    seriesStyle: true,
     scene:
-      "a corner of a real, ordinary small Vietnamese office in the afternoon, seen close: a pale wall with a frosted-glass partition about one to two metres behind, on it a wall calendar with no readable text, a small whiteboard with faint scribbles and a wall clock with no numbers; the corner of a plain office desk with a computer monitor and an office chair at the left side; a water dispenser and a potted plant at the right side; light grey ceramic floor tiles in the foreground; soft afternoon light from a window off the picture",
+      "Lolo's own desk corner in the team's office (from the series floor plan): pale cream walls, light wooden desks with low pale-grey dividers, the wide windows with light wooden blinds behind looking out on Hanoi rooftops, potted plants. At the left side, the corner of Lolo's light wooden desk with the half-dead pothos (trầu bà) in a pot on its corner, a monitor covered in sticky notes with no readable writing, papers and folders piled up, a coffee cup and a plastic cup of iced tea with a straw, a phone charging cable trailing off the desk, an office chair pushed back with a jacket hung over its back and a backpack on the floor beside it. At the right side, a tall potted plant by the next desk. Light beige floor tiles in the foreground",
     camera:
-      "Shallow scene, no deep room perspective and no rows of desks: the camera is low, at about the knee height of an adult, facing the wall straight on. The line where the floor meets the wall runs across the picture at about 60% of its height, so the floor fills the lower part and comes right up to the camera; the middle of the floor is clear, where a character will stand, with the desk and the water dispenser at the sides.",
+      "Shallow scene, no deep room perspective: the camera is low, at about the knee height of an adult, facing the low divider and the windows straight on. The line where the floor meets the divider runs across the picture at about 60% of its height, so the floor fills the lower part and comes right up to the camera; the desk stands back against the divider in the left quarter of the picture and nothing of it comes forward of the divider line; the plant stands at the right edge; the whole floor in the lower 40% of the picture is clear from edge to edge, where a character will stand in the middle.",
   },
   {
     id: "van-phong-that",
@@ -87,16 +103,31 @@ export const setsDir = (seriesDir: string) => join(seriesDir, "sets");
 /**
  * Painted the way cartoon talk channels paint their streets: thin loose ink,
  * faded watercolour, hazy and pale, so the bold character in front carries
- * the picture. The series style is left out on purpose: its sparkles and
- * motion lines are what made earlier sets look generated.
+ * the picture. Street sets use it; the office uses the series style instead
+ * (seriesStyle), so it matches the published comic.
  */
-export function setPrompt(s: TalkSet): string {
+const WATERCOLOUR =
+  "Style: hand-drawn comic illustration with thin, slightly loose ink lines and flat, muted, washed-out colours like a faded watercolour; soft hazy daylight, low contrast, the far background paler and simpler (atmospheric perspective). Calm and real, like a sketch of an actual place.";
+
+/** The set's prompt; `series` is the series style text, used when the set asks for it. */
+export function setPrompt(s: TalkSet, series?: string): string {
   return [
     `Background plate for a vertical cartoon talking video: ${s.scene}.`,
-    "Style: hand-drawn comic illustration with thin, slightly loose ink lines and flat, muted, washed-out colours like a faded watercolour; soft hazy daylight, low contrast, the far background paler and simpler (atmospheric perspective). Calm and real, like a sketch of an actual place.",
+    s.references?.length
+      ? "The same place as in the reference comic panels: the same wall colours, desks, chairs, floor, plants, windows, lighting, line style and colouring. Draw it empty of characters, seen from this new camera."
+      : "",
+    s.seriesStyle && series ? `Style: ${series}` : WATERCOLOUR,
     "No sparkles, no stars, no motion lines, no puffs, no stickers, no decorations, no cute props. No people, no animals, no characters. No readable text, letters, signs or logos.",
     s.camera ?? "Eye-level camera at standing head height, one-point perspective down the middle, the centre of the frame calm so a character can stand in front.",
-  ].join(" ");
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+/** A reference picture as a data URL for Muse Image. */
+function dataUrl(file: string): string {
+  const mime = extname(file).toLowerCase() === ".png" ? "image/png" : "image/jpeg";
+  return `data:${mime};base64,${readFileSync(file).toString("base64")}`;
 }
 
 export async function drawSets(ctx: StudioContext, dir: string, opts: { only?: string[]; force?: boolean; log?: (s: string) => void } = {}): Promise<string[]> {
@@ -109,7 +140,10 @@ export async function drawSets(ctx: StudioContext, dir: string, opts: { only?: s
       continue;
     }
     opts.log?.(`drawing set ${s.id}`);
-    const res = await generateSoftly(ctx.image, { prompt: setPrompt(s), size: "1024x1536" }, opts.log);
+    const references = (s.references ?? []).map((r) => join(dir, r)).filter((f) => existsSync(f)).map(dataUrl);
+    if (s.references?.length && references.length < s.references.length) opts.log?.(`set ${s.id}: some reference panels are missing in ${dir}`);
+    const prompt = setPrompt(s, s.seriesStyle && ctx.style ? styleText(ctx.style) : undefined);
+    const res = await generateSoftly(ctx.image, { prompt, size: "1024x1536", references: references.length ? references : undefined }, opts.log);
     writeFileSync(file, res.image);
     out.push(file);
   }

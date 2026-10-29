@@ -152,3 +152,7 @@ paths are read under `MEDIA_BASE_URL`.
 ## Status
 
 In place: character creation, series bible, the full Muse episode pipeline (with an offline mock), Vietnamese lettering, listening and story memory, the dashboard, and publishing, comments and inbox for every brand. Day-by-day progress is in [docs/build-log.md](docs/build-log.md).
+
+## License
+
+[MIT](LICENSE)

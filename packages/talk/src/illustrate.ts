@@ -529,19 +529,21 @@ const area = (m: Uint8Array) => m.reduce((n, v) => n + (v ? 1 : 0), 0);
 
 /**
  * `base` with the mouth of `edit` (shifted by dx, dy) pasted in through a tight
- * mask: the old mouth and the new one, grown by `grow` px and feathered, so the
- * nose and cheeks around them stay as drawn. Nothing is pasted on `keep` (the
+ * mask: the old mouth grown by `oldGrow` px (so a grin's corner curls go too)
+ * and the new one grown by `grow` px, feathered, so the nose and cheeks around
+ * them stay as drawn. Nothing is pasted on `keep` (the
  * picture's own nose and eyes), so they always stay on top.
  */
-export function pasteMouth(base: Raster, edit: Raster, oldMouth: Uint8Array, newMouth: Uint8Array, dx: number, dy: number, grow = 5, keep?: Uint8Array): Raster {
+export function pasteMouth(base: Raster, edit: Raster, oldMouth: Uint8Array, newMouth: Uint8Array, dx: number, dy: number, grow = 5, keep?: Uint8Array, oldGrow = grow): Raster {
   const { width: w, height: h } = base;
-  const region = new Uint8Array(w * h);
+  const moved = new Uint8Array(w * h);
   for (let y = 0; y < h; y++)
     for (let x = 0; x < w; x++) {
       const sx = x - dx, sy = y - dy;
-      if (oldMouth[y * w + x] || (sx >= 0 && sy >= 0 && sx < w && sy < h && newMouth[sy * w + sx])) region[y * w + x] = 1;
+      if (sx >= 0 && sy >= 0 && sx < w && sy < h && newMouth[sy * w + sx]) moved[y * w + x] = 1;
     }
-  const hard = dilate(region, w, h, grow);
+  const old = dilate(oldMouth, w, h, oldGrow), hard = dilate(moved, w, h, grow);
+  for (let i = 0; i < hard.length; i++) hard[i] |= old[i];
   // Feather: the share of a (2r+1)² window that is inside, so the edge fades over r px.
   const r = 2, out = Buffer.from(base.data);
   for (let y = 0; y < h; y++)
@@ -558,12 +560,29 @@ export function pasteMouth(base: Raster, edit: Raster, oldMouth: Uint8Array, new
   return { data: out, width: w, height: h };
 }
 
+const FACE_CHECK = S.obj({ pass: S.bool(), problems: S.arr(S.str("one concrete problem"), 0, 6) });
+
+/** Muse Spark looks at the face close up in both frames: one clean mouth each, no leftover lines of the old one. */
+async function faceProblem(ctx: StudioContext, name: string, shut: Raster, open: Raster, box: Box): Promise<string> {
+  const crop = async (r: Raster) => dataUrl(await sharp(r.data, { raw: { width: r.width, height: r.height, channels: 3 } }).extract({ left: box.x, top: box.y, width: box.w, height: box.h }).png().toBuffer());
+  const v = await ctx.spark.json<{ pass: boolean; problems: string[] }>("mouth_check", FACE_CHECK, [{
+    role: "user",
+    content: [
+      { type: "text", text: `Two close-ups of ${name}'s face from a cartoon, the first with the mouth shut, the second open. Fail them if either has more than one mouth, a leftover line, curl or corner of another mouth on the cheeks or chin, a smear or a patch of a different colour around the mouth, or a nose or eyes that are cut, covered or changed between the two.` },
+      { type: "image_url", image_url: { url: await crop(shut) } },
+      { type: "image_url", image_url: { url: await crop(open) } },
+    ],
+  }]);
+  return v.pass ? "" : `the face close-up check failed: ${v.problems.join("; ")}`;
+}
+
 /**
  * Each shot picture (and its pose B) gets a shut and an open mouth, `<pic>-s.png`
  * and `<pic>-m.png`: Muse Image redraws the lead's mouth closed and open, SAM 3.1
  * finds the mouth in each, and only the mouth is pasted onto the picture, never
  * over the picture's own nose and eyes. The pair is dropped when the open mouth
- * is not clearly bigger than the shut one, is too tall, or runs into the nose or eyes.
+ * is not clearly bigger than the shut one, is too tall, runs into the nose or eyes,
+ * or Muse Spark sees a leftover of the old mouth in the face close-up.
  */
 export async function drawMouths(sam: Sam, ctx: StudioContext, plan: Plan, dir: string, opts: { only?: string[]; log?: (s: string) => void } = {}): Promise<Array<{ pic: string; ok: boolean; problem?: string }>> {
   const { w, h } = OUT;
@@ -583,8 +602,10 @@ export async function drawMouths(sam: Sam, ctx: StudioContext, plan: Plan, dir: 
     return dilate(keep, w, h, 3);
   };
   for (const s of plan.shots) {
-    if (s.src || (opts.only && !opts.only.includes(s.id))) continue;
+    if (s.src) continue;
     for (const pic of [s.id, `${s.id}-b2`]) {
+      // --only takes a shot (s06: both its pictures) or one picture (s06-b2).
+      if (opts.only && !opts.only.includes(s.id) && !opts.only.includes(pic)) continue;
       const file = join(dir, `${pic}.png`), shutFile = join(dir, `${pic}-s.png`), openFile = join(dir, `${pic}-m.png`);
       if (!existsSync(file) || (!opts.only && existsSync(openFile))) continue;
       const rgb = await rgbOf(file);
@@ -606,14 +627,14 @@ export async function drawMouths(sam: Sam, ctx: StudioContext, plan: Plan, dir: 
         if (!found) { opts.log?.(`${pic}: no mouth found in the ${kind} edit`); continue; }
         const edit: Raster = { data: Buffer.from(editRgb), width: w, height: h };
         const shift = align(base, edit, grow(unionBox([mouth.box, found.box])!, 1.6, w, h, 48));
-        made[kind] = { img: pasteMouth(base, edit, mouth.mask, found.mask, shift.dx, shift.dy, 5, keep), size: area(found.mask), box: found.box, onFace: overlapShare(found.mask, keep, w, h, shift.dx, shift.dy) };
+        made[kind] = { img: pasteMouth(base, edit, mouth.mask, found.mask, shift.dx, shift.dy, 5, keep, 12), size: area(found.mask), box: found.box, onFace: overlapShare(found.mask, keep, w, h, shift.dx, shift.dy) };
       }
       const { shut, open } = made;
       const problem = !shut || !open ? "a mouth edit failed"
         : open.size < shut.size * 1.4 ? `the open mouth is not clearly bigger than the shut one (${open.size} vs ${shut.size} px)`
         : open.box.h > shut.box.w * 1.6 ? `the open mouth is too tall (${open.box.h} px for a ${shut.box.w} px wide mouth)`
         : open.onFace > 0.03 ? `the open mouth runs into the nose or eyes (${Math.round(open.onFace * 100)}% of it)`
-        : "";
+        : await faceProblem(ctx, p.name, shut.img, open.img, grow(unionBox([mouth.box, shut.box, open.box])!, 3, w, h, 160));
       report.push({ pic, ok: !problem, problem: problem || undefined });
       if (problem) { opts.log?.(`${pic}: ${problem}; this picture keeps its mouth as drawn`); continue; }
       await sharp(made.shut!.img.data, { raw: { width: w, height: h, channels: 3 } }).png().toFile(shutFile);

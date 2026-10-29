@@ -71,7 +71,7 @@ library, so a sound you don't own is not muted.
 ## Illustrated, talking (`--mouth`)
 
 ```bash
-npm run talk -- illustrate cu-li clip.mp4 --out data/talk/x --step mouths   # on a clip already drawn: ~1 Muse Image call per picture
+npm run talk -- illustrate cu-li clip.mp4 --out data/talk/x --step mouths   # on a clip already drawn: 2 Muse Image calls per picture; --only s06 or s06-b2
 npm run talk -- illustrate cu-li clip.mp4 --out data/talk/x --step render --mouth --vocals stem.wav
 ```
 
@@ -85,7 +85,9 @@ and eye markings (SAM finds those too), so the nose and cheeks stay as drawn
 with the mouth already open or smiling. The pair is dropped, and the picture
 keeps its mouth as drawn, when the open mouth is not clearly bigger than the
 shut one, is taller than 1.6 times the shut mouth's width, or runs into the nose
-or eyes; `mouths.json` says which pictures talk and why the others don't.
+or eyes, or when Muse Spark, looking at the face close up in both frames, sees a
+leftover of the old mouth (the old mouth is painted over 12 px wider than the
+new one, so a wide grin's corners go too); `mouths.json` says which pictures talk and why the others don't.
 At render time the mouth follows the loudness of the voice (a vocal stem works
 best), only inside heard words. The output is `<slug>-mouth.mp4`, next to the
 plain `<slug>.mp4`.

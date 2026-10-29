@@ -347,3 +347,14 @@ test("illustrate: the nose stays on top of a pasted mouth, and a mouth reaching 
   assert.ok(overlapShare(mouth, keep, w, h) > 0.03);
   assert.equal(overlapShare(mouth, keep, w, h, 0, 20), 0);
 });
+
+test("illustrate: a grin's corner beyond the new mouth is painted over", () => {
+  const w = 60, h = 60;
+  const base = { data: Buffer.alloc(w * h * 3, 200), width: w, height: h }, edit = { data: Buffer.alloc(w * h * 3, 0), width: w, height: h };
+  const grin = new Uint8Array(w * h), small = new Uint8Array(w * h);
+  for (let x = 15; x < 45; x++) grin[40 * w + x] = 1;
+  for (let x = 26; x < 34; x++) small[40 * w + x] = 1;
+  const curl = (46 * w + 50) * 3;
+  assert.equal(pasteMouth(base, edit, grin, small, 0, 0, 3).data[curl], 200);
+  assert.ok(pasteMouth(base, edit, grin, small, 0, 0, 3, undefined, 8).data[curl] < 200);
+});

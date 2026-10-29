@@ -9,7 +9,7 @@
  *   npm run talk -- cut <slug> [--phrase "cartoon character"] [--keep desk|none] [--force]  SAM 3.1 cuts the character (and desk) out
  *   npm run talk -- sets [--only office,cafe] [--force]                    Muse Image draws empty background sets in series/sets/
  *                    make/sync take --bg plain[:#hex], office|pantry|phong-tro|cafe, or photo.jpg: the cut-out character stands in front of it
- *   npm run talk -- illustrate <slug> <clip.mp4> [--vocals stem.wav] [--lines lines.json] [--end s] [--step plan|draw|poses|stabilize|render|all] [--only s01,s02] [--out dir]
+ *   npm run talk -- illustrate <slug> <clip.mp4> [--vocals stem.wav] [--lines lines.json] [--end s] [--step plan|draw|poses|stabilize|mouths|render|all] [--mouth] [--only s01,s02] [--out dir]
  *                    the clip's voice and cuts, one picture per shot of <slug> acting it out (Muse Image, checked by Muse Spark), two poses on one background (SAM 3.1)
  *   npm run talk -- demo                                                   offline: mock pictures, hummed voice
  */
@@ -28,8 +28,8 @@ import { gateMouth, linesFromWords, readSound, soundVoice, stageLines, timeLyric
 import { MuseTranscribe, type TimedWord } from "./transcribe.js";
 import { checkScript, PACE, writeScript, type TalkScript } from "./script.js";
 import { buildTimeline, FPS } from "./timeline.js";
-import { mouthTrack, ttsArg, voiceFor, type Tts } from "./voice.js";
-import { drawPoses, drawShots, groupLines, hearWords, planShots, renderIllustrated, sceneCuts, shotSpans, stabilizePoses, timeWords, type Line, type Plan } from "./illustrate.js";
+import { mouthTrack, RATE, ttsArg, voiceFor, type Tts } from "./voice.js";
+import { drawMouths, drawPoses, drawShots, gateToWords, groupLines, hearWords, planShots, renderIllustrated, sceneCuts, shotSpans, stabilizePoses, timeWords, type Line, type Plan } from "./illustrate.js";
 
 const ROOT = fileURLToPath(new URL("../../..", import.meta.url));
 const CHARACTERS = join(ROOT, "characters");
@@ -245,7 +245,7 @@ async function main() {
     }
     case "illustrate": {
       const [slug, clip] = pos;
-      if (!slug || !clip) throw new Error("Usage: talk illustrate <slug> <clip.mp4> [--vocals stem.wav] [--lines lines.json] [--step plan|draw|poses|stabilize|render|all]");
+      if (!slug || !clip) throw new Error("Usage: talk illustrate <slug> <clip.mp4> [--vocals stem.wav] [--lines lines.json] [--step plan|draw|poses|stabilize|mouths|render|all] [--mouth]");
       const out = opt.out ? fromCwd(opt.out as string) : join(ROOT, "data", "talk", `${slug}-illustrate-${stamp()}`);
       mkdirSync(out, { recursive: true });
       const step = String(opt.step ?? "all");
@@ -266,9 +266,19 @@ async function main() {
       if (run("draw")) await drawShots(ctx, plan, shots, { only, log });
       if (run("poses")) await drawPoses(ctx, plan, shots, { only, log });
       if (run("stabilize")) writeFileSync(join(out, "stabilize.json"), JSON.stringify(await stabilizePoses(Sam.fromEnv(), ctx, plan, shots, { only, log }), null, 1));
+      // --mouth: the lead talks; without it the clip renders as before.
+      const mouth = !!opt.mouth || step === "mouths";
+      if (mouth && run("mouths")) await drawMouths(Sam.fromEnv(), ctx, plan, shots, { only, log });
       if (run("render")) {
         const heard = JSON.parse(readFileSync(wordsFile, "utf8"));
-        const video = await renderIllustrated(plan, timeWords(plan.lines, heard), shots, join(out, `${slug}.mp4`), { log });
+        const words = timeWords(plan.lines, heard);
+        let track: boolean[] | undefined;
+        if (opt.mouth) {
+          const pcm = await readSound(opt.vocals ? fromCwd(opt.vocals as string) : plan.clip, join(out, "voice.m4a"));
+          const frames = Math.ceil(plan.end * 30);
+          track = gateToWords(mouthTrack({ pcm, rate: RATE, spans: [] }, 30, frames), words, 30);
+        }
+        const video = await renderIllustrated(plan, words, shots, join(out, `${slug}${opt.mouth ? "-mouth" : ""}.mp4`), { mouth: track, log });
         await silentCopy(video);
         const problems = reelsProblems(await probeVideo(video));
         log(problems.length ? `Reels check: ${problems.join("; ")}` : "Reels check: ok for Facebook/Instagram Reels and TikTok");

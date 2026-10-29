@@ -29,6 +29,17 @@ Output goes to `data/talk/<slug>-<time>/`: `script.json`, `safety.json`,
 channel package after you approve it. `TALK_PYTHON` (or `DANCE_PYTHON`) picks
 the Python that has torch.
 
+## Video kinds
+
+Every kind stays available; pick per clip, none replaces another.
+
+| Kind | Command | What you see |
+| --- | --- | --- |
+| Talking to camera | `talk make <slug>` | One character at a desk or standing on a set, gestures, mouth on the voice |
+| Lip-sync to a sound | `talk sync <slug> <sound>` | The same character mouthing a sound you give it |
+| Illustrated voice-over | `talk illustrate <slug> <clip>` | The clip's voice, one full-frame picture per shot, two poses, bubble and captions |
+| Illustrated, talking | `talk illustrate <slug> <clip> --mouth` | As above, and the lead's mouth opens and shuts with the voice |
+
 ## Depth and grounding
 
 Rules for every backdrop (drawn set or photo) a cut-out character stands on, so it stands in the place instead of floating in front of it:
@@ -56,6 +67,21 @@ line and writes the title and caption, the safety gate reads the words, and
 the mouth moves only inside spoken words. Besides `<slug>.mp4` it writes
 `<slug>.silent.mp4`: post that one and pick the same sound in the app's sound
 library, so a sound you don't own is not muted.
+
+## Illustrated, talking (`--mouth`)
+
+```bash
+npm run talk -- illustrate cu-li clip.mp4 --out data/talk/x --step mouths   # on a clip already drawn: ~1 Muse Image call per picture
+npm run talk -- illustrate cu-li clip.mp4 --out data/talk/x --step render --mouth --vocals stem.wav
+```
+
+For each shot picture and its pose B, SAM 3.1 finds the lead's mouth (the
+mouth find that sits on the lead, so another character's mouth stays shut),
+Muse Image redraws the picture with that mouth open, and only the mouth is
+pasted back (`<pic>-m.png`). A picture where SAM finds no mouth of the lead
+keeps it shut. At render time the mouth follows the loudness of the voice
+(a vocal stem works best) and only inside heard words. The output is
+`<slug>-mouth.mp4`, next to the plain `<slug>.mp4`.
 
 ## Our own Hà Nội voice (`--tts mms-hn`)
 

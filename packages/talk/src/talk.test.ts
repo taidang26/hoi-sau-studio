@@ -6,7 +6,7 @@ import { mockScript, PACE, scriptProblems, syllables } from "./script.js";
 import { blinkTrack, chunkWords, wordTimes } from "./timeline.js";
 import { hummedLine, joinLines, mouthTrack, RATE, ttsArg, ttsEnv, voiceShape, wavBytes } from "./voice.js";
 import { setPrompt, SETS } from "./sets.js";
-import { alignBackground, dilate, flatBands, frameProblem, groupLines, parseCuts, popScale, poseAt, shotSpans, timeWords } from "./illustrate.js";
+import { alignBackground, dilate, flatBands, frameProblem, gateToWords, groupLines, leadMouth, parseCuts, popScale, poseAt, shotSpans, timeWords } from "./illustrate.js";
 
 test("words share the line's time, with a pause after punctuation", () => {
   const w = wordTimes("Dạ, em đang làm", 1, 3);
@@ -291,4 +291,18 @@ test("illustrate: a picture drawn smaller than the 9:16 frame fails; a plain wal
   assert.equal(frameProblem(1080, 1920, { top: 83, bottom: 172 }), "");
   assert.equal(frameProblem(1080, 1920, { top: 197, bottom: 0 }), "");
   assert.match(frameProblem(1024, 1536, { top: 0, bottom: 0 }), /not 9:16/);
+});
+
+test("illustrate: the mouth is the lead's, at a mouth's size, and opens only on words", () => {
+  const w = 100, h = 100;
+  const box = (x: number, y: number, bw: number, bh: number) => {
+    const m = new Uint8Array(w * h);
+    for (let yy = y; yy < y + bh; yy++) for (let xx = x; xx < x + bw; xx++) m[yy * w + xx] = 1;
+    return m;
+  };
+  const lead = box(0, 0, 50, 100);
+  const theirs = { mask: box(70, 40, 10, 5) }, ours = { mask: box(20, 40, 10, 5) }, face = { mask: box(10, 10, 40, 40) };
+  assert.deepEqual(leadMouth([theirs, face, ours], lead, w, h), { x: 20, y: 40, w: 10, h: 5 });
+  assert.equal(leadMouth([theirs], lead, w, h), undefined);
+  assert.deepEqual(gateToWords([true, true, true, true], [{ text: "a", start: 0.1, end: 0.2 }], 10), [false, true, true, false]);
 });

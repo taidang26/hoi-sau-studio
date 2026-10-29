@@ -10,7 +10,8 @@
  *   draw       Muse Image draws each shot; Muse Spark checks it (on-model, once, no text, things face the right way) and it is redrawn on a fail
  *   poses      a second pose of each shot (Muse Image edit), checked the same way
  *   stabilize  SAM 3.1 masks the character in both poses; pose B keeps pose A's background outside them
- *   render     1080x1920 with the original audio
+ *   mouths     (--mouth) a mouth-open copy of each picture: Muse Image opens the lead's mouth, SAM 3.1 finds it and only the mouth is pasted in
+ *   render     1080x1920 with the original audio; with --mouth the lead's mouth opens and shuts with the voice
  */
 
 import { spawn, spawnSync } from "node:child_process";
@@ -24,6 +25,7 @@ import type { Sam } from "@hoi-sau/dance";
 import { COMIC_FONT_PATH, escapeXml, loadFont, measure, svgToPng } from "@hoi-sau/svg-text";
 import { captionSvg } from "./captions.js";
 import { chunkWords, OUT, SAFE, type Chunk, type Word } from "./timeline.js";
+import { maskBox, patchFeature, type Box } from "./patch.js";
 import { python } from "./voice.js";
 
 export interface Line {
@@ -398,6 +400,60 @@ export async function stabilizePoses(sam: Sam, ctx: StudioContext, plan: Plan, d
   return report;
 }
 
+export const mouthPrompt = (name: string) =>
+  `Change only ${name}'s mouth: open it mid-word as if talking, a small open mouth showing a little of the inside. Do not move the head, eyes, eyebrows, arms, anyone else or anything else. Keep the same framing, background, colours and line style. No text.`;
+
+/**
+ * The lead's mouth among SAM's finds: the biggest find whose centre lies on the
+ * lead (`lead`, a 0/1 mask), at a mouth's size. Undefined when none fits, so a
+ * picture where the lead's mouth is hidden keeps its mouth shut.
+ */
+export function leadMouth(finds: Array<{ mask: Uint8Array; score?: number }>, lead: Uint8Array, w: number, h: number): Box | undefined {
+  let best: Box | undefined;
+  for (const f of finds) {
+    if ((f.score ?? 1) < 0.3) continue;
+    const b = maskBox(f.mask, w, h);
+    if (!b || b.w > w * 0.3 || b.h > h * 0.12 || b.w < 6 || b.h < 4) continue;
+    if (!lead[Math.round(b.y + b.h / 2) * w + Math.round(b.x + b.w / 2)]) continue;
+    if (!best || b.w * b.h > best.w * best.h) best = b;
+  }
+  return best;
+}
+
+/** Each shot picture (and its pose B) gets a mouth-open copy, `<pic>-m.png`, with only the lead's mouth changed. */
+export async function drawMouths(sam: Sam, ctx: StudioContext, plan: Plan, dir: string, opts: { only?: string[]; log?: (s: string) => void } = {}): Promise<void> {
+  const { w, h } = OUT;
+  const p = ctx.profiles.get(plan.slug)!;
+  const species = p.species.split("(")[0].trim();
+  for (const s of plan.shots) {
+    if (s.src || (opts.only && !opts.only.includes(s.id))) continue;
+    for (const pic of [s.id, `${s.id}-b2`]) {
+      const file = join(dir, `${pic}.png`), out = join(dir, `${pic}-m.png`);
+      if (!existsSync(file) || (!opts.only && existsSync(out))) continue;
+      const rgb = await rgbOf(file);
+      const png = await sharp(Buffer.from(rgb), { raw: { width: w, height: h, channels: 3 } }).png().toBuffer();
+      const lead = await maskOf(sam, rgb, [`cartoon ${species}`]);
+      const mouth = leadMouth(await sam.segment(`mouth of the cartoon ${species}`, dataUrl(png), w, h), lead, w, h);
+      if (!mouth) {
+        opts.log?.(`${pic}: no mouth of ${p.name} found; this picture keeps its mouth shut`);
+        continue;
+      }
+      opts.log?.(`${pic}: opening the mouth`);
+      const res = await generateSoftly(ctx.image, { prompt: mouthPrompt(p.name), size: `${w}x${h}`, references: [dataUrl(png)] }, opts.log);
+      writeFileSync(join(dir, `${pic}-m.raw.png`), res.image);
+      const edit = Buffer.from(await sharp(res.image).resize(w, h, { fit: "cover" }).removeAlpha().raw().toBuffer());
+      const patched = patchFeature({ data: Buffer.from(rgb), width: w, height: h }, { data: edit, width: w, height: h }, mouth);
+      await sharp(patched.image.data, { raw: { width: w, height: h, channels: 3 } }).png().toFile(out);
+      opts.log?.(`${pic}: mouth pasted (${patched.box.w}x${patched.box.h} px at ${patched.box.x},${patched.box.y}, shift ${patched.shift.dx},${patched.shift.dy})`);
+    }
+  }
+}
+
+/** Shuts the mouth outside heard words (with a little slack either side); `fps` frames per second. */
+export function gateToWords(mouth: boolean[], words: Word[], fps: number): boolean[] {
+  return mouth.map((open, f) => open && words.some((x) => f / fps >= x.start - 0.06 && f / fps <= x.end + 0.06));
+}
+
 function bubbleSvg(text: string): string {
   const font = loadFont(COMIC_FONT_PATH);
   const size = 56, maxW = SAFE.right - SAFE.left - 120;
@@ -416,16 +472,20 @@ function bubbleSvg(text: string): string {
 }
 
 /** Frames only where something changes (a cut, a pose, the bubble pop, a word), then ffmpeg with the clip's audio. */
-export async function renderIllustrated(plan: Plan, words: Word[], dir: string, out: string, opts: { log?: (s: string) => void } = {}): Promise<string> {
+export async function renderIllustrated(plan: Plan, words: Word[], dir: string, out: string, opts: { mouth?: boolean[]; log?: (s: string) => void } = {}): Promise<string> {
   const chunks = chunkWords(words, 3, 16);
   const bubbleTop = SAFE.top + 10, capTop = SAFE.bottom - 190;
   const plate = (f: string) => sharp(f).resize(OUT.w, OUT.h, { fit: "cover" }).png().toBuffer();
-  const plates: Record<string, Buffer[]> = {};
+  // Each pose, and its mouth-open copy when there is one and the mouth is asked for.
+  const plates: Record<string, Array<{ shut: Buffer; open?: Buffer }>> = {};
+  const withMouth = async (pic: string) => ({ shut: await plate(join(dir, `${pic}.png`)), open: opts.mouth && existsSync(join(dir, `${pic}-m.png`)) ? await plate(join(dir, `${pic}-m.png`)) : undefined });
   for (const s of plan.shots) {
     const id = s.src ?? s.id;
-    plates[s.id] = [await plate(join(dir, `${id}.png`))];
-    if (existsSync(join(dir, `${id}-b2.png`))) plates[s.id].push(await plate(join(dir, `${id}-b2.png`)));
+    plates[s.id] = [await withMouth(id)];
+    if (existsSync(join(dir, `${id}-b2.png`))) plates[s.id].push(await withMouth(`${id}-b2`));
   }
+  const FPS = 30;
+  const openAt = (t: number) => !!opts.mouth?.[Math.floor(t * FPS + 1e-6)];
   const bubbles: Record<string, Record<number, { input: Buffer; left: number; dy: number }>> = {};
   for (const s of plan.shots.filter((x) => x.bubble)) {
     const png = await sharp(svgToPng(bubbleSvg(s.bubble))).png().toBuffer();
@@ -442,6 +502,7 @@ export async function renderIllustrated(plan: Plan, words: Word[], dir: string, 
   const times = new Set<number>([0, plan.end]);
   for (const s of plan.shots) { times.add(s.t); for (const [d] of POP) times.add(+(s.t + 0.25 + d).toFixed(3)); }
   for (const c of chunks) { for (const w of c.words) times.add(+w.start.toFixed(2)); times.add(+c.end.toFixed(2)); }
+  opts.mouth?.forEach((v, f) => { if (f && v !== opts.mouth![f - 1]) times.add(+(f / FPS).toFixed(4)); });
   const ts = [...times].filter((t) => t >= 0 && t <= plan.end).sort((a, b) => a - b);
   const fdir = join(dir, "frames");
   mkdirSync(fdir, { recursive: true });
@@ -454,14 +515,16 @@ export async function renderIllustrated(plan: Plan, words: Word[], dir: string, 
     const wi = ci < 0 ? -1 : chunks[ci].words.reduce((k, w, j) => (t >= w.start - 1e-6 ? j : k), 0);
     const pose = poseAt(chunks, ci, shot.t, plates[shot.id].length);
     const pop = popScale(t - (shot.t + 0.25));
-    const key = `${shot.id}|${pose}|${pop}|${ci}|${wi}`;
+    const pl = plates[shot.id][pose];
+    const open = !!pl.open && openAt(t + 1e-4);
+    const key = `${shot.id}|${pose}|${open}|${pop}|${ci}|${wi}`;
     let file = cache.get(key);
     if (!file) {
       const layers: sharp.OverlayOptions[] = [];
       if (pop && shot.bubble) { const b = bubbles[shot.id][pop]; layers.push({ input: b.input, top: bubbleTop + b.dy, left: b.left }); }
       if (ci >= 0) layers.push({ input: svgToPng(captionSvg(chunks[ci], wi)), top: capTop, left: 0 });
       file = join(fdir, `f${String(cache.size).padStart(4, "0")}.png`).replace(/\\/g, "/");
-      await sharp(plates[shot.id][pose]).composite(layers).png().toFile(file);
+      await sharp(open ? pl.open! : pl.shut).composite(layers).png().toFile(file);
       cache.set(key, file);
     }
     list.push(`file '${file}'\nduration ${d.toFixed(3)}`);

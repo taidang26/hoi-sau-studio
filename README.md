@@ -96,6 +96,8 @@ Image models distort Vietnamese diacritics, so Muse Image draws panels **with no
 | `packages/story` | Listening to comments, story memory, the coach |
 | `packages/channel` | Facebook, Instagram and Threads per brand: publishing, comments, inbox |
 | `packages/dashboard` | One web screen over all of it |
+| `packages/motion` | Lettered episode → 9:16 motion comic (ffmpeg) for Reels and Threads |
+| `packages/pipeline` | The daily loop: comments → episode → motion comic → posts, with a scheduler |
 | `characters/`, `series/` | Character profiles and portraits; series bible and style |
 | `channels.yaml` | Brands (Hồi Sau plus one per character) and their accounts |
 | `docs/` | Architecture, pipeline plan, Meta tools, metrics, demo script, submission draft, integration notes, build log |
@@ -132,6 +134,8 @@ npm run studio -- episode new ep-001 --lead cu-li --with ca-noc --direction "Cu 
 npm run studio -- episode run ep-001 --mock   # premise → … → lettered pages in episodes/ep-001/final/
 npm run demo -w @hoi-sau/svg-text        # letter a sample panel in Vietnamese
 npm run dashboard -- --demo              # dashboard with sample data on http://localhost:4321
+npm run motion -- episode ep-001 --draft # motion comic in episodes/ep-001/motion/reel.mp4 (needs ffmpeg)
+npm run pipeline -- run --mock           # one whole day offline: comments → episode → video → posts, in data-demo/
 ```
 
 ### Public site and media

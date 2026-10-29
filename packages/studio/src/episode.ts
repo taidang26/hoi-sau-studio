@@ -47,11 +47,14 @@ import { addCanon, SERIES_DIR, type CanonFact, type SeriesBible } from "./bible.
 import { generateSoftly, type MuseImage } from "./muse-image.js";
 import { type ChatMessage, type MuseSpark, S } from "./muse-spark.js";
 import { CHARACTERS_DIR, nameVi, type Profile } from "./profile.js";
+import { fillBands, finishPanel, recolourPanel, type Segmenter } from "./finish.js";
 import { iconLine } from "./prompts.js";
 import { type SeriesStyle, styleReference, styleText } from "./style.js";
 import { officeBrief, officePanelText, type Office } from "./office.js";
 import { sha256 } from "@hoi-sau/channel";
 import { type EpisodeSource, logProvenance, whoAmI } from "./provenance.js";
+
+const EXPIRED = /referenced response not found|expired/i;
 
 export const EPISODES_DIR = fileURLToPath(new URL("../../../episodes", import.meta.url));
 
@@ -158,6 +161,10 @@ export interface StudioContext {
   safety?: SafetyPolicy;
   /** Redraw attempts per failed panel. */
   maxRedraws?: number;
+  /** SAM 3.1: when set, lettering first runs the focus pass (finish.ts) on each panel. */
+  segmenter?: Segmenter;
+  /** Recolour each approved panel with Muse Image (soft shading, one muted tone) before lettering. */
+  recolour?: boolean;
   log?: (s: string) => void;
   saveBible?: (b: SeriesBible) => void;
   saveMemory?: (slug: string, facts: string[], episode: string) => void;
@@ -449,7 +456,7 @@ const storyboardSchema = (n: Range) =>
       S.obj({
         shot: S.enum(["wide", "medium", "close-up", "extreme close-up"]),
         angle: S.enum(["eye level", "high angle", "low angle"]),
-        composition: S.str("English, one or two sentences for the illustrator: setting, poses, props, what draws the eye. Lighting fits the scene and stays cheerful: daytime by default; evening or night only when the story needs it, then warm and lively, never gloomy. Tension comes from poses and faces, not lighting. Push the acting to cartoon extremes: squash and stretch, extreme faces, big dynamic poses, drawn comic effects (sweat drops, motion lines, shock lines, steam). Leave soft, simple background (wall, window, ceiling) in the top third for dialogue. Never a thought cloud or speech bubble: thoughts and lines are lettered later."),
+        composition: S.str("English, one or two sentences for the illustrator: setting, poses, props, what draws the eye. Lighting fits the scene and stays cheerful: daytime by default; evening or night only when the story needs it, then warm and lively, never gloomy. Tension comes from poses and faces, not lighting. Push the acting to cartoon extremes: squash and stretch, extreme faces, big dynamic poses, drawn comic effects (sweat drops, motion lines, shock lines, steam). Name one muted background tone for the panel's mood (e.g. sage green, warm beige, night navy) and only one or two props that tell the story; background coworkers only when the joke needs them, small and far back. Leave soft, simple background (wall, window, ceiling) in the top third for dialogue. Never a thought cloud or speech bubble: thoughts and lines are lettered later."),
         staging: S.arr(S.obj({ character: S.str("cast slug"), position: S.enum(["left", "center", "right"]) }), 1, 3),
       }),
       n.min,
@@ -462,6 +469,7 @@ const reviewSchema = S.obj({
   issues: S.arr(S.obj({ character: S.str(), feature: S.str("which signature feature"), problem: S.str() })),
   fix: S.str("English edit instruction naming only what to change, or empty if pass"),
   heads: S.arr(S.obj({ character: S.str("cast slug"), x: S.num("head centre, share of panel width 0-1"), y: S.num("head centre, share of panel height 0-1") })),
+  counts: S.arr(S.obj({ character: S.str("cast slug"), count: S.num("how many times this character is drawn in the panel") })),
 });
 
 const canonSchema = S.obj({
@@ -532,7 +540,7 @@ export function episodePanelPrompt(ctx: StudioContext, ep: EpisodeSpec, sp: Scri
     who,
     cameo && sp.action.includes(cameo.name) ? `Also a coworker: ${cameo.description}.` : "",
     ctx.office ? officePanelText(ctx.office, bp.staging.map((st) => st.character)) : "",
-    `Match the character sheets and pose sheets exactly. Single comic panel. Style: ${style} Cheerful lighting that fits the scene (daytime unless the composition says otherwise), never gloomy. The scene fills the whole panel edge to edge; the top third shows soft, simple background (wall, window, ceiling) with no busy detail, ready for dialogue added later, never a blank band or a separate strip of plain colour, and keep every character away from the very top and bottom edges (the panel is trimmed slightly there). No text, no letters, no speech bubbles, no thought clouds, no captions. Drawn comic effects are welcome as pictures: sweat drops, motion lines, shock lines, anger veins, steam puffs, sparkles. Exaggerated cartoon acting with squash and stretch and extreme faces.`,
+    `Match the character sheets and pose sheets exactly. Single comic panel. Style: ${style} Cheerful lighting that fits the scene (daytime unless the composition says otherwise), never gloomy. Soft airbrushed shading on the characters; the background is one muted tone, simpler and softer than the characters. The scene fills the whole panel edge to edge; the top third shows soft, simple background (wall, window, ceiling) with no busy detail, ready for dialogue added later, never a blank band or a separate strip of plain colour, and keep every character away from the very top and bottom edges (the panel is trimmed slightly there). No text, no letters, no speech bubbles, no thought clouds, no captions. Drawn comic effects are welcome as pictures: sweat drops, motion lines, shock lines, anger veins, steam puffs, sparkles. Exaggerated cartoon acting with squash and stretch and extreme faces.`,
   ]
     .filter(Boolean)
     .join(" ");
@@ -692,7 +700,17 @@ export async function runStep(ctx: StudioContext, id: string, step: EpisodeStep)
         if (i === 0 && styleRef) refs.unshift(styleRef);
         const prompt = episodePanelPrompt(ctx, ep, sp, bp, premise.cameo);
         log(`${id}: panel ${i + 1}${refs.length ? ` (+${refs.length} reference)` : ""}`);
-        const res = await generateSoftly(ctx.image, { prompt, size: panelSize(ep, i + 1), previousResponseId: previous, references: refs }, (m) => log(`${id}: panel ${i + 1}: ${m}`));
+        let res;
+        try {
+          res = await generateSoftly(ctx.image, { prompt, size: panelSize(ep, i + 1), previousResponseId: previous, references: refs }, (m) => log(`${id}: panel ${i + 1}: ${m}`));
+        } catch (e) {
+          if (!previous || !EXPIRED.test((e as Error).message)) throw e;
+          // Muse Image forgot the chain: start a new one from the style, this panel's cast sheets and the panel before.
+          log(`${id}: panel ${i + 1}: Muse Image no longer has the previous panel; sending the pictures again.`);
+          const before = readFileSync(join(episodeDir(id, dir), renders[i - 1].file));
+          const again = [...(styleRef ? [styleRef] : []), ...[...new Set(bp.staging.map((s) => s.character))].flatMap((c) => characterRefs(ctx, c)), `data:image/${imageSize(before).mime.split("/")[1]};base64,${before.toString("base64")}`];
+          res = await generateSoftly(ctx.image, { prompt, size: panelSize(ep, i + 1), references: again }, (m) => log(`${id}: panel ${i + 1}: ${m}`));
+        }
         const name = `panel-${i + 1}.${imageSize(res.image).mime.split("/")[1]}`;
         writeFileSync(join(out, name), res.image);
         renders.push({ n: i + 1, file: `panels/${name}`, responseId: res.id, prompt, history: [] });
@@ -703,18 +721,29 @@ export async function runStep(ctx: StudioContext, id: string, step: EpisodeStep)
     case "review": {
       const script = need<Script>("script");
       const { renders } = need<{ renders: PanelRender[] }>("panels");
+      const board = readStep<Storyboard>(id, "storyboard", dir);
       const reviews: PanelReview[] = [];
       for (const r of renders) {
         let current = r;
-        let verdict = await reviewPanel(ctx, ep, script.panels[r.n - 1], current, dir);
+        const numbers = storyNumbers(`${script.panels[r.n - 1].action} ${board?.panels[r.n - 1]?.composition ?? ""}`);
+        let verdict = await reviewPanel(ctx, ep, script.panels[r.n - 1], current, dir, numbers);
         let redrawn = false;
-        for (let attempt = 0; !verdict.pass && attempt < (ctx.maxRedraws ?? 1); attempt++) {
+        for (let attempt = 0; !verdict.pass && attempt < (ctx.maxRedraws ?? 1) + (isDuplicate(verdict) ? 1 : 0); attempt++) {
           log(`${id}: redraw panel ${r.n}: ${verdict.fix}`);
-          const res = await generateSoftly(ctx.image, {
-            prompt: `Edit this panel. Change only this: ${verdict.fix}. Keep everything else exactly the same: composition, background, other characters, colours. No text.`,
-            previousResponseId: current.responseId,
+          const edit = {
+            prompt: `Edit this panel. Change only this: ${verdict.fix}. Keep everything else exactly the same: composition, background, other characters, colours. ${numbers.length ? `No text, except keep the number ${numbers.join(", ")} on its prop as drawn.` : "No text."}`,
             size: panelSize(ep, r.n),
-          });
+          };
+          let res;
+          try {
+            res = await generateSoftly(ctx.image, { ...edit, previousResponseId: current.responseId });
+          } catch (e) {
+            if (!EXPIRED.test((e as Error).message)) throw e;
+            // Muse Image forgets old responses: send the panel itself and edit that instead.
+            log(`${id}: panel ${r.n}: Muse Image no longer has this panel's response; sending the picture.`);
+            const png = readFileSync(join(episodeDir(id, dir), current.file));
+            res = await generateSoftly(ctx.image, { ...edit, prompt: `${edit.prompt.replace("Edit this panel.", "Edit the attached panel.")}`, references: [`data:image/${imageSize(png).mime.split("/")[1]};base64,${png.toString("base64")}`] });
+          }
           const name = `panel-${r.n}-fix${attempt + 1}.${imageSize(res.image).mime.split("/")[1]}`;
           writeFileSync(join(episodeDir(id, dir), "panels", name), res.image);
           current = { ...current, history: [...current.history, current.file], file: `panels/${name}`, responseId: res.id };
@@ -735,7 +764,23 @@ export async function runStep(ctx: StudioContext, id: string, step: EpisodeStep)
       mkdirSync(out, { recursive: true });
       const pages: Array<{ n: number; file: string; overflow: number }> = [];
       for (const r of renders) {
-        const data = await fitPost(readFileSync(join(episodeDir(id, dir), r.file)));
+        let drawn: Buffer = readFileSync(join(episodeDir(id, dir), r.file));
+        if (ctx.recolour) {
+          // Kept beside the panel, so lettering again does not pay for another recolour.
+          const recoloured = join(episodeDir(id, dir), "panels", `panel-${r.n}-recoloured.png`);
+          if (!existsSync(recoloured)) {
+            log(`${id}: recolour panel ${r.n}`);
+            writeFileSync(recoloured, (await recolourPanel(ctx.image, drawn, panelSize(ep, r.n), (m) => log(`${id}: recolour ${r.n}: ${m}`))).image);
+          }
+          // A recolour saved before a margin fix gets the same clean-up.
+          drawn = await fillBands(readFileSync(recoloured));
+        }
+        if (ctx.segmenter) {
+          const cast = board.panels[r.n - 1].staging.map((s) => ctx.profiles.get(s.character)).filter((p): p is Profile => !!p);
+          drawn = (await finishPanel(drawn, ctx.segmenter, { characters: cast, log })).image;
+          writeFileSync(join(episodeDir(id, dir), "panels", `panel-${r.n}-finished.png`), drawn);
+        }
+        const data = await fitPost(drawn);
         const size = imageSize(data);
         const heads = readStep<{ reviews: PanelReview[] }>(id, "review", dir)?.reviews.find((v) => v.n === r.n)?.heads?.map((h) => ({ ...h, character: slugFor(ctx, h.character) }));
         const lines = bubbleLayout(script.panels[r.n - 1], board.panels[r.n - 1], size.width, size.height, heads);
@@ -772,7 +817,13 @@ export async function runStep(ctx: StudioContext, id: string, step: EpisodeStep)
   }
 }
 
-async function reviewPanel(ctx: StudioContext, ep: EpisodeSpec, sp: ScriptPanel, r: PanelRender, dir?: string): Promise<Omit<PanelReview, "n" | "redrawn">> {
+/**
+ * Numbers the story needs drawn on a prop ("a queue ticket with 02"): the
+ * review lets them through and redraws keep them, so the joke is not erased.
+ */
+export const storyNumbers = (text: string): string[] => [...new Set(text.match(/(?<![\d.,:%])\d{1,4}(?![\d.,:%])/g) ?? [])];
+
+async function reviewPanel(ctx: StudioContext, ep: EpisodeSpec, sp: ScriptPanel, r: PanelRender, dir?: string, numbers: string[] = []): Promise<Omit<PanelReview, "n" | "redrawn">> {
   const data = readFileSync(join(episodeDir(ep.id, dir), r.file));
   const content: ChatMessage["content"] = [
     {
@@ -785,9 +836,12 @@ async function reviewPanel(ctx: StudioContext, ep: EpisodeSpec, sp: ScriptPanel,
           return `${p.name} must have: ${p.look.signature.join("; ")}.${p.look.icon ? ` Its identifying item must be clearly visible: ${p.look.icon}.` : ""} Palette: ${p.look.palette.map((s) => s.hex).join(", ")}.`;
         }),
         "Fail the panel if a signature feature is wrong or missing, a character is off-model, there is drawn text, a speech bubble or a thought cloud, a human figure anywhere (every coworker is an animal), or anything unsafe. The first image is the panel; any others are the locked model sheets.",
+        numbers.length ? `The story needs the number ${numbers.join(", ")} drawn on a prop: that is not drawn text, keep it.` : "",
+        "Count every cast character: each one must be drawn exactly once. Fail the panel if any of them appears twice or more (for example a second copy in the foreground or background).",
+        "Check anatomy: every character has exactly two arms and two hands, and each held object appears once. Fail the panel for an extra arm or hand, a hand coming from nowhere, or the same prop held twice, and name in the fix which hand to erase and where it is.",
         `Also give, for every cast character you can see (by slug: ${sp.characters.map((c) => `${c} = ${ctx.profiles.get(c)!.name}`).join(", ")}), where the centre of their head is in the panel, as shares of its width and height (0 is left or top, 1 is right or bottom). Speech tails will aim there.`,
         `Unsafe means anything on this list, even in the background: ${safetyOf(ctx).topics.map((t) => t.describe).join("; ")}.`,
-      ].join("\n"),
+      ].filter(Boolean).join("\n"),
     },
     { type: "image_url", image_url: { url: `data:${imageSize(data).mime};base64,${data.toString("base64")}` } },
     ...sp.characters.flatMap((c) => {
@@ -795,8 +849,42 @@ async function reviewPanel(ctx: StudioContext, ep: EpisodeSpec, sp: ScriptPanel,
       return sheet ? [{ type: "image_url" as const, image_url: { url: sheet } }] : [];
     }),
   ];
-  return ctx.spark.json("review", reviewSchema, [{ role: "user", content }]);
+  const verdict = await ctx.spark.json<Omit<PanelReview, "n" | "redrawn"> & { counts?: Array<{ character: string; count: number }> }>("review", reviewSchema, [{ role: "user", content }]);
+  return withDuplicateCheck(verdict, (c) => ctx.profiles.get(slugFor(ctx, c))?.name ?? c);
 }
+
+/** A cast member drawn more than once fails the panel, and the fix says to remove the extra copy. */
+export function withDuplicateCheck<
+  T extends {
+    pass: boolean;
+    fix: string;
+    issues: Array<{ character: string; feature: string; problem: string }>;
+    counts?: Array<{ character: string; count: number }>;
+    heads?: Array<{ character: string; x: number; y: number }>;
+  },
+>(verdict: T, nameOf: (character: string) => string = (c) => c, action = ""): Omit<T, "counts"> {
+  const { counts = [], ...rest } = verdict;
+  const twice = counts.filter((c) => c.count > 1);
+  if (!twice.length) return rest;
+  // Where each copy is, from the head positions, so the edit knows which one to erase.
+  const pct = (v: number) => `${Math.round(v * 100)}%`;
+  const remove = twice
+    .map((c) => {
+      const at = (rest.heads ?? []).filter((h) => h.character === c.character).map((h) => `one with its head about ${pct(h.x)} from the left and ${pct(h.y)} from the top`);
+      const where = at.length > 1 ? ` (${at.join("; ")})` : "";
+      return `${nameOf(c.character)} is drawn ${c.count} times${where}: keep only the copy doing the scene's action${action ? ` (${action})` : ""} and erase the other${c.count > 2 ? "s" : ""} completely, painting the background over the spot`;
+    })
+    .join(". ");
+  return {
+    ...rest,
+    pass: false,
+    issues: [...rest.issues, ...twice.map((c) => ({ character: c.character, feature: "drawn once", problem: `appears ${c.count} times` }))],
+    fix: [remove, rest.fix].filter(Boolean).join(". "),
+  };
+}
+
+/** A failed review is redrawn up to maxRedraws times; a panel with a cast member drawn twice gets one more try. */
+export const isDuplicate = (v: { issues: Array<{ feature: string }> }) => v.issues.some((i) => i.feature === "drawn once");
 
 /** The gate said no. The message lists every issue so the editor can fix the direction or the script. */
 export class SafetyError extends Error {

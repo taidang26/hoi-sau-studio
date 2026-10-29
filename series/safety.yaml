@@ -46,8 +46,9 @@ topics:
   - id: drugs
     label: Ma tuý, cờ bạc
     describe: illegal drugs, getting high, gambling and betting
-    words: [ma tuy, can sa, thuoc lac, bong cuoi, danh bac]
-    marked: [cá độ]
+    # "bóng cười" folds to "bong cuoi", which is also "Bống cười" (Bống laughs): it goes in marked.
+    words: [ma tuy, can sa, thuoc lac, danh bac]
+    marked: [cá độ, bóng cười]
   - id: violence
     label: Bạo lực, hại động vật
     describe: graphic violence, beating someone, hurting or eating the animal characters, hunting and selling wildlife (the cast are endangered species)

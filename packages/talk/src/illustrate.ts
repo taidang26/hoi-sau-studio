@@ -25,7 +25,7 @@ import type { Sam } from "@hoi-sau/dance";
 import { COMIC_FONT_PATH, escapeXml, loadFont, measure, svgToPng } from "@hoi-sau/svg-text";
 import { captionSvg } from "./captions.js";
 import { chunkWords, OUT, SAFE, type Chunk, type Word } from "./timeline.js";
-import { maskBox, patchFeature, type Box } from "./patch.js";
+import { align, grow, maskBox, unionBox, writePng, type Box, type Raster } from "./patch.js";
 import { python } from "./voice.js";
 
 export interface Line {
@@ -479,53 +479,107 @@ export async function stabilizePoses(sam: Sam, ctx: StudioContext, plan: Plan, d
   return report;
 }
 
-export const mouthPrompt = (name: string) =>
-  `Change only ${name}'s mouth: open it mid-word as if talking, a small open mouth showing a little of the inside. Do not move the head, eyes, eyebrows, arms, anyone else or anything else. Keep the same framing, background, colours and line style. No text.`;
+export const mouthPrompt = (name: string, open: boolean) =>
+  `Change only ${name}'s mouth: ${open ? "open it wide mid-word as if talking loudly, clearly showing the inside of the mouth" : "close it, lips together in a calm closed line, no teeth, no smile"}. The mouth stays the same width and in the same place. Do not move the head, nose, eyes, eyebrows, cheeks, arms, anyone else or anything else. Keep the same framing, background, colours and line style. No text.`;
 
 /**
  * The lead's mouth among SAM's finds: the biggest find whose centre lies on the
  * lead (`lead`, a 0/1 mask), at a mouth's size. Undefined when none fits, so a
- * picture where the lead's mouth is hidden keeps its mouth shut.
+ * picture where the lead's mouth is hidden keeps its mouth as drawn.
  */
-export function leadMouth(finds: Array<{ mask: Uint8Array; score?: number }>, lead: Uint8Array, w: number, h: number): Box | undefined {
-  let best: Box | undefined;
+export function leadMouth(finds: Array<{ mask: Uint8Array; score?: number }>, lead: Uint8Array, w: number, h: number): { mask: Uint8Array; box: Box } | undefined {
+  let best: { mask: Uint8Array; box: Box } | undefined;
   for (const f of finds) {
     if ((f.score ?? 1) < 0.3) continue;
     const b = maskBox(f.mask, w, h);
     if (!b || b.w > w * 0.3 || b.h > h * 0.12 || b.w < 6 || b.h < 4) continue;
     if (!lead[Math.round(b.y + b.h / 2) * w + Math.round(b.x + b.w / 2)]) continue;
-    if (!best || b.w * b.h > best.w * best.h) best = b;
+    if (!best || b.w * b.h > best.box.w * best.box.h) best = { mask: f.mask, box: b };
   }
   return best;
 }
 
-/** Each shot picture (and its pose B) gets a mouth-open copy, `<pic>-m.png`, with only the lead's mouth changed. */
-export async function drawMouths(sam: Sam, ctx: StudioContext, plan: Plan, dir: string, opts: { only?: string[]; log?: (s: string) => void } = {}): Promise<void> {
+const area = (m: Uint8Array) => m.reduce((n, v) => n + (v ? 1 : 0), 0);
+
+/**
+ * `base` with the mouth of `edit` (shifted by dx, dy) pasted in through a tight
+ * mask: the old mouth and the new one, grown by `grow` px and feathered, so the
+ * nose and cheeks around them stay as drawn.
+ */
+export function pasteMouth(base: Raster, edit: Raster, oldMouth: Uint8Array, newMouth: Uint8Array, dx: number, dy: number, grow = 5): Raster {
+  const { width: w, height: h } = base;
+  const region = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++) {
+      const sx = x - dx, sy = y - dy;
+      if (oldMouth[y * w + x] || (sx >= 0 && sy >= 0 && sx < w && sy < h && newMouth[sy * w + sx])) region[y * w + x] = 1;
+    }
+  const hard = dilate(region, w, h, grow);
+  // Feather: the share of a (2r+1)² window that is inside, so the edge fades over r px.
+  const r = 2, out = Buffer.from(base.data);
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++) {
+      let inside = 0, all = 0;
+      for (let j = -r; j <= r; j++) for (let i = -r; i <= r; i++) { const xx = x + i, yy = y + j; if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue; all++; inside += hard[yy * w + xx]; }
+      const a = inside / all;
+      if (!a) continue;
+      const sx = x - dx, sy = y - dy;
+      if (sx < 0 || sy < 0 || sx >= w || sy >= h) continue;
+      const k = (y * w + x) * 3, m = (sy * w + sx) * 3;
+      for (let c = 0; c < 3; c++) out[k + c] = Math.round(base.data[k + c] * (1 - a) + edit.data[m + c] * a);
+    }
+  return { data: out, width: w, height: h };
+}
+
+/**
+ * Each shot picture (and its pose B) gets a shut and an open mouth, `<pic>-s.png`
+ * and `<pic>-m.png`: Muse Image redraws the lead's mouth closed and open, SAM 3.1
+ * finds the mouth in each, and only the mouth is pasted onto the picture. The
+ * pair is kept only when the open mouth is clearly bigger than the shut one.
+ */
+export async function drawMouths(sam: Sam, ctx: StudioContext, plan: Plan, dir: string, opts: { only?: string[]; log?: (s: string) => void } = {}): Promise<Array<{ pic: string; ok: boolean; problem?: string }>> {
   const { w, h } = OUT;
   const p = ctx.profiles.get(plan.slug)!;
   const species = p.species.split("(")[0].trim();
+  const report: Array<{ pic: string; ok: boolean; problem?: string }> = [];
+  const findMouth = async (rgb: Uint8Array) => {
+    const png = await sharp(Buffer.from(rgb), { raw: { width: w, height: h, channels: 3 } }).png().toBuffer();
+    return leadMouth(await sam.segment(`mouth of the cartoon ${species}`, dataUrl(png), w, h), await maskOf(sam, rgb, [`cartoon ${species}`]), w, h);
+  };
   for (const s of plan.shots) {
     if (s.src || (opts.only && !opts.only.includes(s.id))) continue;
     for (const pic of [s.id, `${s.id}-b2`]) {
-      const file = join(dir, `${pic}.png`), out = join(dir, `${pic}-m.png`);
-      if (!existsSync(file) || (!opts.only && existsSync(out))) continue;
+      const file = join(dir, `${pic}.png`), shutFile = join(dir, `${pic}-s.png`), openFile = join(dir, `${pic}-m.png`);
+      if (!existsSync(file) || (!opts.only && existsSync(openFile))) continue;
       const rgb = await rgbOf(file);
-      const png = await sharp(Buffer.from(rgb), { raw: { width: w, height: h, channels: 3 } }).png().toBuffer();
-      const lead = await maskOf(sam, rgb, [`cartoon ${species}`]);
-      const mouth = leadMouth(await sam.segment(`mouth of the cartoon ${species}`, dataUrl(png), w, h), lead, w, h);
+      const base: Raster = { data: Buffer.from(rgb), width: w, height: h };
+      const mouth = await findMouth(rgb);
       if (!mouth) {
-        opts.log?.(`${pic}: no mouth of ${p.name} found; this picture keeps its mouth shut`);
+        report.push({ pic, ok: false, problem: `no mouth of ${p.name} found` });
+        opts.log?.(`${pic}: no mouth of ${p.name} found; this picture keeps its mouth as drawn`);
         continue;
       }
-      opts.log?.(`${pic}: opening the mouth`);
-      const res = await generateSoftly(ctx.image, { prompt: mouthPrompt(p.name), size: `${w}x${h}`, references: [dataUrl(png)] }, opts.log);
-      writeFileSync(join(dir, `${pic}-m.raw.png`), res.image);
-      const edit = Buffer.from(await sharp(res.image).resize(w, h, { fit: "cover" }).removeAlpha().raw().toBuffer());
-      const patched = patchFeature({ data: Buffer.from(rgb), width: w, height: h }, { data: edit, width: w, height: h }, mouth);
-      await sharp(patched.image.data, { raw: { width: w, height: h, channels: 3 } }).png().toFile(out);
-      opts.log?.(`${pic}: mouth pasted (${patched.box.w}x${patched.box.h} px at ${patched.box.x},${patched.box.y}, shift ${patched.shift.dx},${patched.shift.dy})`);
+      const made: Record<"shut" | "open", { img: Raster; size: number } | undefined> = { shut: undefined, open: undefined };
+      for (const kind of ["shut", "open"] as const) {
+        opts.log?.(`${pic}: drawing the mouth ${kind}`);
+        const res = await generateSoftly(ctx.image, { prompt: mouthPrompt(p.name, kind === "open"), size: `${w}x${h}`, references: [dataUrl(await writePng(base))] }, opts.log);
+        writeFileSync(join(dir, `${pic}-${kind === "open" ? "m" : "s"}.raw.png`), res.image);
+        const editRgb = new Uint8Array(await sharp(res.image).resize(w, h, { fit: "cover" }).removeAlpha().raw().toBuffer());
+        const found = await findMouth(editRgb);
+        if (!found) { opts.log?.(`${pic}: no mouth found in the ${kind} edit`); continue; }
+        const edit: Raster = { data: Buffer.from(editRgb), width: w, height: h };
+        const shift = align(base, edit, grow(unionBox([mouth.box, found.box])!, 1.6, w, h, 48));
+        made[kind] = { img: pasteMouth(base, edit, mouth.mask, found.mask, shift.dx, shift.dy), size: area(found.mask) };
+      }
+      const problem = !made.shut || !made.open ? "a mouth edit failed" : made.open.size < made.shut.size * 1.4 ? `the open mouth is not clearly bigger than the shut one (${made.open.size} vs ${made.shut.size} px)` : "";
+      report.push({ pic, ok: !problem, problem: problem || undefined });
+      if (problem) { opts.log?.(`${pic}: ${problem}; this picture keeps its mouth as drawn`); continue; }
+      await sharp(made.shut!.img.data, { raw: { width: w, height: h, channels: 3 } }).png().toFile(shutFile);
+      await sharp(made.open!.img.data, { raw: { width: w, height: h, channels: 3 } }).png().toFile(openFile);
+      opts.log?.(`${pic}: mouth pair ready (open ${made.open!.size} px, shut ${made.shut!.size} px)`);
     }
   }
+  return report;
 }
 
 /** Shuts the mouth outside heard words (with a little slack either side); `fps` frames per second. */
@@ -557,7 +611,11 @@ export async function renderIllustrated(plan: Plan, words: Word[], dir: string, 
   const plate = (f: string) => sharp(f).resize(OUT.w, OUT.h, { fit: "cover" }).png().toBuffer();
   // Each pose, and its mouth-open copy when there is one and the mouth is asked for.
   const plates: Record<string, Array<{ shut: Buffer; open?: Buffer }>> = {};
-  const withMouth = async (pic: string) => ({ shut: await plate(join(dir, `${pic}.png`)), open: opts.mouth && existsSync(join(dir, `${pic}-m.png`)) ? await plate(join(dir, `${pic}-m.png`)) : undefined });
+  // With --mouth a picture that has a mouth pair talks on it: shut between words, open on the voice.
+  const withMouth = async (pic: string) => {
+    const pair = opts.mouth && existsSync(join(dir, `${pic}-m.png`)) && existsSync(join(dir, `${pic}-s.png`));
+    return { shut: await plate(join(dir, `${pic}${pair ? "-s" : ""}.png`)), open: pair ? await plate(join(dir, `${pic}-m.png`)) : undefined };
+  };
   for (const s of plan.shots) {
     const id = s.src ?? s.id;
     plates[s.id] = [await withMouth(id)];

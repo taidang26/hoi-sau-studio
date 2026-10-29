@@ -268,7 +268,7 @@ async function main() {
       if (run("stabilize")) writeFileSync(join(out, "stabilize.json"), JSON.stringify(await stabilizePoses(Sam.fromEnv(), ctx, plan, shots, { only, log }), null, 1));
       // --mouth: the lead talks; without it the clip renders as before.
       const mouth = !!opt.mouth || step === "mouths";
-      if (mouth && run("mouths")) await drawMouths(Sam.fromEnv(), ctx, plan, shots, { only, log });
+      if (mouth && run("mouths")) writeFileSync(join(out, "mouths.json"), JSON.stringify(await drawMouths(Sam.fromEnv(), ctx, plan, shots, { only, log }), null, 1));
       if (run("render")) {
         const heard = JSON.parse(readFileSync(wordsFile, "utf8"));
         const words = timeWords(plan.lines, heard);

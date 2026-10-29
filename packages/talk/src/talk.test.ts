@@ -6,7 +6,7 @@ import { mockScript, PACE, scriptProblems, syllables } from "./script.js";
 import { blinkTrack, chunkWords, wordTimes } from "./timeline.js";
 import { hummedLine, joinLines, mouthTrack, RATE, ttsArg, ttsEnv, voiceShape, wavBytes } from "./voice.js";
 import { setPrompt, SETS } from "./sets.js";
-import { alignBackground, dilate, flatBands, frameProblem, gateToWords, ghostShare, groupLines, leadMouth, parseCuts, poseBProblem, popScale, poseAt, shotSpans, timeWords } from "./illustrate.js";
+import { alignBackground, dilate, flatBands, frameProblem, gateToWords, ghostShare, groupLines, leadMouth, parseCuts, pasteMouth, poseBProblem, popScale, poseAt, shotSpans, timeWords } from "./illustrate.js";
 
 test("words share the line's time, with a pause after punctuation", () => {
   const w = wordTimes("Dạ, em đang làm", 1, 3);
@@ -304,7 +304,7 @@ test("illustrate: the mouth is the lead's, at a mouth's size, and opens only on 
   };
   const lead = box(0, 0, 50, 100);
   const theirs = { mask: box(70, 40, 10, 5) }, ours = { mask: box(20, 40, 10, 5) }, face = { mask: box(10, 10, 40, 40) };
-  assert.deepEqual(leadMouth([theirs, face, ours], lead, w, h), { x: 20, y: 40, w: 10, h: 5 });
+  assert.deepEqual(leadMouth([theirs, face, ours], lead, w, h)?.box, { x: 20, y: 40, w: 10, h: 5 });
   assert.equal(leadMouth([theirs], lead, w, h), undefined);
   assert.deepEqual(gateToWords([true, true, true, true], [{ text: "a", start: 0.1, end: 0.2 }], 10), [false, true, true, false]);
 });
@@ -322,4 +322,14 @@ test("illustrate: a pose B drawn at another size, cut at the edge, or leaving po
   assert.equal(ghostShare(a, b, region, w, h, 5, 60), 0);
   for (let y = 21; y < 25; y++) for (let x = 25; x < 35; x++) b[(y * w + x) * 3] = 250;
   assert.ok(ghostShare(a, b, region, w, h, 5, 60) > 0.1);
+});
+
+test("illustrate: a mouth paste stays near the mouth and leaves the nose alone", () => {
+  const w = 60, h = 60;
+  const base = { data: Buffer.alloc(w * h * 3, 200), width: w, height: h }, edit = { data: Buffer.alloc(w * h * 3, 0), width: w, height: h };
+  const mouth = new Uint8Array(w * h);
+  for (let y = 40; y < 44; y++) for (let x = 25; x < 35; x++) mouth[y * w + x] = 1;
+  const out = pasteMouth(base, edit, mouth, mouth, 0, 0, 3);
+  assert.equal(out.data[(42 * w + 30) * 3], 0);
+  assert.equal(out.data[(30 * w + 30) * 3], 200);
 });

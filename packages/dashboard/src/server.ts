@@ -18,6 +18,7 @@ import { isSignedIn, passwordMatches, sessionCookie } from "./auth.js";
 import { pickLang, t, withLang, type Lang } from "./i18n.js";
 import { characterNotes, compareSection, inspirationField, researchPage, type IdeaKind, IDEA_KINDS, type Research } from "./research.js";
 import { episodeStudioPage, friendly, Studio, studioPage, stylePage } from "./studio.js";
+import { videoPage, videosPage, type Videos } from "./video.js";
 import { CHARACTERS_DIR, loadProfile, readStep, SERIES_DIR, type EpisodeStep } from "@hoi-sau/studio";
 import {
   automationPage,
@@ -70,6 +71,8 @@ export interface DashboardOptions extends Paths {
   };
   /** Character creation and the episode pipeline. Omitted: those pages say how to enable them. */
   studio?: Studio;
+  /** Video: clips made from a sample clip, checked shot by shot, approved and posted. */
+  videos?: Videos;
   /** Settings, account connection, pulling comments, channel on/off. */
   accounts?: Accounts;
   /** Tư liệu: the moodboard and what each episode learned from it. */
@@ -116,8 +119,8 @@ function send(res: ServerResponse, status: number, body: string, type = "text/ht
 /** Every picture on a page asks for a WebP sized to how it is shown; the full file stays one click away. */
 const sizedImages = (html: string) =>
   html.replace(
-    /<img([^>]*?) src="(\/(?:studio-media|sheet|media|brand-art|style-media|series-media|research-media)\/[^"?]+\.(?:png|jpe?g|webp))"/g,
-    (_, pre: string, src: string) => `<img${pre} decoding="async" src="${src}?w=${/^\/(sheet|brand-art)\//.test(src) ? 1400 : 960}"`,
+    /<img([^>]*?) src="(\/(?:studio-media|sheet|media|brand-art|style-media|series-media|research-media|video-media)\/[^"?]+\.(?:png|jpe?g|webp))"/g,
+    (_, pre: string, src: string) => `<img${pre} decoding="async" src="${src}?w=${/^\/(sheet|brand-art)\//.test(src) ? 1400 : /^\/video-media\//.test(src) ? 640 : 960}"`,
   );
 
 /** Widths an image may be asked for with ?w=, so a page never pulls a 3 MB sheet for a thumbnail. */
@@ -514,6 +517,58 @@ export function handler(opts: DashboardOptions) {
     }
 
     const st = opts.studio;
+    const vd = opts.videos;
+    if (vd && req.method === "POST" && path === "/video/new") {
+      try {
+        const form = await readUpload(req, 300 * 1024 * 1024);
+        const file = form.get("clip");
+        const upload = file instanceof File && file.size ? { name: file.name, bytes: new Uint8Array(await file.arrayBuffer()) } : undefined;
+        const id = vd.create({ slug: String(form.get("slug") ?? ""), mouth: form.get("mouth") === "1", title: String(form.get("title") ?? ""), sample: String(form.get("sample") ?? "") || undefined, upload });
+        return redirect(res, `/video/${id}`);
+      } catch (e) {
+        return fail("/video", e);
+      }
+    }
+    const va = vd && req.method === "POST" ? path.match(/^\/video\/([a-z0-9-]+)\/(continue|render|approve|publish)$/) : null;
+    if (va && vd) {
+      const [, id, act] = va;
+      try {
+        if (act === "continue") vd.continue(id);
+        if (act === "render") vd.render(id);
+        if (act === "publish") {
+          if (opts.demo) throw new Error(t("Đang xem dữ liệu mẫu nên không đăng thật."));
+          vd.publish(id);
+        }
+        if (act === "approve") {
+          const form = await readForm(req);
+          await vd.approve(id, { caption: form.get("caption") ?? "", threadsCaption: form.get("threadsCaption") ?? "", version: form.get("version") === "mouth" ? "mouth" : "plain", still: form.getAll("still"), when: form.get("when") ?? "" });
+          return redirect(res, withNote(`/video/${id}#approve`, "ok", t("Đã duyệt. Bấm Đăng ngay, hoặc để máy tự đăng đúng giờ hẹn.")));
+        }
+        return redirect(res, `/video/${id}`);
+      } catch (e) {
+        return fail(`/video/${id}${act === "approve" ? "#approve" : ""}`, e);
+      }
+    }
+    const vs = vd && req.method === "POST" ? path.match(/^\/video\/([a-z0-9-]+)\/shot\/([a-z0-9-]+)\/(ok|redraw|repose|onepose|nomouth|edit)$/) : null;
+    if (vs && vd) {
+      const [, id, shot, act] = vs;
+      try {
+        const form = await readForm(req);
+        if (act === "ok") vd.tick(id, shot);
+        if (act === "redraw") vd.redraw(id, shot, form.get("note") ?? "");
+        if (act === "repose") vd.redrawPose(id, shot);
+        if (act === "onepose") vd.onePose(id, shot);
+        if (act === "nomouth") vd.noMouth(id, shot);
+        if (act === "edit") {
+          const lines: Record<number, string> = {};
+          for (const [k, v] of form) if (k.startsWith("line-")) lines[Number(k.slice(5))] = v;
+          vd.editShot(id, shot, { act: form.get("act") ?? undefined, pose: form.get("pose") ?? undefined, bubble: form.get("bubble") ?? undefined, lines });
+        }
+        return redirect(res, `/video/${id}#${shot}`);
+      } catch (e) {
+        return fail(`/video/${id}#${shot}`, e);
+      }
+    }
     if (req.method === "POST" && st) {
       if (path === "/characters/new") {
         const idea = (await readForm(req)).get("idea") ?? "";
@@ -654,6 +709,10 @@ export function handler(opts: DashboardOptions) {
       return file && /[\\/](avatar|cover|cover-title)\.png$/.test(file) ? sendFile(req, res, file) : send(res, 404, notFoundPage());
     }
 
+    if (vd && path.startsWith("/video-media/")) {
+      const file = inside(vd.opts.dir, path.slice("/video-media/".length));
+      return file && /\.(png|jpe?g|mp4)$/.test(file) ? sendFile(req, res, file) : send(res, 404, notFoundPage());
+    }
     if (st && path.startsWith("/studio-media/")) {
       const file = inside(st.opts.episodesDir, path.slice("/studio-media/".length));
       return file && !file.includes(`${sep}layers${sep}`) ? sendFile(req, res, file) : send(res, 404, notFoundPage());
@@ -682,6 +741,12 @@ export function handler(opts: DashboardOptions) {
     if (path === "/characters/new") return page(res, 200, newCharacterPage(Boolean(st?.opts.mock), Boolean(st?.ready), err, q.get("manual") === "1" || !st));
     if (path === "/studio") return page(res, 200, st ? studioPage(state, st, err, rs ? inspirationField(rs, state.characters.map((c) => c.profile)) : "") : notFoundPage());
     if (path === "/style") return page(res, 200, st ? stylePage(st, err) : notFoundPage());
+    if (path === "/video") return page(res, 200, vd ? videosPage(vd, err, ok) : notFoundPage());
+    const vp = path.match(/^\/video\/([a-z0-9-]+)$/);
+    if (vp && vd) {
+      const html = videoPage(vd, vp[1], err, ok);
+      return html ? page(res, 200, html) : page(res, 404, notFoundPage());
+    }
     const sp = path.match(/^\/studio\/([a-z0-9-]+)$/);
     if (sp && st) {
       const html = episodeStudioPage(state, st, sp[1], err, ok, rs ? compareSection(rs, sp[1], finishedPages(st, sp[1]).length > 0) : "");

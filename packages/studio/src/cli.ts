@@ -20,6 +20,8 @@
  *   npm run studio -- episode approve <id> [--post post.json] [--despite-warnings]
  *       the owner's sign-off; `channel publish` refuses anything not approved as it is
  *   npm run studio -- episode list
+ *   npm run studio -- video approve <id> <video.mp4> --post post.json
+ *       the same sign-off for a finished video made outside the episode steps (talk illustrate, talk sync)
  *
  * Reads META_API_KEY (or MODEL_API_KEY) from the environment or .env.
  * Output goes to output/characters/<slug>/ and output/style/.
@@ -34,7 +36,7 @@ import { mockTransport } from "./mock.js";
 import { MUSE_IMAGE_MODEL, MuseImage } from "./muse-image.js";
 import { listCharacters, loadProfile } from "./profile.js";
 import { createCharacter, writeProfile } from "./create.js";
-import { approveEpisode, checkForApproval } from "./approve.js";
+import { approveEpisode, approveVideo, checkForApproval } from "./approve.js";
 import { whoAmI } from "./provenance.js";
 import { createEpisode, doneSteps, setHeadline, episodeDir, EPISODE_FORMATS, EPISODE_STEPS, type EpisodeFormat, type EpisodeStep, listEpisodes, readStep, runEpisode } from "./episode.js";
 import { approveSheet, openStudio } from "./studio.js";
@@ -210,6 +212,15 @@ async function main(argv: string[]): Promise<void> {
     for (const w of warnings) console.log(`warning: ${w.text}`);
     const a = approveEpisode(id, { postFile: opt("--post"), despiteWarnings: flags.has("--despite-warnings") });
     console.log(`${id} approved by ${a.approvedBy}: ${Object.keys(a.files).length} files${a.post ? " and the post" : "; no post file yet, approve again once it exists"}.`);
+    return;
+  }
+
+  if (cmd === "video" && args[0] === "approve") {
+    const [, id, video] = args;
+    const postFile = opt("--post");
+    if (!id || !video || !postFile) throw new Error("usage: video approve <id> <video.mp4> --post post.json");
+    const a = approveVideo(id, video, postFile);
+    console.log(`${id} approved by ${a.approvedBy}: the video and the post. Publish with: npm run channel -- publish ${postFile}`);
     return;
   }
 

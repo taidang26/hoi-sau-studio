@@ -6,7 +6,7 @@ import { mockScript, PACE, scriptProblems, syllables } from "./script.js";
 import { blinkTrack, chunkWords, wordTimes } from "./timeline.js";
 import { hummedLine, joinLines, mouthTrack, RATE, ttsArg, ttsEnv, voiceShape, wavBytes } from "./voice.js";
 import { setPrompt, SETS } from "./sets.js";
-import { alignBackground, dilate, flatBands, frameProblem, gateToWords, ghostShare, groupLines, leadMouth, parseCuts, pasteMouth, poseBProblem, popScale, poseAt, shotSpans, timeWords } from "./illustrate.js";
+import { alignBackground, dilate, flatBands, frameProblem, gateToWords, ghostShare, groupLines, leadFeatures, leadMouth, overlapShare, parseCuts, pasteMouth, poseBProblem, popScale, poseAt, shotSpans, timeWords } from "./illustrate.js";
 
 test("words share the line's time, with a pause after punctuation", () => {
   const w = wordTimes("Dạ, em đang làm", 1, 3);
@@ -332,4 +332,18 @@ test("illustrate: a mouth paste stays near the mouth and leaves the nose alone",
   const out = pasteMouth(base, edit, mouth, mouth, 0, 0, 3);
   assert.equal(out.data[(42 * w + 30) * 3], 0);
   assert.equal(out.data[(30 * w + 30) * 3], 200);
+});
+
+test("illustrate: the nose stays on top of a pasted mouth, and a mouth reaching it is seen", () => {
+  const w = 60, h = 60;
+  const base = { data: Buffer.alloc(w * h * 3, 200), width: w, height: h }, edit = { data: Buffer.alloc(w * h * 3, 0), width: w, height: h };
+  const mouth = new Uint8Array(w * h), nose = new Uint8Array(w * h), lead = new Uint8Array(w * h).fill(1);
+  for (let y = 30; y < 44; y++) for (let x = 25; x < 35; x++) mouth[y * w + x] = 1;
+  for (let y = 28; y < 32; y++) for (let x = 27; x < 33; x++) nose[y * w + x] = 1;
+  const keep = leadFeatures([{ mask: nose }], lead, w, h);
+  const out = pasteMouth(base, edit, mouth, mouth, 0, 0, 3, keep);
+  assert.equal(out.data[(30 * w + 30) * 3], 200);
+  assert.equal(out.data[(40 * w + 30) * 3], 0);
+  assert.ok(overlapShare(mouth, keep, w, h) > 0.03);
+  assert.equal(overlapShare(mouth, keep, w, h, 0, 20), 0);
 });

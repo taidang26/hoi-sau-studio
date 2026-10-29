@@ -480,7 +480,7 @@ export async function stabilizePoses(sam: Sam, ctx: StudioContext, plan: Plan, d
 }
 
 export const mouthPrompt = (name: string, open: boolean) =>
-  `Change only ${name}'s mouth: ${open ? "open it wide mid-word as if talking loudly, clearly showing the inside of the mouth" : "close it, lips together in a calm closed line, no teeth, no smile"}. The mouth stays the same width and in the same place. Do not move the head, nose, eyes, eyebrows, cheeks, arms, anyone else or anything else. Keep the same framing, background, colours and line style. No text.`;
+  `Change only ${name}'s mouth: ${open ? "open it mid-word as if talking loudly, clearly showing the inside of the mouth; it opens downward from where the mouth is, stays below the nose, never covers the nose, eyes or eye markings, and is no taller than it is wide" : "close it, lips together in a calm closed line, no teeth, no smile"}. The mouth stays the same width and in the same place. Do not move the head, nose, eyes, eyebrows, cheeks, arms, anyone else or anything else. Keep the same framing, background, colours and line style. No text.`;
 
 /**
  * The lead's mouth among SAM's finds: the biggest find whose centre lies on the
@@ -499,14 +499,41 @@ export function leadMouth(finds: Array<{ mask: Uint8Array; score?: number }>, le
   return best;
 }
 
+/** Every find on the lead at a face feature's size, as one 0/1 mask (both eyes, say). */
+export function leadFeatures(finds: Array<{ mask: Uint8Array; score?: number }>, lead: Uint8Array, w: number, h: number): Uint8Array {
+  const out = new Uint8Array(w * h);
+  for (const f of finds) {
+    if ((f.score ?? 1) < 0.3) continue;
+    const b = maskBox(f.mask, w, h);
+    if (!b || b.w > w * 0.35 || b.h > h * 0.15) continue;
+    if (!lead[Math.round(b.y + b.h / 2) * w + Math.round(b.x + b.w / 2)]) continue;
+    for (let i = 0; i < out.length; i++) if (f.mask[i]) out[i] = 1;
+  }
+  return out;
+}
+
+/** How much of `mask` (shifted by dx, dy) lies on `keep`, as a share of the mask. */
+export function overlapShare(mask: Uint8Array, keep: Uint8Array, w: number, h: number, dx = 0, dy = 0): number {
+  let n = 0, on = 0;
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++) {
+      if (!mask[y * w + x]) continue;
+      n++;
+      const tx = x + dx, ty = y + dy;
+      if (tx >= 0 && ty >= 0 && tx < w && ty < h && keep[ty * w + tx]) on++;
+    }
+  return n ? on / n : 0;
+}
+
 const area = (m: Uint8Array) => m.reduce((n, v) => n + (v ? 1 : 0), 0);
 
 /**
  * `base` with the mouth of `edit` (shifted by dx, dy) pasted in through a tight
  * mask: the old mouth and the new one, grown by `grow` px and feathered, so the
- * nose and cheeks around them stay as drawn.
+ * nose and cheeks around them stay as drawn. Nothing is pasted on `keep` (the
+ * picture's own nose and eyes), so they always stay on top.
  */
-export function pasteMouth(base: Raster, edit: Raster, oldMouth: Uint8Array, newMouth: Uint8Array, dx: number, dy: number, grow = 5): Raster {
+export function pasteMouth(base: Raster, edit: Raster, oldMouth: Uint8Array, newMouth: Uint8Array, dx: number, dy: number, grow = 5, keep?: Uint8Array): Raster {
   const { width: w, height: h } = base;
   const region = new Uint8Array(w * h);
   for (let y = 0; y < h; y++)
@@ -522,7 +549,7 @@ export function pasteMouth(base: Raster, edit: Raster, oldMouth: Uint8Array, new
       let inside = 0, all = 0;
       for (let j = -r; j <= r; j++) for (let i = -r; i <= r; i++) { const xx = x + i, yy = y + j; if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue; all++; inside += hard[yy * w + xx]; }
       const a = inside / all;
-      if (!a) continue;
+      if (!a || keep?.[y * w + x]) continue;
       const sx = x - dx, sy = y - dy;
       if (sx < 0 || sy < 0 || sx >= w || sy >= h) continue;
       const k = (y * w + x) * 3, m = (sy * w + sx) * 3;
@@ -534,17 +561,26 @@ export function pasteMouth(base: Raster, edit: Raster, oldMouth: Uint8Array, new
 /**
  * Each shot picture (and its pose B) gets a shut and an open mouth, `<pic>-s.png`
  * and `<pic>-m.png`: Muse Image redraws the lead's mouth closed and open, SAM 3.1
- * finds the mouth in each, and only the mouth is pasted onto the picture. The
- * pair is kept only when the open mouth is clearly bigger than the shut one.
+ * finds the mouth in each, and only the mouth is pasted onto the picture, never
+ * over the picture's own nose and eyes. The pair is dropped when the open mouth
+ * is not clearly bigger than the shut one, is too tall, or runs into the nose or eyes.
  */
 export async function drawMouths(sam: Sam, ctx: StudioContext, plan: Plan, dir: string, opts: { only?: string[]; log?: (s: string) => void } = {}): Promise<Array<{ pic: string; ok: boolean; problem?: string }>> {
   const { w, h } = OUT;
   const p = ctx.profiles.get(plan.slug)!;
   const species = p.species.split("(")[0].trim();
   const report: Array<{ pic: string; ok: boolean; problem?: string }> = [];
-  const findMouth = async (rgb: Uint8Array) => {
-    const png = await sharp(Buffer.from(rgb), { raw: { width: w, height: h, channels: 3 } }).png().toBuffer();
-    return leadMouth(await sam.segment(`mouth of the cartoon ${species}`, dataUrl(png), w, h), await maskOf(sam, rgb, [`cartoon ${species}`]), w, h);
+  const pngOf = (rgb: Uint8Array) => sharp(Buffer.from(rgb), { raw: { width: w, height: h, channels: 3 } }).png().toBuffer();
+  const findMouth = async (rgb: Uint8Array) => leadMouth(await sam.segment(`mouth of the cartoon ${species}`, dataUrl(await pngOf(rgb)), w, h), await maskOf(sam, rgb, [`cartoon ${species}`]), w, h);
+  /** The lead's nose, eyes and eye markings in the picture, grown 3 px: never pasted over, and an open mouth must not reach them. */
+  const faceKeep = async (rgb: Uint8Array) => {
+    const url = dataUrl(await pngOf(rgb)), lead = await maskOf(sam, rgb, [`cartoon ${species}`]);
+    const keep = new Uint8Array(w * h);
+    for (const ph of [`nose of the cartoon ${species}`, `eyes of the cartoon ${species}`, `eye patches of the cartoon ${species}`]) {
+      const m = leadFeatures(await sam.segment(ph, url, w, h), lead, w, h);
+      for (let i = 0; i < keep.length; i++) if (m[i]) keep[i] = 1;
+    }
+    return dilate(keep, w, h, 3);
   };
   for (const s of plan.shots) {
     if (s.src || (opts.only && !opts.only.includes(s.id))) continue;
@@ -559,7 +595,8 @@ export async function drawMouths(sam: Sam, ctx: StudioContext, plan: Plan, dir: 
         opts.log?.(`${pic}: no mouth of ${p.name} found; this picture keeps its mouth as drawn`);
         continue;
       }
-      const made: Record<"shut" | "open", { img: Raster; size: number } | undefined> = { shut: undefined, open: undefined };
+      const keep = await faceKeep(rgb);
+      const made: Record<"shut" | "open", { img: Raster; size: number; box: Box; onFace: number } | undefined> = { shut: undefined, open: undefined };
       for (const kind of ["shut", "open"] as const) {
         opts.log?.(`${pic}: drawing the mouth ${kind}`);
         const res = await generateSoftly(ctx.image, { prompt: mouthPrompt(p.name, kind === "open"), size: `${w}x${h}`, references: [dataUrl(await writePng(base))] }, opts.log);
@@ -569,9 +606,14 @@ export async function drawMouths(sam: Sam, ctx: StudioContext, plan: Plan, dir: 
         if (!found) { opts.log?.(`${pic}: no mouth found in the ${kind} edit`); continue; }
         const edit: Raster = { data: Buffer.from(editRgb), width: w, height: h };
         const shift = align(base, edit, grow(unionBox([mouth.box, found.box])!, 1.6, w, h, 48));
-        made[kind] = { img: pasteMouth(base, edit, mouth.mask, found.mask, shift.dx, shift.dy), size: area(found.mask) };
+        made[kind] = { img: pasteMouth(base, edit, mouth.mask, found.mask, shift.dx, shift.dy, 5, keep), size: area(found.mask), box: found.box, onFace: overlapShare(found.mask, keep, w, h, shift.dx, shift.dy) };
       }
-      const problem = !made.shut || !made.open ? "a mouth edit failed" : made.open.size < made.shut.size * 1.4 ? `the open mouth is not clearly bigger than the shut one (${made.open.size} vs ${made.shut.size} px)` : "";
+      const { shut, open } = made;
+      const problem = !shut || !open ? "a mouth edit failed"
+        : open.size < shut.size * 1.4 ? `the open mouth is not clearly bigger than the shut one (${open.size} vs ${shut.size} px)`
+        : open.box.h > shut.box.w * 1.6 ? `the open mouth is too tall (${open.box.h} px for a ${shut.box.w} px wide mouth)`
+        : open.onFace > 0.03 ? `the open mouth runs into the nose or eyes (${Math.round(open.onFace * 100)}% of it)`
+        : "";
       report.push({ pic, ok: !problem, problem: problem || undefined });
       if (problem) { opts.log?.(`${pic}: ${problem}; this picture keeps its mouth as drawn`); continue; }
       await sharp(made.shut!.img.data, { raw: { width: w, height: h, channels: 3 } }).png().toFile(shutFile);

@@ -79,11 +79,13 @@ For each shot picture and its pose B, SAM 3.1 finds the lead's mouth (the
 mouth find that sits on the lead, so another character's mouth is left alone)
 and Muse Image redraws the picture twice, mouth closed and mouth wide open. SAM
 finds the mouth again in each edit and only the old and new mouth, grown a few
-pixels and feathered, are pasted back, so the nose and cheeks stay as drawn
+pixels and feathered, are pasted back, never over the picture's own nose, eyes
+and eye markings (SAM finds those too), so the nose and cheeks stay as drawn
 (`<pic>-s.png`, `<pic>-m.png`). Both are needed because many pictures are drawn
 with the mouth already open or smiling. The pair is dropped, and the picture
 keeps its mouth as drawn, when the open mouth is not clearly bigger than the
-shut one; `mouths.json` says which pictures talk and why the others don't.
+shut one, is taller than 1.6 times the shut mouth's width, or runs into the nose
+or eyes; `mouths.json` says which pictures talk and why the others don't.
 At render time the mouth follows the loudness of the voice (a vocal stem works
 best), only inside heard words. The output is `<slug>-mouth.mp4`, next to the
 plain `<slug>.mp4`.

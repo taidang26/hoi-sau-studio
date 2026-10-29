@@ -2,6 +2,7 @@
   "name": "hoi-sau",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "description": "An AI office-comedy comic whose next episode comes from the comments",
   "type": "module",
   "engines": {

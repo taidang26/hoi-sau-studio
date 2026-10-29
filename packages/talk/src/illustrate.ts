@@ -480,7 +480,7 @@ export async function stabilizePoses(sam: Sam, ctx: StudioContext, plan: Plan, d
 }
 
 export const mouthPrompt = (name: string, open: boolean) =>
-  `Change only ${name}'s mouth: ${open ? "open it mid-word as if talking loudly, clearly showing the inside of the mouth; it opens downward from where the mouth is, stays below the nose, never covers the nose, eyes or eye markings, and is no taller than it is wide" : "close it, lips together in a calm closed line, no teeth, no smile"}. The mouth stays the same width and in the same place. Do not move the head, nose, eyes, eyebrows, cheeks, arms, anyone else or anything else. Keep the same framing, background, colours and line style. No text.`;
+  `Change only ${name}'s mouth: ${open ? "open it mid-word as if talking loudly, clearly showing the inside of the mouth; it opens downward from where the mouth is, stays below the nose with a clear gap of skin between them, never touches or covers the nose, eyes or eye markings, and is no taller than it is wide" : "close it, lips together in a calm closed line, no teeth, no smile"}. The mouth stays the same width and in the same place. Do not move the head, nose, eyes, eyebrows, cheeks, arms, anyone else or anything else. Keep the same framing, background, colours and line style. No text.`;
 
 /**
  * The lead's mouth among SAM's finds: the biggest find whose centre lies on the
@@ -513,6 +513,9 @@ export function leadFeatures(finds: Array<{ mask: Uint8Array; score?: number }>,
 }
 
 /** How much of `mask` (shifted by dx, dy) lies on `keep`, as a share of the mask. */
+/** Gap an open mouth keeps under the nose: closer, the paste leaves a thin seam along the nose. */
+export const NOSE_GAP = 6;
+
 export function overlapShare(mask: Uint8Array, keep: Uint8Array, w: number, h: number, dx = 0, dy = 0): number {
   let n = 0, on = 0;
   for (let y = 0; y < h; y++)
@@ -591,15 +594,18 @@ export async function drawMouths(sam: Sam, ctx: StudioContext, plan: Plan, dir: 
   const report: Array<{ pic: string; ok: boolean; problem?: string }> = [];
   const pngOf = (rgb: Uint8Array) => sharp(Buffer.from(rgb), { raw: { width: w, height: h, channels: 3 } }).png().toBuffer();
   const findMouth = async (rgb: Uint8Array) => leadMouth(await sam.segment(`mouth of the cartoon ${species}`, dataUrl(await pngOf(rgb)), w, h), await maskOf(sam, rgb, [`cartoon ${species}`]), w, h);
-  /** The lead's nose, eyes and eye markings in the picture, grown 3 px: never pasted over, and an open mouth must not reach them. */
+  /**
+   * The lead's nose, eyes and eye markings in the picture, grown 3 px: never pasted over, and an open mouth must not reach them.
+   * `nearNose` is the nose grown by NOSE_GAP: an open mouth touching it leaves a thin seam under the nose.
+   */
   const faceKeep = async (rgb: Uint8Array) => {
     const url = dataUrl(await pngOf(rgb)), lead = await maskOf(sam, rgb, [`cartoon ${species}`]);
-    const keep = new Uint8Array(w * h);
+    const keep = new Uint8Array(w * h), nose = new Uint8Array(w * h);
     for (const ph of [`nose of the cartoon ${species}`, `eyes of the cartoon ${species}`, `eye patches of the cartoon ${species}`]) {
       const m = leadFeatures(await sam.segment(ph, url, w, h), lead, w, h);
-      for (let i = 0; i < keep.length; i++) if (m[i]) keep[i] = 1;
+      for (let i = 0; i < keep.length; i++) if (m[i]) { keep[i] = 1; if (ph.startsWith("nose")) nose[i] = 1; }
     }
-    return dilate(keep, w, h, 3);
+    return { keep: dilate(keep, w, h, 3), nearNose: dilate(nose, w, h, NOSE_GAP) };
   };
   for (const s of plan.shots) {
     if (s.src) continue;
@@ -616,8 +622,8 @@ export async function drawMouths(sam: Sam, ctx: StudioContext, plan: Plan, dir: 
         opts.log?.(`${pic}: no mouth of ${p.name} found; this picture keeps its mouth as drawn`);
         continue;
       }
-      const keep = await faceKeep(rgb);
-      const made: Record<"shut" | "open", { img: Raster; size: number; box: Box; onFace: number } | undefined> = { shut: undefined, open: undefined };
+      const { keep, nearNose } = await faceKeep(rgb);
+      const made: Record<"shut" | "open", { img: Raster; size: number; box: Box; onFace: number; nearNose: number } | undefined> = { shut: undefined, open: undefined };
       for (const kind of ["shut", "open"] as const) {
         opts.log?.(`${pic}: drawing the mouth ${kind}`);
         const res = await generateSoftly(ctx.image, { prompt: mouthPrompt(p.name, kind === "open"), size: `${w}x${h}`, references: [dataUrl(await writePng(base))] }, opts.log);
@@ -627,13 +633,14 @@ export async function drawMouths(sam: Sam, ctx: StudioContext, plan: Plan, dir: 
         if (!found) { opts.log?.(`${pic}: no mouth found in the ${kind} edit`); continue; }
         const edit: Raster = { data: Buffer.from(editRgb), width: w, height: h };
         const shift = align(base, edit, grow(unionBox([mouth.box, found.box])!, 1.6, w, h, 48));
-        made[kind] = { img: pasteMouth(base, edit, mouth.mask, found.mask, shift.dx, shift.dy, 5, keep, 12), size: area(found.mask), box: found.box, onFace: overlapShare(found.mask, keep, w, h, shift.dx, shift.dy) };
+        made[kind] = { img: pasteMouth(base, edit, mouth.mask, found.mask, shift.dx, shift.dy, 5, keep, 12), size: area(found.mask), box: found.box, onFace: overlapShare(found.mask, keep, w, h, shift.dx, shift.dy), nearNose: overlapShare(found.mask, nearNose, w, h, shift.dx, shift.dy) };
       }
       const { shut, open } = made;
       const problem = !shut || !open ? "a mouth edit failed"
         : open.size < shut.size * 1.4 ? `the open mouth is not clearly bigger than the shut one (${open.size} vs ${shut.size} px)`
         : open.box.h > shut.box.w * 1.6 ? `the open mouth is too tall (${open.box.h} px for a ${shut.box.w} px wide mouth)`
         : open.onFace > 0.03 ? `the open mouth runs into the nose or eyes (${Math.round(open.onFace * 100)}% of it)`
+        : open.nearNose > 0 ? `the open mouth comes within ${NOSE_GAP} px of the nose`
         : await faceProblem(ctx, p.name, shut.img, open.img, grow(unionBox([mouth.box, shut.box, open.box])!, 3, w, h, 160));
       report.push({ pic, ok: !problem, problem: problem || undefined });
       if (problem) { opts.log?.(`${pic}: ${problem}; this picture keeps its mouth as drawn`); continue; }

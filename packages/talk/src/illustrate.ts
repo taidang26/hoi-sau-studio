@@ -363,7 +363,7 @@ export async function drawPoses(ctx: StudioContext, plan: Plan, dir: string, opt
 
 const rgbOf = async (file: string) => new Uint8Array(await sharp(file).resize(OUT.w, OUT.h, { fit: "cover" }).removeAlpha().raw().toBuffer());
 
-async function maskOf(sam: Sam, rgb: Uint8Array, phrases: string[]): Promise<Uint8Array> {
+export async function maskOf(sam: Sam, rgb: Uint8Array, phrases: string[]): Promise<Uint8Array> {
   const { w, h } = OUT;
   const url = dataUrl(await sharp(Buffer.from(rgb), { raw: { width: w, height: h, channels: 3 } }).png().toBuffer());
   const mask = new Uint8Array(w * h);

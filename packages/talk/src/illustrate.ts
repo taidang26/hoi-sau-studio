@@ -110,6 +110,41 @@ export function timeWords(lines: Line[], heard: Word[]): Word[] {
   return out;
 }
 
+/**
+ * Rows of flat colour at the top and bottom of a greyscale picture (w×h): Muse
+ * sometimes draws a smaller picture inside the 9:16 frame and fills the rest.
+ */
+export function flatBands(grey: Uint8Array, w: number, h: number, maxVar = 16): { top: number; bottom: number } {
+  const flat = (y: number) => {
+    let sum = 0, sq = 0;
+    for (let x = 0; x < w; x++) { const v = grey[y * w + x]; sum += v; sq += v * v; }
+    const m = sum / w;
+    return sq / w - m * m < maxVar;
+  };
+  let top = 0, bottom = 0;
+  while (top < h / 2 && flat(top)) top++;
+  while (bottom < h / 2 && flat(h - 1 - bottom)) bottom++;
+  return { top, bottom };
+}
+
+/**
+ * Why a drawn picture is not a full 1080x1920 frame, or "" when it is: a wrong
+ * aspect, or empty bands (both ends over 6% of the height, or one over 15%).
+ * A plain wall or floor at one end stays under those.
+ */
+export function frameProblem(width: number, height: number, bands: { top: number; bottom: number }): string {
+  if (Math.abs(width / height - 9 / 16) > 0.02) return `the picture is ${width}x${height}, not 9:16`;
+  const t = bands.top / height, b = bands.bottom / height;
+  if ((t > 0.06 && b > 0.06) || t > 0.15 || b > 0.15) return `empty colour bands (${bands.top}px top, ${bands.bottom}px bottom): the picture must fill the whole 9:16 frame`;
+  return "";
+}
+
+async function frameCheck(png: Buffer): Promise<string> {
+  const { width = 0, height = 0 } = await sharp(png).metadata();
+  const grey = new Uint8Array(await sharp(png).resize(OUT.w, OUT.h, { fit: "fill" }).greyscale().raw().toBuffer());
+  return frameProblem(width, height, flatBands(grey, OUT.w, OUT.h));
+}
+
 /** Which pose a moment shows: the poses take turns on each caption chunk inside the shot. */
 export function poseAt(chunks: Chunk[], chunk: number, shotStart: number, poses: number): number {
   if (poses < 2 || chunk < 0) return 0;
@@ -289,7 +324,8 @@ export async function drawShots(ctx: StudioContext, plan: Plan, dir: string, opt
       opts.log?.(`${s.id}: drawing${fix ? ` again (${fix})` : ""}`);
       const res = await generateSoftly(ctx.image, { prompt: prompt + (fix ? ` Make sure: ${fix}` : ""), size: `${OUT.w}x${OUT.h}`, references: refs }, opts.log);
       writeFileSync(file, res.image);
-      const v = await checkPicture(ctx, plan.slug, s.act, res.image);
+      const frame = await frameCheck(res.image);
+      const v = frame ? { pass: false, problems: [frame], fix: "Draw the scene to fill the whole vertical 9:16 frame edge to edge, continuing the wall up and the floor down; no empty bands." } : await checkPicture(ctx, plan.slug, s.act, res.image);
       opts.log?.(`${s.id}: ${v.pass ? "check passed" : `check failed: ${v.problems.join("; ")}`}`);
       if (v.pass) break;
       fix = v.fix;

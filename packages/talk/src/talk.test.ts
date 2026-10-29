@@ -6,7 +6,7 @@ import { mockScript, PACE, scriptProblems, syllables } from "./script.js";
 import { blinkTrack, chunkWords, wordTimes } from "./timeline.js";
 import { hummedLine, joinLines, mouthTrack, RATE, ttsArg, ttsEnv, voiceShape, wavBytes } from "./voice.js";
 import { setPrompt, SETS } from "./sets.js";
-import { alignBackground, dilate, groupLines, parseCuts, popScale, poseAt, shotSpans, timeWords } from "./illustrate.js";
+import { alignBackground, dilate, flatBands, frameProblem, groupLines, parseCuts, popScale, poseAt, shotSpans, timeWords } from "./illustrate.js";
 
 test("words share the line's time, with a pause after punctuation", () => {
   const w = wordTimes("Dạ, em đang làm", 1, 3);
@@ -279,4 +279,16 @@ test("illustrate: pose B's background is found again after a shift", () => {
   m[80 * w + 60] = 1;
   const d = dilate(m, w, h, 2);
   assert.equal(d.reduce((n, v) => n + v, 0), 25);
+});
+
+test("illustrate: a picture drawn smaller than the 9:16 frame fails; a plain wall at one end does not", () => {
+  const w = 40, h = 100;
+  const g = new Uint8Array(w * h).fill(200);
+  for (let y = 20; y < 80; y++) for (let x = 0; x < w; x++) g[y * w + x] = (x * 37 + y * 11) % 255;
+  assert.deepEqual(flatBands(g, w, h), { top: 20, bottom: 20 });
+  assert.match(frameProblem(1080, 1920, { top: 307, bottom: 302 }), /bands/);
+  assert.match(frameProblem(1080, 1920, { top: 0, bottom: 382 }), /bands/);
+  assert.equal(frameProblem(1080, 1920, { top: 83, bottom: 172 }), "");
+  assert.equal(frameProblem(1080, 1920, { top: 197, bottom: 0 }), "");
+  assert.match(frameProblem(1024, 1536, { top: 0, bottom: 0 }), /not 9:16/);
 });

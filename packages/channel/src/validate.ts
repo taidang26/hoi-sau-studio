@@ -6,6 +6,7 @@
 
 import type { Platform } from "./index.js";
 import type { EpisodePost } from "./publish.js";
+import { TIKTOK_PHOTO } from "./tiktok.js";
 
 export interface RuleViolation {
   code: string;
@@ -41,8 +42,10 @@ const rules: Rule[] = [
   (platform, post) => {
     const count = post.mediaUrls.length;
     if (platform === "tiktok") {
-      if (post.format !== "reels-9x16") return { code: "TIKTOK_VIDEO_ONLY", message: "TikTok takes vertical videos only." };
-      if (count !== 1) return { code: "REELS_ONE_VIDEO", message: "A TikTok post takes exactly one video." };
+      if (post.format === "reels-9x16") return count === 1 ? undefined : { code: "REELS_ONE_VIDEO", message: "A TikTok post takes exactly one video." };
+      if (count < 1 || count > TIKTOK_PHOTO.max) return { code: "CAROUSEL_SIZE", message: `A TikTok photo post takes 1–${TIKTOK_PHOTO.max} images, got ${count}.` };
+      const bad = post.mediaUrls.filter((u) => !TIKTOK_PHOTO.formats.test(new URL(u, "https://x/").pathname));
+      if (bad.length) return { code: "TIKTOK_PHOTO_FORMAT", message: `TikTok photos must be JPEG or WebP: ${bad.join(", ")}` };
       return;
     }
     switch (post.format) {

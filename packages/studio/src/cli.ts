@@ -14,10 +14,14 @@
  *   npm run studio -- episode headline <id> "…"   (quote band above a single panel)
  *   npm run studio -- episode new <id> --lead <slug> [--with a,b] [--format strip3|single] [--headline "câu trích"] --direction "…" [--credit "name: comment"]
  *   npm run studio -- episode new <id> --lead <slug> [--with a,b] --from-listen data/listen/<id>.json
- *   npm run studio -- episode run <id> [--from step] [--to step] [--mock]
+ *   npm run studio -- episode run <id> [--from step] [--to step] [--finish [--no-recolour]] [--mock]
+ *                    --finish: before lettering, Muse Image recolours each panel (soft shading, one muted tone), then
+ *                    SAM 3.1 keeps the panel's main characters sharp and softens the rest (finish.ts)
  *   npm run studio -- episode approve <id> [--post post.json] [--despite-warnings]
  *       the owner's sign-off; `channel publish` refuses anything not approved as it is
  *   npm run studio -- episode list
+ *   npm run studio -- video approve <id> <video.mp4|still.jpg> --post post.json
+ *       the same sign-off for a finished video (reels-9x16) or still (image-4x5) made outside the episode steps
  *
  * Reads META_API_KEY (or MODEL_API_KEY) from the environment or .env.
  * Output goes to output/characters/<slug>/ and output/style/.
@@ -32,7 +36,7 @@ import { mockTransport } from "./mock.js";
 import { MUSE_IMAGE_MODEL, MuseImage } from "./muse-image.js";
 import { listCharacters, loadProfile } from "./profile.js";
 import { createCharacter, writeProfile } from "./create.js";
-import { approveEpisode, checkForApproval } from "./approve.js";
+import { approveEpisode, approveVideo, checkForApproval } from "./approve.js";
 import { whoAmI } from "./provenance.js";
 import { createEpisode, doneSteps, setHeadline, episodeDir, EPISODE_FORMATS, EPISODE_STEPS, type EpisodeFormat, type EpisodeStep, listEpisodes, readStep, runEpisode } from "./episode.js";
 import { approveSheet, openStudio } from "./studio.js";
@@ -211,15 +215,33 @@ async function main(argv: string[]): Promise<void> {
     return;
   }
 
+  if (cmd === "video" && args[0] === "approve") {
+    const [, id, video] = args;
+    const postFile = opt("--post");
+    if (!id || !video || !postFile) throw new Error("usage: video approve <id> <video.mp4> --post post.json");
+    const a = approveVideo(id, video, postFile);
+    console.log(`${id} approved by ${a.approvedBy}: ${Object.keys(a.files)[0]} and the post. Publish with: npm run channel -- publish ${postFile}`);
+    return;
+  }
+
   if (cmd === "episode" && args[0] === "run") {
     const id = args[1];
-    if (!id) throw new Error("usage: episode run <id> [--from step] [--to step] [--mock]");
+    if (!id) throw new Error("usage: episode run <id> [--from step] [--to step] [--finish] [--mock]");
     const step = (k: string) => {
       const v = opt(k);
       if (v && !EPISODE_STEPS.includes(v as EpisodeStep)) throw new Error(`${k} must be one of ${EPISODE_STEPS.join(", ")}`);
       return v as EpisodeStep | undefined;
     };
     const ctx = openStudio({ mock, log: console.log });
+    if (flags.has("--finish") && !mock) {
+      // SAM 3.1 lives in @hoi-sau/dance, which depends on this package, so it is loaded at run time.
+      const dance = "@hoi-sau/dance";
+      const { Sam } = (await import(dance).catch(() => {
+        throw new Error("--finish needs SAM 3.1 from @hoi-sau/dance (npm install at the repo root)");
+      })) as { Sam: { fromEnv(): import("./finish.js").Segmenter } };
+      ctx.segmenter = Sam.fromEnv();
+      ctx.recolour = !flags.has("--no-recolour");
+    }
     const ran = await runEpisode(ctx, id, { from: step("--from"), to: step("--to") });
     const letter = readStep<{ pages: Array<{ file: string }>; page?: string }>(id, "letter");
     console.log(ran.length ? `${id}: ran ${ran.join(" → ")}` : `${id}: every step is done; use --from to rerun`);

@@ -12,7 +12,7 @@
 #   paused   set up, but the pipeline skips it
 #   planned  the account does not exist yet
 #
-# TikTok takes videos only; image episodes skip it.
+# TikTok takes videos and photo carousels (JPEG or WebP, up to 35, from https://hoisau.dangtrantai.com/).
 #
 # For the contest only Hồi Sau and Lolo's channels are live.
 

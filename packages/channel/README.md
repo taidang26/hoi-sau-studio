@@ -43,7 +43,7 @@ TikTok (its own app at developers.tiktok.com, not Meta):
 - `draft` (default): the video lands in the TikTok inbox and the owner adds caption and trending sound in the app, then posts. Works before TikTok's audit. TikTok holds at most 5 unfinished drafts per 24 hours, so post them as they come.
 - `direct`: posted with the episode caption and TikTok's AI-generated label, privacy `TIKTOK_PRIVACY` (default `PUBLIC_TO_EVERYONE`). Before the audit TikTok only allows this on a private account.
 
-TikTok takes vertical videos only; `publish` skips it for image episodes. Videos are downloaded from their public URL and uploaded as files, so the site's domain needs no verification at TikTok. `tiktok-draft <file or link>` sends any video (for example a talking-character clip) to the inbox.
+Videos are downloaded from their public URL and uploaded as files. Image and carousel episodes go as a TikTok photo post (1–35 JPEG or WebP images) with the first caption line as title and the whole caption as description; TikTok pulls photos itself and only from the verified prefix `https://hoisau.dangtrantai.com/`, so `hoisau.web.app` links are rewritten to it. Both use the `video.upload` scope. `tiktok-draft <file or link>` sends any video (for example a talking-character clip) to the inbox.
 
 For a character brand add `--brand <id>` (for example `--brand lolo`); its `.env` names are listed in `channels.yaml`.
 

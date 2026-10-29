@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * hoisau-channel: accounts, publishing, comments and inbox from the terminal.
- * TikTok has its own login (tiktok-login) and posts episode videos as drafts.
+ * TikTok has its own login (tiktok-login) and posts episode videos and photo carousels as drafts.
  * Run `npm run channel -- help` for the command list.
  *
  * Settings come from .env in the working directory; channels.yaml says which
@@ -69,7 +69,6 @@ import {
   TikTokError,
   exchangeTikTokCode,
   freshTikTokToken,
-  platformTakes,
   postTikTokVideo,
   tiktokAuthorizeUrl,
   tiktokEnvValues,
@@ -377,22 +376,19 @@ async function publish(file: string, only: Platform[]) {
 
   const log = journal();
   for (const { brand } of routes) {
-    if (platformTakes("tiktok", post.format)) await tiktokToken(brand);
+    await tiktokToken(brand);
     const { targets, platforms, skipped } = accounts(brand, only.length > 0);
     for (const s of skipped) {
       if (only.length === 0 || only.includes(s.platform)) console.log(`${brand.id} ${s.platform}: skipped, ${s.reason}`);
     }
     for (const platform of only.length ? only.filter((p) => platforms.includes(p)) : platforms) {
-      if (!platformTakes(platform, post.format)) {
-        console.log(`${brand.id} ${platform}: skipped, takes videos only`);
-        continue;
-      }
       const res = await publishEpisode(platform, post, targets, log, {
         brand: brand.id,
         tiktokPrivacy: process.env.TIKTOK_PRIVACY || undefined,
         ...(mock ? { pollIntervalMs: 1 } : {}),
       });
-      if (res.inbox) console.log(`${brand.id} ${platform}: in the TikTok inbox. Open TikTok, add the caption and sound, post. Caption:\n${captionOf(post, platform)}`);
+      if (res.inbox && post.format !== "reels-9x16") console.log(`${brand.id} ${platform}: photos in the TikTok inbox with the caption filled in. Open TikTok, add a sound, post.`);
+      else if (res.inbox) console.log(`${brand.id} ${platform}: in the TikTok inbox. Open TikTok, add the caption and sound, post. Caption:\n${captionOf(post, platform)}`);
       else console.log(`${brand.id} ${platform}: ${res.permalink ?? res.postId}`);
     }
   }

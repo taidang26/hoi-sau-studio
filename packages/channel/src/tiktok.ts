@@ -1,5 +1,5 @@
 /**
- * TikTok: sending episode videos through the Content Posting API.
+ * TikTok: sending episode videos and photo carousels through the Content Posting API.
  *
  * Two ways in:
  * - draft (scope video.upload): the video lands in the creator's TikTok inbox
@@ -9,7 +9,9 @@
  * - direct (scope video.publish): posted straight to the profile. Until the app
  *   passes TikTok's audit, this only works on a private account.
  *
- * Files go up with FILE_UPLOAD, so the media domain needs no verification.
+ * Videos go up with FILE_UPLOAD, so their host needs no verification. Photo
+ * carousels can only be pulled by TikTok from a verified URL prefix
+ * (https://hoisau.dangtrantai.com/), with the same draft and direct modes.
  * Access tokens last 24 hours and are refreshed with the 365-day refresh token.
  * TikTok is not Meta: none of this goes through GraphClient.
  */
@@ -347,7 +349,7 @@ export function chunkPlan(size: number): { chunkSize: number; count: number } {
 
 export interface TikTokPostOptions {
   mode: TikTokMode;
-  /** Caption, direct mode only (drafts get their caption in the app). */
+  /** Caption. Videos: direct mode only (drafts get their caption in the app). Photos: the title. */
   title?: string;
   /** Direct mode. Must be one TikTok offers this creator. Default PUBLIC_TO_EVERYONE. */
   privacy?: string;
@@ -368,6 +370,21 @@ export interface TikTokPostResult {
   permalink?: string;
 }
 
+/** Direct mode: the privacy level, checked against what TikTok offers this creator, and the creator's handle. */
+async function directPrivacy(c: TikTokClient, o: TikTokPostOptions): Promise<{ privacy: string; username?: string }> {
+  const info = await tiktokCreatorInfo(c);
+  const privacy = o.privacy ?? "PUBLIC_TO_EVERYONE";
+  if (!info.privacy_level_options.includes(privacy)) {
+    throw new TikTokError(
+      `TikTok does not offer ${privacy} for this account (offers ${info.privacy_level_options.join(", ") || "nothing"}).`,
+      "permission",
+      "privacy_level_option_mismatch",
+      0,
+    );
+  }
+  return { privacy, username: info.creator_username };
+}
+
 export async function postTikTokVideo(c: TikTokClient, video: Uint8Array, o: TikTokPostOptions): Promise<TikTokPostResult> {
   const size = video.byteLength;
   if (size === 0) throw new TikTokError("The video file is empty.", "invalid", "empty_video", 0);
@@ -377,19 +394,10 @@ export async function postTikTokVideo(c: TikTokClient, video: Uint8Array, o: Tik
   let username: string | undefined;
   let init: { publish_id: string; upload_url: string };
   if (o.mode === "direct") {
-    const info = await tiktokCreatorInfo(c);
-    username = info.creator_username;
-    const privacy = o.privacy ?? "PUBLIC_TO_EVERYONE";
-    if (!info.privacy_level_options.includes(privacy)) {
-      throw new TikTokError(
-        `TikTok does not offer ${privacy} for this account (offers ${info.privacy_level_options.join(", ") || "nothing"}).`,
-        "permission",
-        "privacy_level_option_mismatch",
-        0,
-      );
-    }
+    const d = await directPrivacy(c, o);
+    username = d.username;
     init = await c.post("/v2/post/publish/video/init/", {
-      post_info: { title: o.title ?? "", privacy_level: privacy, is_aigc: o.isAigc ?? true },
+      post_info: { title: o.title ?? "", privacy_level: d.privacy, is_aigc: o.isAigc ?? true },
       source_info,
     });
   } else {
@@ -402,26 +410,73 @@ export async function postTikTokVideo(c: TikTokClient, video: Uint8Array, o: Tik
     const last = i === count - 1 ? size : first + chunkSize;
     await c.putChunk(init.upload_url, video.subarray(first, last), first, size);
   }
+  return waitForPost(c, init.publish_id, o, (id) => (username ? `https://www.tiktok.com/@${username}/video/${id}` : undefined));
+}
 
+/** TikTok's limits for photo posts. Photos must be JPEG or WebP. */
+export const TIKTOK_PHOTO = { max: 35, title: 90, description: 4000, formats: /\.(jpe?g|webp)$/i };
+
+/**
+ * TikTok pulls photos itself (FILE_UPLOAD is not offered for photos), and
+ * only from a URL prefix verified in the developer portal. The site answers
+ * on two hosts; only hoisau.dangtrantai.com is verified.
+ */
+export const TIKTOK_VERIFIED_HOST = "hoisau.dangtrantai.com";
+const SAME_SITE = ["hoisau.web.app", "hoisau.firebaseapp.com"];
+
+export function tiktokPhotoUrl(url: string): string {
+  const u = new URL(url);
+  if (SAME_SITE.includes(u.host)) u.host = TIKTOK_VERIFIED_HOST;
+  return u.href;
+}
+
+/**
+ * A photo carousel (1 to 35 images). Draft mode sends it to the TikTok inbox
+ * with title and description filled in; the owner adds a sound and posts.
+ */
+export async function postTikTokPhotos(c: TikTokClient, urls: string[], o: TikTokPostOptions & { description?: string; coverIndex?: number }): Promise<TikTokPostResult> {
+  if (urls.length === 0 || urls.length > TIKTOK_PHOTO.max) {
+    throw new TikTokError(`A TikTok photo post takes 1 to ${TIKTOK_PHOTO.max} images, got ${urls.length}.`, "invalid", "photo_count", 0);
+  }
+  const photo_images = urls.map(tiktokPhotoUrl);
+  const cut = (text: string, max: number) => Array.from(text).slice(0, max).join("");
+  const post_info: Record<string, unknown> = {
+    title: cut(o.title ?? "", TIKTOK_PHOTO.title),
+    description: cut(o.description ?? "", TIKTOK_PHOTO.description),
+  };
+  let username: string | undefined;
+  if (o.mode === "direct") {
+    const d = await directPrivacy(c, o);
+    username = d.username;
+    post_info.privacy_level = d.privacy;
+  }
+  const init = await c.post<{ publish_id: string }>("/v2/post/publish/content/init/", {
+    media_type: "PHOTO",
+    post_mode: o.mode === "direct" ? "DIRECT_POST" : "MEDIA_UPLOAD",
+    is_aigc: o.isAigc ?? true,
+    post_info,
+    source_info: { source: "PULL_FROM_URL", photo_images, photo_cover_index: o.coverIndex ?? 0 },
+  });
+  await o.beforePublish?.(init.publish_id);
+  return waitForPost(c, init.publish_id, o, (id) => (username ? `https://www.tiktok.com/@${username}/photo/${id}` : undefined));
+}
+
+/** Polls the post status until it reaches the inbox (draft) or goes live (direct). */
+async function waitForPost(c: TikTokClient, publishId: string, o: TikTokPostOptions, link: (postId: string) => string | undefined): Promise<TikTokPostResult> {
   const goal = o.mode === "direct" ? "PUBLISH_COMPLETE" : "SEND_TO_USER_INBOX";
   const every = o.pollIntervalMs ?? 5000;
   const giveUpAt = Date.now() + (o.pollTimeoutMs ?? 10 * 60_000);
   for (;;) {
     const s = await c.post<{ status: string; fail_reason?: string; publicaly_available_post_id?: string[] }>("/v2/post/publish/status/fetch/", {
-      publish_id: init.publish_id,
+      publish_id: publishId,
     });
-    if (s.status === "FAILED") throw new TikTokError(`TikTok could not take the video: ${s.fail_reason ?? "no reason given"}.`, "invalid", s.fail_reason ?? "failed", 0);
+    if (s.status === "FAILED") throw new TikTokError(`TikTok could not take the post: ${s.fail_reason ?? "no reason given"}.`, "invalid", s.fail_reason ?? "failed", 0);
     // A draft the owner already posted from the inbox also counts as done.
     if (s.status === goal || s.status === "PUBLISH_COMPLETE") {
       const postId = s.publicaly_available_post_id?.[0];
-      return {
-        publishId: init.publish_id,
-        status: s.status,
-        postId,
-        permalink: postId && username ? `https://www.tiktok.com/@${username}/video/${postId}` : undefined,
-      };
+      return { publishId, status: s.status, postId, permalink: postId ? link(postId) : undefined };
     }
-    if (Date.now() >= giveUpAt) throw new TikTokError("Timed out waiting for TikTok to process the video.", "transient", "processing_timeout", 0);
+    if (Date.now() >= giveUpAt) throw new TikTokError("Timed out waiting for TikTok to process the post.", "transient", "processing_timeout", 0);
     await sleep(every);
   }
 }

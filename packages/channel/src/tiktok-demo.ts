@@ -1,6 +1,6 @@
 /**
  * Fake TikTok for tests and META_GRAPH_MOCK=1: answers the OAuth, user,
- * creator, init, chunk upload and status calls, and records what was sent.
+ * creator, video and photo init, chunk upload and status calls, and records what was sent.
  * Media downloads (any other host) return a small fake video.
  */
 
@@ -66,8 +66,9 @@ export function demoTikTok(opts: { privacy?: string[]; statusPolls?: number; fai
         return ok({ creator_username: TIKTOK_DEMO.username, creator_nickname: TIKTOK_DEMO.displayName, privacy_level_options: opts.privacy ?? ["PUBLIC_TO_EVERYONE", "SELF_ONLY"] });
       case "POST /v2/post/publish/inbox/video/init/":
       case "POST /v2/post/publish/video/init/":
+      case "POST /v2/post/publish/content/init/":
         if (opts.fail) return json({ data: {}, error: { code: opts.fail, message: "no", log_id: "log2" } }, 403);
-        mode = u.pathname.includes("inbox") ? "draft" : "direct";
+        mode = u.pathname.includes("inbox") || (body as { post_mode?: string })?.post_mode === "MEDIA_UPLOAD" ? "draft" : "direct";
         return ok({ publish_id: TIKTOK_DEMO.publishId, upload_url: "https://upload.example.tiktok/upload?token=x" });
       case "POST /v2/post/publish/status/fetch/": {
         polls++;

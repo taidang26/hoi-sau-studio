@@ -9,6 +9,7 @@ import { parse, parseDocument } from "yaml";
 import { approvalProblems } from "@hoi-sau/channel";
 import {
   approveEpisode,
+  approveVideo,
   approveSheet,
   checkForApproval,
   editedSteps,
@@ -414,6 +415,40 @@ test("heads named by display or Vietnamese name map back to slugs", () => {
   if (lolo.name_vi) assert.equal(slugFor(ctx, lolo.name_vi), "cu-li");
   assert.equal(slugFor(ctx, "cu-li"), "cu-li");
   assert.equal(slugFor(ctx, "Nobody"), "Nobody");
+});
+
+test("a finished video is approved with its caption, and only that video and caption can be published", () => {
+  const root = mkdtempSync(join(tmpdir(), "hoisau-video-"));
+  const episodes = join(root, "episodes");
+  const video = join(root, "clip.mp4");
+  writeFileSync(video, "video bytes");
+  const post = { episodeId: "pilot-1", format: "reels-9x16" as const, caption: "Lương mới nuôi mình #HoiSau", mediaUrls: ["https://example.com/clip.mp4"] };
+  const postFile = join(root, "post.json");
+  writeFileSync(postFile, JSON.stringify(post));
+  const dir = join(episodes, "pilot-1");
+
+  const a = approveVideo("pilot-1", video, postFile, { dir: episodes, by: "tai" });
+  assert.ok(a.files["video.mp4"] && a.post);
+  assert.deepEqual(approvalProblems(dir, post), []);
+  assert.match(approvalProblems(dir, { ...post, caption: "Caption khác" }).join(), /caption or media differ/);
+  writeFileSync(join(dir, "video.mp4"), "another video");
+  assert.match(approvalProblems(dir, post).join(), /video.mp4 changed after approval/);
+
+  // A banned caption is refused; the post file must match the id and be one video.
+  writeFileSync(postFile, JSON.stringify({ ...post, caption: "Chuyện chính trị văn phòng" }));
+  assert.throws(() => approveVideo("pilot-1", video, postFile, { dir: episodes }), /safety rules/);
+  writeFileSync(postFile, JSON.stringify(post));
+  assert.throws(() => approveVideo("pilot-2", video, postFile, { dir: episodes }), /is for pilot-1/);
+  writeFileSync(postFile, JSON.stringify({ ...post, format: "carousel-4x5" }));
+  assert.throws(() => approveVideo("pilot-1", video, postFile, { dir: episodes }), /reels-9x16/);
+  // A still for Threads is approved the same way.
+  const still = join(root, "still.jpg");
+  writeFileSync(still, "picture bytes");
+  const imagePost = { ...post, episodeId: "pilot-1-still", format: "image-4x5" as const, mediaUrls: ["https://example.com/still.jpg"] };
+  writeFileSync(postFile, JSON.stringify(imagePost));
+  assert.ok(approveVideo("pilot-1-still", still, postFile, { dir: episodes }).files["image.jpg"]);
+  assert.deepEqual(approvalProblems(join(episodes, "pilot-1-still"), imagePost), []);
+  rmSync(root, { recursive: true, force: true });
 });
 
 test("swears are always masked, the way Threads writes them", async () => {

@@ -110,8 +110,23 @@ const research = new Research({
         throw new Error(t("Đang xem dữ liệu mẫu nên không đọc Instagram thật."));
       }
     : (handle) => accounts.discoverInstagram(handle),
+  threadsReplies: demo
+    ? async () => [
+        { id: "demo-1", text: "Đi làm đúng giờ tưởng mình bị phạt" },
+        { id: "demo-2", text: "Ủa? Từ từ… thứ 7 cũng họp à" },
+      ]
+    : (brand) => accounts.threadsReplies(brand),
 });
 if (demo) await seedResearch(research);
+// Real data only: once a week, new replies under our Threads posts become voice patterns to approve on Tư liệu.
+if (!demo) {
+  const learn = () =>
+    research
+      .learnThreads("hoi-sau")
+      .then((n) => n && research.readNew("hoi-sau"))
+      .catch((e) => console.error(`Threads voice: ${e instanceof Error ? e.message : e}`));
+  setInterval(learn, 7 * 24 * 3600 * 1000).unref();
+}
 
 const port = Number(process.env.PORT || 4321);
 const host = process.env.HOST || "127.0.0.1";

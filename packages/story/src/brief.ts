@@ -112,6 +112,8 @@ export const WRITER_GUIDE = [
   "- The joke comes from the character's flaw meeting the situation. Characters tease each other and have flaws; they never insult, and never mock a body, a region or a gender.",
   "- First panel must make a scroller stop: start in the middle of the moment, no introductions.",
   "- Dialogue: short spoken Vietnamese the way 22–32 year olds text at work (\"dạ\", \"ủa\", \"thôi xong\", \"căng\"), within the bible's word and bubble limits. Rarely say a character's name; readers know them by shape and habit.",
+  "- Write like young Vietnamese on Threads: lowercase-casual, t/m/ko/đc, trailing \"…\" and \"=)))\", self-roasting, a list of small facts then a blunt last line. The voice comes from rhythm and typing, not swearing: swears (\"đ*m\", \"v*l\") are crude, so by default write none; use one only when it is the punchline itself and nothing cleaner lands, rarely across episodes, always masked with *; never swear at someone, never a word about body parts or sex.",
+  "- The direction may list voice patterns learned from how young readers write on Threads (a sentence frame, a slang phrase). Use at most one per episode, only where it fits the moment, in the character's own Hà Nội voice; never quote the source line and never explain the slang.",
   "- Each character sounds like their voice and catchphrases; use a catchphrase at most once per episode, where it lands hardest.",
   "- Respect canon and never contradict a fact. If `previously.ended_on` is set, the first beat answers or nods to it.",
   "- Pay off one open thread when it fits naturally; open at most one new small question at the end for \"hồi sau\".",

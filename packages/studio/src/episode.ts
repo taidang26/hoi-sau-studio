@@ -43,6 +43,7 @@ import {
   storyBrief,
   WRITER_GUIDE,
 } from "@hoi-sau/story";
+import { maskSwears } from "./swears.js";
 import { addCanon, SERIES_DIR, type CanonFact, type SeriesBible } from "./bible.js";
 import { generateSoftly, type MuseImage } from "./muse-image.js";
 import { type ChatMessage, type MuseSpark, S } from "./muse-spark.js";
@@ -245,7 +246,7 @@ export function setHeadline(id: string, headline: string | undefined, dir?: stri
     const early = ruleCheck([{ where: "headline", text: headline }], safety);
     if (early.length) throw new Error(`headline refused by the safety rules:\n${early.map((i) => `  - ${i.topic} (${i.detail})`).join("\n")}`);
   }
-  const next = { ...ep, headline: headline?.trim() || undefined };
+  const next = { ...ep, headline: headline?.trim() ? maskSwears(headline.trim()) : undefined };
   writeStep(id, "episode", next, dir);
   return next;
 }
@@ -486,7 +487,7 @@ function sanitizeScript(script: Script, ep: EpisodeSpec, bible: SeriesBible): Sc
     ...p,
     characters: [...new Set(p.characters.map(fix))],
     expressions: p.expressions.filter((e) => cast.has(e.character)),
-    dialogue: p.dialogue.slice(0, 2).map((d) => ({ speaker: fix(d.speaker), text: d.text.trim(), kind: BUBBLE_KINDS.includes(d.kind!) ? d.kind : "speech" })),
+    dialogue: p.dialogue.slice(0, 2).map((d) => ({ speaker: fix(d.speaker), text: maskSwears(d.text.trim()), kind: BUBBLE_KINDS.includes(d.kind!) ? d.kind : "speech" })),
   }));
   return { ...script, panels };
 }
@@ -646,7 +647,7 @@ export async function runStep(ctx: StudioContext, id: string, step: EpisodeStep)
       const raw = await ctx.spark.json<Script>(
         "script",
         scriptSchema(panelRange(ep, ctx.bible)),
-        writerMessages(ctx, ep, (ep.headline ? `A headline band above the panel already reads: "${ep.headline}". The picture illustrates it; the bubbles must not repeat or explain it, they add the punch. ` : "") + (ep.format === "single" ? "Write the script for one single panel that tells the whole joke: the setting shows the trigger, the characters' poses and faces show the twist, and at most two short bubbles (12 words each) finish it. Write everyday spoken Northern (Hà Nội) Vietnamese: blunt, clipped, colloquial. The last bubble is the punchline and must land on its own; never explain the joke or state its moral. Keep dialogue in each character's voice, never breaking their never_says rules. Characters rarely call each other by name." : "Write the panel script: one panel per beat. Let the pictures carry the joke: at least one panel has no dialogue, and the punchline must read from the drawing alone. Write everyday spoken Northern (Hà Nội) Vietnamese: blunt, clipped, colloquial; never explain the joke or state its moral. Keep dialogue short and in each character's voice, never breaking their never_says rules. Characters rarely call each other by name."), { premise: need("premise"), beats: need("beats") }),
+        writerMessages(ctx, ep, (ep.headline ? `A headline band above the panel already reads: "${ep.headline}". The picture illustrates it; the bubbles must not repeat or explain it, they add the punch. ` : "") + (ep.format === "single" ? "Write the script for one single panel that tells the whole joke: the setting shows the trigger, the characters' poses and faces show the twist, and at most two short bubbles (12 words each) finish it. Write everyday spoken Northern (Hà Nội) Vietnamese the way young people type on Threads: blunt, clipped, colloquial, no swearing unless it is the punchline itself (then masked: \"đ*m\"). The last bubble is the punchline and must land on its own; never explain the joke or state its moral. Keep dialogue in each character's voice, never breaking their never_says rules. Characters rarely call each other by name." : "Write the panel script: one panel per beat. Let the pictures carry the joke: at least one panel has no dialogue, and the punchline must read from the drawing alone. Write everyday spoken Northern (Hà Nội) Vietnamese the way young people type on Threads: blunt, clipped, colloquial, no swearing unless it is the punchline itself (then masked: \"đ*m\"); never explain the joke or state its moral. Keep dialogue short and in each character's voice, never breaking their never_says rules. Characters rarely call each other by name."), { premise: need("premise"), beats: need("beats") }),
       );
       return writeStep(id, "script", sanitizeScript(raw, ep, ctx.bible), dir);
     }

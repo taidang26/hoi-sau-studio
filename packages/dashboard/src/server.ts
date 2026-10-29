@@ -438,6 +438,23 @@ export function handler(opts: DashboardOptions) {
           return redirect(res, withNote(to, "ok", t("Đã thêm {n} ảnh. Thêm khoá AI Muse ở Cài đặt để AI đọc.", { n: added })));
         }
         const form = await readForm(req);
+        if (path === "/research/text") {
+          const link = String(form.get("link") ?? "").trim();
+          if (link && !/^https?:\/\//i.test(link)) throw new Error(t("Link bài gốc phải bắt đầu bằng http."));
+          const { added } = rs.addText(brand, form.get("text") ?? "", { from: "text", link: link || undefined });
+          if (!added) return redirect(res, withNote(to, "ok", t("Câu này đã có trong tư liệu.")));
+          if (!opts.studio || opts.studio.ready) {
+            rs.readNew(brand);
+            return redirect(res, withNote(to, "ok", t("Đã thêm. AI đang rút mẫu câu.")));
+          }
+          return redirect(res, withNote(to, "ok", t("Đã thêm. Thêm khoá AI Muse ở Cài đặt để AI đọc.")));
+        }
+        if (path === "/research/threads") {
+          const n = await rs.learnThreads(brand);
+          if (!n) return redirect(res, withNote(to, "ok", t("Chưa có reply Threads mới.")));
+          if (!opts.studio || opts.studio.ready) rs.readNew(brand);
+          return redirect(res, withNote(to, "ok", t("Đã lấy {n} reply Threads mới.", { n })));
+        }
         if (path === "/research/instagram") {
           const n = await rs.importInstagram(brand, form.get("account") ?? "");
           return redirect(res, withNote(to, "ok", n ? t("Đã lấy {n} bài mới.", { n }) : t("Các bài này đã có trong tư liệu.")));
@@ -467,7 +484,7 @@ export function handler(opts: DashboardOptions) {
       const kind = IDEA_KINDS.find((k) => k === q.get("kind")) as IdeaKind | undefined;
       const cast = state.characters.map((c) => ({ slug: c.profile.slug, name: c.profile.name, src: charSrc(c) }));
       const canDiscover = Boolean(opts.demo || acc?.anyPage());
-      return page(res, 200, researchPage(rs, { brands, cast, brand, kind, canDiscover, ready: opts.studio ? opts.studio.ready : true, demo: Boolean(opts.demo), ok, error: err }));
+      return page(res, 200, researchPage(rs, { brands, cast, brand, kind, canDiscover, canThreads: Boolean(rs.opts.threadsReplies), ready: opts.studio ? opts.studio.ready : true, demo: Boolean(opts.demo), ok, error: err }));
     }
     if (rs && path.startsWith("/research-media/")) {
       const file = inside(rs.opts.dir, path.slice("/research-media/".length));

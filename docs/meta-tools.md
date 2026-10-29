@@ -77,7 +77,7 @@ The Meta app runs in Development mode, so all of this works on our own Pages and
 
 Not part of the core and replaceable:
 
-- The voice in talking videos is a human recording (our own), not generated.
+- No voice from outside Meta: talking videos use MMS-TTS (`--tts mms-hn`, fine-tuned on our own Hà Nội recordings; CC BY-NC base) or SeamlessM4T v2, and illustrated videos keep the clip's own sound.
 - `ffmpeg` to assemble the motion comic.
-- Font: Be Vietnam Pro, SIL Open Font License.
+- Fonts: Be Vietnam Pro and Mali (speech bubbles), SIL Open Font License.
 - Background music: royalty-free only, source listed here when chosen.

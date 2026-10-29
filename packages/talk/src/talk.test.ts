@@ -6,7 +6,7 @@ import { mockScript, PACE, scriptProblems, syllables } from "./script.js";
 import { blinkTrack, chunkWords, wordTimes } from "./timeline.js";
 import { hummedLine, joinLines, mouthTrack, RATE, ttsArg, ttsEnv, voiceShape, wavBytes } from "./voice.js";
 import { setPrompt, SETS } from "./sets.js";
-import { alignBackground, dilate, flatBands, frameProblem, gateToWords, groupLines, leadMouth, parseCuts, popScale, poseAt, shotSpans, timeWords } from "./illustrate.js";
+import { alignBackground, dilate, flatBands, frameProblem, gateToWords, ghostShare, groupLines, leadMouth, parseCuts, poseBProblem, popScale, poseAt, shotSpans, timeWords } from "./illustrate.js";
 
 test("words share the line's time, with a pause after punctuation", () => {
   const w = wordTimes("Dạ, em đang làm", 1, 3);
@@ -258,6 +258,8 @@ test("illustrate: poses take turns on caption chunks and the bubble pops", () =>
   const chunks = [c(0, 1), c(1, 2), c(2, 3), c(3, 4)];
   assert.deepEqual([0, 1, 2, 3].map((i) => poseAt(chunks, i, 1, 2)), [0, 0, 1, 0]);
   assert.equal(poseAt(chunks, 2, 0, 1), 0);
+  // A shot holding a single chunk switches on its words.
+  assert.deepEqual([0, 1, 2].map((w) => poseAt(chunks, 1, 1, 2, w, 2)), [0, 1, 0]);
   assert.equal(popScale(-0.1), null);
   assert.deepEqual([0, 0.06, 0.5].map(popScale), [0.82, 1.06, 1]);
 });
@@ -305,4 +307,19 @@ test("illustrate: the mouth is the lead's, at a mouth's size, and opens only on 
   assert.deepEqual(leadMouth([theirs, face, ours], lead, w, h), { x: 20, y: 40, w: 10, h: 5 });
   assert.equal(leadMouth([theirs], lead, w, h), undefined);
   assert.deepEqual(gateToWords([true, true, true, true], [{ text: "a", start: 0.1, end: 0.2 }], 10), [false, true, true, false]);
+});
+
+test("illustrate: a pose B drawn at another size, cut at the edge, or leaving pose A behind is refused", () => {
+  assert.equal(poseBProblem({ k: 1, uncovered: 0, ghost: 0.005 }), "");
+  assert.match(poseBProblem({ k: 0.92, uncovered: 0, ghost: 0 }), /92\.0% of pose A/);
+  assert.match(poseBProblem({ k: 1, uncovered: 70000, ghost: 0 }), /outside pose B/);
+  assert.match(poseBProblem({ k: 1, uncovered: 0, ghost: 0.05 }), /leftovers of pose A/);
+  // A ring that differs only as much as the far background does is not a ghost.
+  const w = 60, h = 60;
+  const a = new Uint8Array(w * h * 3).fill(100), b = new Uint8Array(w * h * 3).fill(100);
+  const region = new Uint8Array(w * h);
+  for (let y = 25; y < 35; y++) for (let x = 25; x < 35; x++) region[y * w + x] = 1;
+  assert.equal(ghostShare(a, b, region, w, h, 5, 60), 0);
+  for (let y = 21; y < 25; y++) for (let x = 25; x < 35; x++) b[(y * w + x) * 3] = 250;
+  assert.ok(ghostShare(a, b, region, w, h, 5, 60) > 0.1);
 });

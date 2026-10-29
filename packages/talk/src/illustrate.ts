@@ -15,7 +15,7 @@
  */
 
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import sharp from "sharp";
@@ -46,6 +46,12 @@ export interface Shot {
   bubble: string;
   /** Cast slugs in the picture besides the lead. */
   cast: string[];
+  /**
+   * What moves between the two poses, for SAM (stabilize): the characters by
+   * default; add what they hold or wear (ice pack, badge, sheet of paper) so no
+   * copy of it stays behind, or name only some of them to keep the rest still.
+   */
+  moving?: string[];
   /** Reuse another shot's pictures (a cut back to it). */
   src?: string;
 }
@@ -147,10 +153,13 @@ async function frameCheck(png: Buffer): Promise<string> {
   return frameProblem(width, height, flatBands(grey, OUT.w, OUT.h));
 }
 
-/** Which pose a moment shows: the poses take turns on each caption chunk inside the shot. */
-export function poseAt(chunks: Chunk[], chunk: number, shotStart: number, poses: number): number {
+/** Which pose a moment shows: the poses take turns on each caption chunk inside the shot, or on each word when the shot has one chunk. */
+export function poseAt(chunks: Chunk[], chunk: number, shotStart: number, poses: number, word = 0, shotEnd = Infinity): number {
   if (poses < 2 || chunk < 0) return 0;
   const first = chunks.findIndex((c) => c.end > shotStart);
+  // A short shot with a single caption chunk would hold one pose: switch on its words instead.
+  const inShot = chunks.filter((c) => c.end > shotStart && c.start < shotEnd).length;
+  if (inShot <= 1) return word % poses;
   return Math.max(0, chunk - first) % poses;
 }
 
@@ -363,39 +372,109 @@ async function maskOf(sam: Sam, rgb: Uint8Array, phrases: string[]): Promise<Uin
   return mask;
 }
 
-/** Pose B with pose A's exact background: B is aligned to A, and only the characters come from B. */
-export async function stabilizePoses(sam: Sam, ctx: StudioContext, plan: Plan, dir: string, opts: { only?: string[]; log?: (s: string) => void } = {}): Promise<Array<{ id: string; outside: number } & Warp>> {
+/**
+ * Limits for a usable pose B (see poseBProblem), set on the 20 shots of the
+ * first two illustrated clips: the ghost share caught 11 of the 14 broken
+ * pastes. Scale and uncovered pixels only catch the worst ones: pose Bs drawn
+ * at 95-97% still pasted cleanly when the character stayed off the frame edge.
+ */
+export const POSE_B = { scale: [0.94, 1.06] as [number, number], uncovered: 60000, ghost: 0.02, ghostLevel: 60, ring: 40 };
+
+/**
+ * Why a stabilised pose B would look cut or shifted, or "" when it is usable:
+ * drawn at another size than A (the alignment scale), part of the paste falling
+ * outside B's picture (straight cut lines), or A's character showing through
+ * around the paste (ghost share: pixels in a ring just outside the paste where
+ * A and the aligned B differ strongly, i.e. something moved that the mask missed).
+ */
+export function poseBProblem(m: { k: number; uncovered: number; ghost: number }, lim = POSE_B): string {
+  if (m.k < lim.scale[0] || m.k > lim.scale[1]) return `pose B is drawn at ${(m.k * 100).toFixed(1)}% of pose A's size`;
+  if (m.uncovered > lim.uncovered) return `${m.uncovered} pasted pixels fall outside pose B's picture`;
+  if (m.ghost > lim.ghost) return `${(m.ghost * 100).toFixed(1)}% of the ring around the paste changed (leftovers of pose A)`;
+  return "";
+}
+
+/** Share of ring pixels (dilated region minus region) where A and the aligned B differ by more than `level` on some channel. */
+export function ghostShare(a: Uint8Array, bw: Uint8Array, region: Uint8Array, w: number, h: number, ring = POSE_B.ring, level = POSE_B.ghostLevel): number {
+  // Relative to the far background: two Muse drawings of one room never match line for line,
+  // so only a ring that differs more than the room does points at something left behind.
+  const outer = dilate(region, w, h, ring), far = dilate(region, w, h, ring * 4);
+  let n = 0, bad = 0, fn = 0, fbad = 0;
+  for (let i = 0; i < w * h; i++) {
+    if (region[i]) continue;
+    let d = false;
+    for (let c = 0; c < 3; c++) if (Math.abs(a[i * 3 + c] - bw[i * 3 + c]) > level) { d = true; break; }
+    if (outer[i]) { n++; if (d) bad++; } else if (!far[i]) { fn++; if (d) fbad++; }
+  }
+  return Math.max(0, (n ? bad / n : 0) - (fn ? fbad / fn : 0));
+}
+
+interface PoseB { ok: boolean; problem: string; k: number; dx: number; dy: number; uncovered: number; ghost: number; out?: Buffer; soft?: Buffer }
+
+async function pasteB(sam: Sam, phrases: string[], a: Uint8Array, b: Uint8Array): Promise<PoseB> {
+  const { w, h } = OUT;
+  const ma = await maskOf(sam, a, phrases), mb = await maskOf(sam, b, phrases);
+  const keep = dilate(ma.map((v, i) => v | mb[i]), w, h, 24).map((v) => 1 - v);
+  const t = alignBackground(a, b, w, h, keep);
+  const bw = new Uint8Array(w * h * 3), mbw = new Uint8Array(w * h), inside = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++) {
+      const i = y * w + x, j = warpIndex(w, h, t, x, y);
+      inside[i] = j < 0 ? 0 : 1;
+      for (let c = 0; c < 3; c++) bw[i * 3 + c] = j < 0 ? a[i * 3 + c] : b[j * 3 + c];
+      if (j >= 0 && mb[j]) mbw[i] = 1;
+    }
+  // Wide and soft: a tight edge cuts limbs and props, takes no sticker outline, and steps the lines behind them.
+  const region = dilate(ma.map((v, i) => v | mbw[i]), w, h, 28);
+  let uncovered = 0;
+  for (let i = 0; i < w * h; i++) if (region[i] && !inside[i]) uncovered++;
+  const ghost = ghostShare(a, bw, region, w, h);
+  const m = { k: t.k, uncovered, ghost };
+  const problem = poseBProblem(m);
+  const base = { ...m, dx: t.dx, dy: t.dy, problem, ok: !problem };
+  if (problem) return base;
+  const soft = await sharp(Buffer.from(region.map((v) => v * 255)), { raw: { width: w, height: h, channels: 1 } }).blur(9).extractChannel(0).raw().toBuffer();
+  const out = Buffer.alloc(w * h * 3);
+  for (let i = 0; i < w * h; i++) {
+    const s = soft[i] / 255;
+    for (let c = 0; c < 3; c++) out[i * 3 + c] = Math.round(a[i * 3 + c] * (1 - s) + bw[i * 3 + c] * s);
+  }
+  return { ...base, out, soft };
+}
+
+/**
+ * Pose B with pose A's exact background: B is aligned to A and only what moves
+ * comes from B. A pose B that would look cut or shifted (poseBProblem) is drawn
+ * again, up to `retries` times; if none is usable the shot keeps one pose.
+ */
+export async function stabilizePoses(sam: Sam, ctx: StudioContext, plan: Plan, dir: string, opts: { only?: string[]; retries?: number; log?: (s: string) => void } = {}): Promise<Array<{ id: string; ok: boolean; problem: string; tries: number }>> {
   const { w, h } = OUT;
   const phrase = (slug: string) => `cartoon ${ctx.profiles.get(slug)?.species.split("(")[0].trim() ?? slug}`;
-  const report: Array<{ id: string; outside: number } & Warp> = [];
+  const report: Array<{ id: string; ok: boolean; problem: string; tries: number }> = [];
   for (const s of plan.shots) {
-    const fb = join(dir, `${s.id}-b.png`);
+    const fb = join(dir, `${s.id}-b.png`), fb2 = join(dir, `${s.id}-b2.png`);
     if (s.src || !existsSync(fb) || (opts.only && !opts.only.includes(s.id))) continue;
-    const a = await rgbOf(join(dir, `${s.id}.png`)), b = await rgbOf(fb);
-    const phrases = [plan.slug, ...s.cast].map(phrase);
-    const ma = await maskOf(sam, a, phrases), mb = await maskOf(sam, b, phrases);
-    const keep = dilate(ma.map((v, i) => v | mb[i]), w, h, 24).map((v) => 1 - v);
-    const t = alignBackground(a, b, w, h, keep);
-    const bw = new Uint8Array(w * h * 3), mbw = new Uint8Array(w * h);
-    for (let y = 0; y < h; y++)
-      for (let x = 0; x < w; x++) {
-        const i = y * w + x, j = warpIndex(w, h, t, x, y);
-        for (let c = 0; c < 3; c++) bw[i * 3 + c] = j < 0 ? a[i * 3 + c] : b[j * 3 + c];
-        if (j >= 0 && mb[j]) mbw[i] = 1;
+    const a = await rgbOf(join(dir, `${s.id}.png`));
+    const phrases = s.moving?.length ? s.moving : [plan.slug, ...s.cast].map(phrase);
+    let r: PoseB | undefined, tries = 0;
+    for (; tries <= (opts.retries ?? 2); tries++) {
+      if (tries > 0) {
+        rmSync(fb, { force: true });
+        await drawPoses(ctx, plan, dir, { only: [s.id], log: opts.log });
+        if (!existsSync(fb)) break;
       }
-    const region = dilate(ma.map((v, i) => v | mbw[i]), w, h, 6);
-    const soft = await sharp(Buffer.from(region.map((v) => v * 255)), { raw: { width: w, height: h, channels: 1 } }).blur(2.5).extractChannel(0).raw().toBuffer();
-    const out = Buffer.alloc(w * h * 3);
-    let diff = 0, n = 0;
-    for (let i = 0; i < w * h; i++) {
-      const m = soft[i] / 255;
-      for (let c = 0; c < 3; c++) out[i * 3 + c] = Math.round(a[i * 3 + c] * (1 - m) + bw[i * 3 + c] * m);
-      if (!soft[i]) for (let c = 0; c < 3; c++) { diff += Math.abs(out[i * 3 + c] - a[i * 3 + c]); n++; }
+      r = await pasteB(sam, phrases, a, await rgbOf(fb));
+      opts.log?.(`${s.id}: pose B scale ${r.k.toFixed(3)}, ${r.dx},${r.dy} px, uncovered ${r.uncovered}, ghost ${(r.ghost * 100).toFixed(2)}%${r.ok ? "" : ` - ${r.problem}`}`);
+      if (r.ok) break;
     }
-    await sharp(out, { raw: { width: w, height: h, channels: 3 } }).png().toFile(join(dir, `${s.id}-b2.png`));
-    const r = { id: s.id, ...t, outside: n ? diff / n : 0 };
-    opts.log?.(`${s.id}: pose B aligned (scale ${t.k.toFixed(3)}, ${t.dx},${t.dy} px), background diff outside the characters ${r.outside.toFixed(3)}`);
-    report.push(r);
+    if (r?.ok && r.out && r.soft) {
+      await sharp(r.out, { raw: { width: w, height: h, channels: 3 } }).png().toFile(fb2);
+      await sharp(r.soft, { raw: { width: w, height: h, channels: 1 } }).png().toFile(join(dir, `${s.id}-mask.png`));
+    } else {
+      rmSync(fb2, { force: true });
+      opts.log?.(`${s.id}: keeps one pose (${r?.problem ?? "no pose B"})`);
+    }
+    report.push({ id: s.id, ok: !!r?.ok, problem: r?.problem ?? "no pose B", tries: Math.min(tries + 1, (opts.retries ?? 2) + 1) });
   }
   return report;
 }
@@ -513,7 +592,8 @@ export async function renderIllustrated(plan: Plan, words: Word[], dir: string, 
     const shot = [...plan.shots].reverse().find((s) => s.t <= t + 1e-6)!;
     const ci = chunks.findIndex((c) => t >= c.start - 1e-6 && t < c.end + 0.25);
     const wi = ci < 0 ? -1 : chunks[ci].words.reduce((k, w, j) => (t >= w.start - 1e-6 ? j : k), 0);
-    const pose = poseAt(chunks, ci, shot.t, plates[shot.id].length);
+    const shotEnd = plan.shots.find((x) => x.t > shot.t + 1e-6)?.t ?? plan.end;
+    const pose = poseAt(chunks, ci, shot.t, plates[shot.id].length, Math.max(0, wi), shotEnd);
     const pop = popScale(t - (shot.t + 0.25));
     const pl = plates[shot.id][pose];
     const open = !!pl.open && openAt(t + 1e-4);

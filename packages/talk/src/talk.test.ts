@@ -6,7 +6,7 @@ import { mockScript, PACE, scriptProblems, syllables } from "./script.js";
 import { blinkTrack, chunkWords, wordTimes } from "./timeline.js";
 import { hummedLine, joinLines, mouthTrack, RATE, ttsArg, ttsEnv, voiceShape, wavBytes } from "./voice.js";
 import { setPrompt, SETS } from "./sets.js";
-import { alignBackground, dilate, flatBands, frameProblem, gateToWords, ghostShare, groupLines, leadFeatures, leadMouth, mouthIn, overlapShare, parseCuts, pasteMouth, poseBProblem, popScale, poseAt, shotSpans, timeWords } from "./illustrate.js";
+import { alignBackground, dilate, flatBands, frameProblem, gateToWords, ghostShare, groupLines, leadFeatures, leadMouth, leadOr, mouthIn, overlapShare, parseCuts, pasteMouth, poseBProblem, popScale, poseAt, shotSpans, timeWords } from "./illustrate.js";
 
 test("words share the line's time, with a pause after punctuation", () => {
   const w = wordTimes("Dạ, em đang làm", 1, 3);
@@ -306,7 +306,9 @@ test("illustrate: the mouth is the lead's, at a mouth's size, and opens only on 
   const theirs = { mask: box(70, 40, 10, 5) }, ours = { mask: box(20, 40, 10, 5) }, face = { mask: box(10, 10, 40, 40) };
   assert.deepEqual(leadMouth([theirs, face, ours], lead, w, h)?.box, { x: 20, y: 40, w: 10, h: 5 });
   assert.equal(leadMouth([theirs], lead, w, h), undefined);
-  assert.ok(leadMouth([{ mask: box(5, 40, 34, 5) }], lead, w, h), "a close-up grin 34% wide is a mouth");
+  assert.ok(leadMouth([{ mask: box(5, 40, 38, 5) }], lead, w, h), "a close-up grin 38% wide is a mouth");
+  assert.equal(await leadOr(new Uint8Array(w * h), async () => lead), lead);
+  assert.equal(await leadOr(lead, async () => assert.fail("no fallback when the species outline is found")), lead);
   const muzzle = { mask: box(0, 30, 45, 10) }, asked: string[] = [];
   const found = await mouthIn(async (ph) => { asked.push(ph); return ph === "mouth" ? [ours] : [muzzle]; }, ["mouth of the cartoon saola", "mouth"], lead, w, h);
   assert.deepEqual(found?.box, { x: 20, y: 40, w: 10, h: 5 });

@@ -492,8 +492,8 @@ export function leadMouth(finds: Array<{ mask: Uint8Array; score?: number }>, le
   for (const f of finds) {
     if ((f.score ?? 1) < 0.3) continue;
     const b = maskBox(f.mask, w, h);
-    // 35% wide lets a close-up grin through; a whole muzzle (a saola's is over half the picture) still fails.
-    if (!b || b.w > w * 0.35 || b.h > h * 0.12 || b.w < 6 || b.h < 4) continue;
+    // 40% wide lets a close-up grin through (Rico's is 37%); a whole muzzle (a saola's is over half the picture) still fails.
+    if (!b || b.w > w * 0.4 || b.h > h * 0.12 || b.w < 6 || b.h < 4) continue;
     if (!lead[Math.round(b.y + b.h / 2) * w + Math.round(b.x + b.w / 2)]) continue;
     if (!best || b.w * b.h > best.box.w * best.box.h) best = { mask: f.mask, box: b };
   }
@@ -599,22 +599,27 @@ export async function mouthIn(segment: (phrase: string) => Promise<Array<{ mask:
   }
   return undefined;
 }
+/** The first outline when SAM found anything for it, else the fallback ("cartoon pufferfish" finds nothing on Poppy). */
+export async function leadOr(first: Uint8Array, fallback: () => Promise<Uint8Array>): Promise<Uint8Array> {
+  return first.some((v) => v) ? first : fallback();
+}
 export async function drawMouths(sam: Sam, ctx: StudioContext, plan: Plan, dir: string, opts: { only?: string[]; log?: (s: string) => void } = {}): Promise<Array<{ pic: string; ok: boolean; problem?: string }>> {
   const { w, h } = OUT;
   const p = ctx.profiles.get(plan.slug)!;
   const species = p.species.split("(")[0].trim();
   const report: Array<{ pic: string; ok: boolean; problem?: string }> = [];
   const pngOf = (rgb: Uint8Array) => sharp(Buffer.from(rgb), { raw: { width: w, height: h, channels: 3 } }).png().toBuffer();
+  const leadMask = async (rgb: Uint8Array) => leadOr(await maskOf(sam, rgb, [`cartoon ${species}`]), () => maskOf(sam, rgb, ["cartoon character"]));
   const findMouth = async (rgb: Uint8Array) => {
     const url = dataUrl(await pngOf(rgb));
-    return mouthIn((ph) => sam.segment(ph, url, w, h), [`mouth of the cartoon ${species}`, "mouth"], await maskOf(sam, rgb, [`cartoon ${species}`]), w, h);
+    return mouthIn((ph) => sam.segment(ph, url, w, h), [`mouth of the cartoon ${species}`, "mouth"], await leadMask(rgb), w, h);
   };
   /**
    * The lead's nose, eyes and eye markings in the picture, grown 3 px: never pasted over, and an open mouth must not reach them.
    * `nearNose` is the nose grown by NOSE_GAP: an open mouth touching it leaves a thin seam under the nose.
    */
   const faceKeep = async (rgb: Uint8Array) => {
-    const url = dataUrl(await pngOf(rgb)), lead = await maskOf(sam, rgb, [`cartoon ${species}`]);
+    const url = dataUrl(await pngOf(rgb)), lead = await leadMask(rgb);
     const keep = new Uint8Array(w * h), nose = new Uint8Array(w * h);
     for (const ph of [`nose of the cartoon ${species}`, `eyes of the cartoon ${species}`, `eye patches of the cartoon ${species}`]) {
       const m = leadFeatures(await sam.segment(ph, url, w, h), lead, w, h);

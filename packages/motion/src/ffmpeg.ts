@@ -39,13 +39,14 @@ export function run(bin: string, args: string[], cwd?: string): Promise<{ stdout
 }
 
 /**
- * Settings for an mp4 a phone downloads: H.264 High at about 1.1 Mbps at most
+ * Settings for an mp4 a phone downloads: H.264 High at about 1.6 Mbps at most
  * (flat comic pictures look the same as at crf 18 and the file is half the
- * size), a keyframe every 2 s, AAC 128k, and the index at the front so it
+ * size; a 4x buffer, or the first seconds smear when a busy picture and a new
+ * bubble land together), a keyframe every 2 s, AAC 128k, and the index at the front so it
  * starts playing before it has finished loading. Put after the encoder's own
  * options: the later -crf wins.
  */
-export const DELIVERY = ["-profile:v", "high", "-pix_fmt", "yuv420p", "-crf", "23", "-maxrate", "1100k", "-bufsize", "2200k", "-g", "60", "-keyint_min", "30", "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart"];
+export const DELIVERY = ["-profile:v", "high", "-pix_fmt", "yuv420p", "-crf", "23", "-maxrate", "1600k", "-bufsize", "6400k", "-g", "60", "-keyint_min", "30", "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart"];
 
 /**
  * Runs ffmpeg in `cwd`. Filters refer to text and font files by bare names in

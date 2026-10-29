@@ -23,6 +23,27 @@ Deadline: **4 Nov, 9 PM ET = 5 Nov, 09:00 Hanoi**. Late entries are not consider
 
 **X post for Most Viral:** *link to the demo post on X (engagement counts through 8 Nov end of day ET)*
 
+## The form, field by field
+
+In the order the submission form asks (seen 28 Oct). Paste these as they are; *italics* are still open.
+
+| Field | Answer |
+| --- | --- |
+| Team Name | Hồi Sau |
+| Team Members | Tai Dang Tran (solo). *Remove anyone listed who did not build this: the rules require exactly the people who worked on it.* |
+| Track | Indie Developer |
+| Problem statement | Build for Your World |
+| Most Viral X post | *link to the demo post on X* |
+| Project Description | The short description below, then "The problem" and "What we built" from the full description, then the "Live product" links above (the form has no field for them; they need no Meta App Review, since viewers only see public posts) |
+| Public GitHub Repository | https://github.com/taidang26/hoi-sau-studio |
+| 3-Minute Demo Video | *YouTube link, public or unlisted* |
+| Use of Meta products | "How we used Meta's tools" below, as text |
+| Why Meta's models matter | The paragraph under "Why Meta's models matter" below |
+| Feedback on Meta products | The list under "Feedback on Meta products" below |
+| Feedback on partner technologies | The line under "Feedback on partner technologies" below |
+
+The form has no checkbox for the bonus awards other than the X link. *Check whether the Track field accepts more than one choice (for example Indie plus a bonus award). If it does not, name the bonus awards at the end of the Project Description.*
+
 ## Short description (about 50 words)
 
 Hồi Sau runs original AI characters as a daily office-comedy comic for young Vietnamese workers. Meta's Muse models write, draw and check each episode; it is posted to Facebook, Instagram and Threads; the comments are screened, scored and grouped, and the best idea becomes the next episode, with its author written in as a coworker.
@@ -41,7 +62,7 @@ Hồi Sau runs original AI characters as a daily office-comedy comic for young V
 6. **Listening.** Comments come back. A rule screen drops spam and abuse; Muse Spark Open scores the rest for idea, fit and fun; ideas wanted by many different people win; an editor can override. The commenter is credited and drawn into the next episode as a coworker, from words only.
 7. **Coaching.** The coach compares strong and weak episodes and writes do/avoid/test lessons that go back into the writer brief and the comment scoring.
 
-Four characters, a slow loris, a pufferfish, a pangolin and a saola, run the same story on the same day, and the audience's share and comment rates decide who leads.
+Six Vietnamese animals share the office: a slow loris, a pufferfish, a pangolin, a saola, the binturong director and a ferret-badger rival. The audience's share and comment rates decide who leads. A safety gate checks every script against one banned-topic list and each character's limits before anything is drawn, comments can never instruct the model, and nothing is posted until the owner approves the exact files.
 
 **Results.** *In [N] days the studio published [N] episodes; [N] were directed by audience comments. Share rate [X]%, comment rate [X]%. The review caught [N] bad panels out of [N]. Average cost per episode: $[X]. [Winner] led the character test. Top coach lesson: [lesson].*
 
@@ -51,14 +72,32 @@ Four characters, a slow loris, a pufferfish, a pangolin and a saola, run the sam
 
 | Tool | Role |
 | --- | --- |
-| Muse Spark | Character bibles, premise, beats, panel script, storyboard, canon, recap, coach lessons (strict JSON) |
-| Muse Spark vision | Panel review against the model sheets |
-| Muse Image | Model sheets, panels, edit-only redraws via chained turns |
+| Muse Spark | Character bibles, premise, beats, panel script, storyboard, the script safety gate, canon, recap, coach lessons, character replies (strict JSON) |
+| Muse Spark vision | Panel review against the model sheets; reading reference images into reusable recipes |
+| Muse Image | Series style, model and pose sheets, brand art, every panel, edit-only redraws via chained turns |
 | Muse Spark Open | Scoring and grouping comments at volume (open weights) |
-| Facebook Pages API, Instagram Graph API, Threads API | Publishing per brand, comments, insights |
+| Muse Voice Transcribe, SAM 3.1 | Talking-character videos: word timing for captions and lip-sync, mouth and eye regions |
+| Facebook Pages API, Instagram Graph API, Threads API | Publishing per brand, comments, replies, insights |
 | Messenger Platform | Inbox for Page and Instagram messages |
 
 Details: [docs/meta-tools.md](meta-tools.md).
+
+## Why Meta's models matter
+
+The product is consistency: the same characters, the same look and the same voice every day, or the audience stops following. Muse Image's chained turns and reference images keep a character on-model from panel to panel, and an edit turn fixes one detail without redrawing the rest. Muse Spark's strict JSON schemas let every writing step be checked and clamped to the series rules in code, and its vision lets the same model review the drawing against the model sheet. Muse Spark Open lets comment scoring grow with the audience on open weights. Facebook, Instagram and Threads are where young Vietnamese office workers already are, so the loop from post to comment to the next episode runs entirely inside Meta.
+
+## Feedback on Meta products
+
+- Muse Image accepts only three sizes (1024x1024, 1536x1024, 1024x1536) and returns WebP by default. A 4:5 size for feed posts and a documented output format would save a crop and a conversion.
+- The `size` parameter only picks the aspect ratio; the image comes back at about 2.5 MP. Saying so in the docs would have saved us a day of soft-looking art.
+- The content filter sometimes refuses harmless exaggerated cartoon poses on a pose sheet. A reason code with the refusal would let us rephrase precisely instead of retrying blind.
+- Chained turns (`previous_response_id`) are the best tool we found for character consistency. Longer retention of old responses would help long series.
+- The Graph API is moving Page reach from impressions to "views" metrics. A clear mapping table would help.
+- *Muse Voice Transcribe: add once a real call has been made.*
+
+## Feedback on partner technologies
+
+*Fill in after the first real run on Baseten or Modal (Muse Spark Open for comment scoring). If none ran, write: "Not used: we applied for Baseten and Modal credits; until hosting was set, listening ran on Muse Spark through the Meta Model API."*
 
 ## Technical highlights
 
@@ -98,7 +137,7 @@ Every commit in the repository is from after kickoff (26 Oct 2026, 23:24 Hanoi t
 - [ ] Repository is public and its README links work.
 - [ ] Video plays logged out, is under 3:00 and opens with the pre-existing/built-this-week line.
 - [ ] Every live link opens logged out: Facebook, Instagram, Threads, episode site, dashboard copy.
-- [ ] Contributor names filled in.
+- [ ] Team Members lists only the people who built this.
 - [ ] Results and numbers from [metrics.md](metrics.md) filled in above.
 - [ ] X post is up and its link is in the form.
-- [ ] The bonus awards above are ticked in the form (they are only considered when chosen).
+- [ ] The bonus awards above are chosen in the form, or named in the Project Description if the form has no field for them.

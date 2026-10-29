@@ -103,4 +103,18 @@ never_says:
   - Nhắc chuyện săn bắt, buôn bán hay nuôi nhốt cầy mực (loài dễ bị tổn thương, không đùa chuyện này)
 
 memory:
-  episodes: []
+  episodes:
+    - episode: ep-001
+      facts:
+        - Cả tầng 7 đi khám sức khoẻ định kỳ chung trong phòng họp Sáng Tạo, ai cũng mặt bơ phờ vì nhịn ăn, phiếu khám ghi bệnh do công việc.
+        - Lẻo ưỡn ngực khoe với Mực tờ kết quả hoàn hảo nhất tầng.
+        - Bác sĩ nhìn tờ kết quả của Lẻo rồi chốt khoẻ vậy chắc vì không làm gì cả.
+        - Mèo Tuyết bỏ tay Mực để nhảy vào lòng Tũn nằm rồi lườm Lẻo.
+    - episode: ep-002
+      facts:
+        - 16h55 Mực đứng trước bàn Tũn giảng một tràng về file báo cáo trên laptop, một tay vẫn đỡ mèo Tuyết đang ngủ gật.
+        - Lẻo kẹp tờ khám sức khỏe, giơ số 02 ngáp dài xếp hàng chờ tới lượt sau Tũn.
+    - episode: ep-003
+      facts:
+        - Mực đứng ngay cạnh máy chấm công cầm đồng hồ bấm giờ, nói là bấm giờ thang máy chậm.
+        - Sáng đó mèo Tuyết đi cùng Mực ra cửa máy chấm công và lườm Tũn.

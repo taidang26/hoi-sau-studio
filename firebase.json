@@ -36,6 +36,15 @@
           ]
         },
         {
+          "source": "/tai",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache"
+            }
+          ]
+        },
+        {
           "source": "/callback",
           "headers": [
             {

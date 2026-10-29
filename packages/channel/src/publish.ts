@@ -11,7 +11,7 @@ import { sleep, type GraphClient } from "./graph.js";
 import type { Format, Platform } from "./index.js";
 import { journalKey, MAIN_BRAND } from "./brands.js";
 import { publishThreadsPost } from "./threads.js";
-import { postTikTokVideo, type TikTokClient, type TikTokMode } from "./tiktok.js";
+import { postTikTokPhotos, postTikTokVideo, type TikTokClient, type TikTokMode } from "./tiktok.js";
 import { validatePost } from "./validate.js";
 
 export interface EpisodePost {
@@ -119,18 +119,18 @@ const publishers: Record<Platform, Publisher> = {
     const { client, userId } = targets.threads;
     return publishThreadsPost(client, userId, post, post.caption, { ...options, beforePublish });
   },
-  // TikTok cannot fetch from our site without domain verification, so the file is downloaded and uploaded.
+  // Videos are downloaded and uploaded (no domain verification needed); photos TikTok pulls from the verified site.
   tiktok: async ({ post, targets, options, beforePublish }) => {
     if (!targets.tiktok) throw new PublishError("No TikTok account is configured.", "NO_TIKTOK_ACCOUNT");
     const { client, mode } = targets.tiktok;
-    const video = await client.download(post.mediaUrls[0]);
-    const res = await postTikTokVideo(client, video, { ...options, mode, title: post.caption, privacy: options.tiktokPrivacy, beforePublish });
+    const common = { ...options, mode, privacy: options.tiktokPrivacy, beforePublish };
+    const res =
+      post.format === "reels-9x16"
+        ? await postTikTokVideo(client, await client.download(post.mediaUrls[0]), { ...common, title: post.caption })
+        : await postTikTokPhotos(client, post.mediaUrls, { ...common, title: post.caption.split("\n")[0], description: post.caption });
     return { postId: res.postId ?? res.publishId, permalink: res.permalink, ...(res.status === "SEND_TO_USER_INBOX" ? { inbox: true } : {}) };
   },
 };
-
-/** Whether a platform takes this kind of post at all (TikTok: videos only). */
-export const platformTakes = (platform: Platform, format: Format) => platform !== "tiktok" || format === "reels-9x16";
 
 export async function publishEpisode(
   platform: Platform,

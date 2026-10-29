@@ -7,6 +7,7 @@ import {
   freshTikTokToken,
   GraphClient,
   parseBrands,
+  postTikTokPhotos,
   postTikTokVideo,
   publishEpisode,
   PublishError,
@@ -19,7 +20,7 @@ import {
   validatePost,
 } from "./index.js";
 import { demoTikTok, TIKTOK_DEMO } from "./tiktok-demo.js";
-import { reels, strip, tempJournal } from "./testkit.js";
+import { carousel, reels, strip, tempJournal } from "./testkit.js";
 
 const app = { clientKey: "ck", clientSecret: "cs" };
 const fast = { pollIntervalMs: 1 };
@@ -102,9 +103,41 @@ test("TikTok errors come back readable and are not retried when the owner must a
   assert.equal(mock.calls.filter((c) => c.path.endsWith("/init/")).length, 1);
 });
 
-test("validation: TikTok takes one vertical video, image episodes are refused", () => {
+test("validation: one vertical video, or 1–35 JPEG/WebP photos", () => {
   assert.deepEqual(validatePost("tiktok", reels).map((v) => v.code), []);
-  assert.deepEqual(validatePost("tiktok", strip).map((v) => v.code), ["TIKTOK_VIDEO_ONLY"]);
+  assert.deepEqual(validatePost("tiktok", { ...strip, mediaUrls: ["https://hoisau.dangtrantai.com/media/ep/01.jpg"] }).map((v) => v.code), []);
+  assert.deepEqual(validatePost("tiktok", strip).map((v) => v.code), ["TIKTOK_PHOTO_FORMAT"]);
+  assert.deepEqual(validatePost("tiktok", { ...carousel, mediaUrls: Array(36).fill("https://hoisau.dangtrantai.com/m/1.jpg") }).map((v) => v.code), ["CAROUSEL_SIZE"]);
+});
+
+test("photos: a draft carousel pulled from the verified host, caption as title and description", async () => {
+  const mock = demoTikTok();
+  const urls = ["https://hoisau.web.app/media/ep-009/01.jpg", "https://hoisau.dangtrantai.com/media/ep-009/02.webp"];
+  const long = "Sếp gọi lúc 5 giờ chiều".padEnd(120, "!") + "\n#hoisau #vanphong";
+  const res = await postTikTokPhotos(clientOf(mock, "tok"), urls, { mode: "draft", title: long.split("\n")[0], description: long, ...fast });
+  assert.equal(res.status, "SEND_TO_USER_INBOX");
+  const init = mock.calls.find((c) => c.path === "/v2/post/publish/content/init/")!;
+  const body = init.body as { media_type: string; post_mode: string; is_aigc: boolean; post_info: { title: string; description: string; privacy_level?: string }; source_info: { source: string; photo_images: string[]; photo_cover_index: number } };
+  assert.equal(body.media_type, "PHOTO");
+  assert.equal(body.post_mode, "MEDIA_UPLOAD");
+  assert.equal(body.is_aigc, true);
+  assert.equal(body.source_info.source, "PULL_FROM_URL");
+  assert.deepEqual(body.source_info.photo_images, ["https://hoisau.dangtrantai.com/media/ep-009/01.jpg", urls[1]]);
+  assert.equal(body.source_info.photo_cover_index, 0);
+  assert.equal(Array.from(body.post_info.title).length, 90);
+  assert.equal(body.post_info.description, long);
+  assert.equal(body.post_info.privacy_level, undefined);
+  // Nothing is downloaded or uploaded by us: TikTok pulls the photos.
+  assert.equal(mock.calls.filter((c) => c.method === "PUT" || !c.url.startsWith("https://open.tiktokapis.com")).length, 0);
+});
+
+test("photos: direct mode posts with a privacy level and links the photo post", async () => {
+  const mock = demoTikTok();
+  const res = await postTikTokPhotos(clientOf(mock, "tok"), ["https://hoisau.dangtrantai.com/m/1.jpg"], { mode: "direct", title: "Tập 9", ...fast });
+  const body = mock.calls.find((c) => c.path === "/v2/post/publish/content/init/")!.body as { post_mode: string; post_info: { privacy_level: string } };
+  assert.equal(body.post_mode, "DIRECT_POST");
+  assert.equal(body.post_info.privacy_level, "PUBLIC_TO_EVERYONE");
+  assert.equal(res.permalink, `https://www.tiktok.com/@${TIKTOK_DEMO.username}/photo/${TIKTOK_DEMO.postId}`);
 });
 
 test("publishEpisode to TikTok downloads the video, leaves a draft and journals it once", async () => {
@@ -133,7 +166,12 @@ test("publishEpisode to TikTok downloads the video, leaves a draft and journals 
   assert.equal(again.publishedAt, res.publishedAt);
   assert.equal(mock.calls.filter((c) => c.path.endsWith("/init/")).length, 1);
 
-  await assert.rejects(publishEpisode("tiktok", strip, targets!, journal, fast), (e) => e instanceof PublishError && e.code === "TIKTOK_VIDEO_ONLY");
+  await assert.rejects(publishEpisode("tiktok", strip, targets!, journal, fast), (e) => e instanceof PublishError && e.code === "TIKTOK_PHOTO_FORMAT");
+  const photos = { ...carousel, episodeId: "ep-009", mediaUrls: ["https://hoisau.web.app/media/ep-009/01.jpg", "https://hoisau.web.app/media/ep-009/02.jpg"] };
+  const drafted = await publishEpisode("tiktok", photos, targets!, journal, fast);
+  assert.equal(drafted.inbox, true);
+  const init = mock.calls.find((c) => c.path === "/v2/post/publish/content/init/")!;
+  assert.equal((init.body as { post_info: { description: string } }).post_info.description, carousel.caption);
 });
 
 test("mode is only for TikTok", () => {

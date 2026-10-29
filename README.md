@@ -33,6 +33,8 @@ Before kickoff we wrote planning documents: the idea, an architecture sketch and
 
 Earlier on 26 Oct, before kickoff, we also made an empty workspace scaffold and a first prototype of the Facebook/Instagram publisher in a different repository. Neither is in this repository. The workspace setup and `packages/channel` here were written again from scratch after kickoff.
 
+Dependencies: only public open-source packages from npm and PyPI, declared in the package files. None of them is earlier work of ours.
+
 ## How it works
 
 The loop has two halves.
@@ -80,6 +82,10 @@ npm run channel -- publish post.json --brand poppy instagram   # one brand and p
 | Publishing, comments, inbox, insights | Facebook Pages API, Instagram Graph API, Threads API, Messenger Platform |
 
 Every call by step, with its command and file: [docs/meta-tools.md](docs/meta-tools.md).
+
+**Meta models only.** Every model the product calls while it runs is Meta's: the Muse models through the Meta Model API, and Meta open weights (Muse Spark Open, SAM 3.1, MMS-TTS, SeamlessM4T v2, MusicGen, Demucs) run on our own machine or on Baseten/Modal. No third-party AI service is used, ElevenLabs included.
+
+**Voice.** Talking videos use only Meta's open-weight speech models (MMS-TTS `facebook/mms-tts-vie` or SeamlessM4T v2), run locally. Formats without a voice carry on-screen text and music instead. Non-model tools (ffmpeg, open-licensed fonts) are listed in [docs/meta-tools.md](docs/meta-tools.md#outside-meta).
 
 ### Vietnamese text layer
 

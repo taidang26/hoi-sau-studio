@@ -66,9 +66,9 @@ The Meta app runs in Development mode, so all of this works on our own Pages and
 
 ## Outside Meta
 
-Not part of the core and replaceable:
+Tools that are not AI models; not part of the core and replaceable:
 
-- Text-to-speech voice for the motion comic (to be chosen; licensed for commercial use).
+- No voice from outside Meta: the organisers require every model called at run time to be Meta's, so talking videos use Meta's open-weight speech models (MMS-TTS, SeamlessM4T v2) or no voice at all.
 - `ffmpeg` to assemble the motion comic.
 - Font: Be Vietnam Pro, SIL Open Font License.
-- Background music: royalty-free only, source listed here when chosen.
+- Background music: MusicGen (Meta, open weights) or royalty-free tracks, with the source listed here.

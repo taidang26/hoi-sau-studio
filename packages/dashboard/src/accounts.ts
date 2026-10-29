@@ -375,6 +375,15 @@ export class Accounts {
     return added.length;
   }
 
+  /** Replies under one brand's Threads posts, freshly pulled when a Page is connected. */
+  async threadsReplies(brandId: string): Promise<Array<{ id: string; text: string }>> {
+    if (this.anyPage()) await this.pullComments();
+    const posts = new Set(
+      (await new FileJournal(journalPath(this.opts.dataDir)).published()).filter((p) => p.platform === "threads" && (p.brand ?? MAIN_BRAND) === brandId).map((p) => p.postId),
+    );
+    return (await loadComments(this.opts.dataDir)).filter((c) => c.platform === "threads" && posts.has(c.postId)).map((c) => ({ id: c.id, text: c.text }));
+  }
+
   /** Messenger and Instagram conversations of every brand with a Page. */
   async pullInbox(): Promise<number> {
     const fetched: Conversation[] = [];

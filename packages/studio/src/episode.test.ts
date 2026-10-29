@@ -455,3 +455,13 @@ test("a finished video is approved with its caption, and only that video and cap
   assert.deepEqual(approvalProblems(join(episodes, "pilot-1-still"), imagePost), []);
   rmSync(root, { recursive: true, force: true });
 });
+
+test("swears are always masked, the way Threads writes them", async () => {
+  const { maskSwears } = await import("./swears.js");
+  assert.equal(maskSwears("Đm deadline"), "Đ*m deadline");
+  assert.equal(maskSwears("thứ 7 cũng họp, vcl"), "thứ 7 cũng họp, v*l");
+  assert.equal(maskSwears("đéo ai làm"), "đ*o ai làm");
+  assert.equal(maskSwears("đ*m vẫn che rồi"), "đ*m vẫn che rồi");
+  assert.equal(maskSwears("vlog với dmm"), "vlog với d*m", "only whole words");
+  assert.equal(maskSwears("vãi cả chưởng"), "v*i cả chưởng");
+});

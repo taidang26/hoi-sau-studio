@@ -20,6 +20,7 @@ import { demoAnalyst, Research, seedResearch } from "./research.js";
 import { t } from "./i18n.js";
 import { seedLessons, writeDemoData } from "./seed.js";
 import { Studio } from "./studio.js";
+import { mockExec, nodeExec, Videos } from "./video.js";
 import { defaultPaths, startDashboard } from "./server.js";
 
 const ROOT = fileURLToPath(new URL("../../..", import.meta.url));
@@ -110,8 +111,36 @@ const research = new Research({
         throw new Error(t("Đang xem dữ liệu mẫu nên không đọc Instagram thật."));
       }
     : (handle) => accounts.discoverInstagram(handle),
+  threadsReplies: demo
+    ? async () => [
+        { id: "demo-1", text: "Đi làm đúng giờ tưởng mình bị phạt" },
+        { id: "demo-2", text: "Ủa? Từ từ… thứ 7 cũng họp à" },
+      ]
+    : (brand) => accounts.threadsReplies(brand),
 });
 if (demo) await seedResearch(research);
+// Real data only: once a week, new replies under our Threads posts become voice patterns to approve on Tư liệu.
+if (!demo) {
+  const learn = () =>
+    research
+      .learnThreads("hoi-sau")
+      .then((n) => n && research.readNew("hoi-sau"))
+      .catch((e) => console.error(`Threads voice: ${e instanceof Error ? e.message : e}`));
+  setInterval(learn, 7 * 24 * 3600 * 1000).unref();
+}
+
+// Video: clips from a sample clip, run through packages/talk. The demo draws placeholder pictures instead.
+const videos = new Videos({
+  dir: join(paths.dataDir, "video"),
+  episodesDir: studioDirs.episodesDir,
+  siteMediaDir: join(ROOT, "site", "public", "media"),
+  mediaBase: (process.env.MEDIA_BASE_URL || "https://hoisau.dangtrantai.com/media/").replace(/\/?$/, "/"),
+  samplesDirs: process.env.VIDEO_SAMPLES_DIRS ? process.env.VIDEO_SAMPLES_DIRS.split(";") : [join(ROOT, "..", "Video satank"), join(ROOT, "..", "Video chimnhonho"), join(paths.dataDir, "video-samples")],
+  cast: () => cast().map((c) => ({ slug: c.slug, name: c.name })),
+  exec: demo ? mockExec() : nodeExec(ROOT),
+  deploy: !demo,
+});
+if (!demo) videos.start();
 
 const port = Number(process.env.PORT || 4321);
 const host = process.env.HOST || "127.0.0.1";
@@ -138,6 +167,7 @@ await startDashboard(
     studio,
     accounts,
     research,
+    videos,
     demo,
     banner: demo ? "Đang xem dữ liệu mẫu. Bài đăng, bình luận và tin nhắn ở đây là bịa, chỉ để thử giao diện." : undefined,
     channel: () => ({

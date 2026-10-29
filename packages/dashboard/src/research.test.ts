@@ -117,3 +117,43 @@ test("the page: upload, read, pin, and the images are served", async () => {
   const en = await (await fetch(`${base}/research?brand=uni`, { headers: { cookie: "lang=en" } })).text();
   assert.match(en, />References</);
 });
+
+test("pasted lines become voice patterns with a new line of ours, and the writer gets them", async () => {
+  const { clip, added } = research.addText("hoi-sau", "- Hài hước tưởng mình vô duyên\n- Ủa? Từ từ…", { from: "text" });
+  assert.equal(added, true);
+  assert.equal(research.addText("hoi-sau", "- hài hước tưởng mình   vô duyên\n- Ủa? Từ từ…", { from: "text" }).added, false, "same text, other case and spaces");
+  assert.throws(() => research.addText("hoi-sau", "   ", { from: "text" }), /Chưa dán/);
+  const read = await research.read("hoi-sau", clip.id);
+  assert.equal(read.status, "done");
+  const voice = read.ideas.find((i) => i.kind === "voice")!;
+  assert.ok(voice.example);
+  assert.ok(research.recipes([`hoi-sau:${voice.id}`]).includes(voice.example!));
+  research.attach([`hoi-sau:${voice.id}`], "voice-ep");
+  assert.deepEqual(research.sourcesOf("voice-ep"), [], "text is never compared as a drawing");
+  research.remove("hoi-sau", clip.id);
+});
+
+test("Threads replies are learned once each", async () => {
+  const replies = [
+    { id: "r1", text: "Đi làm đúng giờ tưởng mình bị phạt" },
+    { id: "r2", text: "ok" },
+  ];
+  const r = new Research({ dir: join(root, "research-threads"), cast, analyst: () => demoAnalyst(() => ["cu-li"]), threadsReplies: async () => replies });
+  assert.equal(await r.learnThreads("hoi-sau"), 1, "too-short replies are skipped");
+  assert.equal(await r.learnThreads("hoi-sau"), 0);
+  replies.push({ id: "r3", text: "Ủa? Từ từ… thứ 7 cũng họp à" });
+  assert.equal(await r.learnThreads("hoi-sau"), 1);
+  assert.equal(r.list("hoi-sau").length, 2);
+  assert.ok(r.list("hoi-sau").every((c) => c.source.from === "threads" && !c.file));
+});
+
+test("the page shows text clips and takes pasted lines", async () => {
+  const body = new URLSearchParams({ text: "Cổ điển. Tôn trọng.", link: "https://www.threads.net/@x/post/1" });
+  const res = await fetch(`${base}/research/text?brand=uni`, { method: "POST", body, redirect: "manual" });
+  assert.match(decodeURIComponent(res.headers.get("location")!), /ok=Đã thêm/);
+  while (research.running("uni") || research.list("uni").some((c) => c.status !== "done")) await new Promise((r) => setTimeout(r, 10));
+  const page = await (await fetch(`${base}/research?brand=uni`)).text();
+  assert.match(page, /Giọng Threads/);
+  assert.match(page, /clip-text/);
+  assert.match(page, /Dán câu hay/);
+});

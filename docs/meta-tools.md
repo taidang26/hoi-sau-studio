@@ -42,6 +42,11 @@ Base `https://api.meta.ai/v1`, key in `META_API_KEY`. Every client has an offlin
 | Background sets: real Hanoi places as faded watercolour sketches | Muse Image | `talk sets` | `packages/talk/src/sets.ts` |
 | Mouth and eyes in each gesture; character cut-out for a new background | SAM 3.1 | `talk art`, `talk cut` | `packages/dance/src/sam.ts`, `packages/talk/src/art.ts` |
 | Word times of a lip-synced sound | Muse Voice Transcribe | `talk sync` | `packages/talk/src/transcribe.ts` |
+| Illustrated video: what each shot shows, its second pose and bubble, from the clip's lines | Muse Spark | `talk illustrate --step plan` | `packages/talk/src/illustrate.ts` |
+| Illustrated video: one full-frame 9:16 picture per shot, then a second pose as an edit | Muse Image | `talk illustrate --step draw`, `poses` | `packages/talk/src/illustrate.ts` |
+| Illustrated video: each picture checked (on-model, drawn once, no text, fills the frame, props the right way round); redrawn on a fail | Muse Spark vision | `talk illustrate --step draw`, `poses` | `packages/talk/src/illustrate.ts` |
+| Illustrated video: the characters in both poses, so pose B keeps pose A's background | SAM 3.1 | `talk illustrate --step stabilize` | `packages/talk/src/illustrate.ts`, `patch.ts` |
+| Moving mouth: a shut and an open mouth per picture, pasted without touching nose or eyes, checked close up | Muse Image, SAM 3.1, Muse Spark vision | `talk illustrate --step mouths`, `render --mouth` | `packages/talk/src/illustrate.ts` |
 
 The clients are `packages/studio/src/muse-spark.ts` and `muse-image.ts` (Studio) and `packages/story/src/llm.ts` (story, with roles `writer`, `judge` and `listener`).
 
@@ -49,7 +54,9 @@ The clients are `packages/studio/src/muse-spark.ts` and `muse-image.ts` (Studio)
 
 | Tool | Job | Why | Where | Status |
 | --- | --- | --- | --- | --- |
-| **MMS-TTS** (`facebook/mms-tts-vie`) | Tried 27/10 as the talking-video voice | Meta's only Vietnamese speech model | `packages/talk/tts/tts.py` | Kept as a fallback only: one flat voice, not engaging enough. Videos now lip-sync to a recorded sound |
+| **MMS-1B** (`facebook/mms-1b-all`) | Word times of a clip's voice for captions, cuts and the moving mouth | Muse Voice Transcribe returns 404 on our key; MMS-1B is Meta's open speech recogniser and runs on our GPU | `packages/talk/tts/asr.py` | In use for illustrated videos |
+| **MMS-TTS** (`facebook/mms-tts-vie`) | Talking-video voice; `--tts mms-hn` is our fine-tune on the owner's Hà Nội recordings | Meta's Vietnamese speech model | `packages/talk/tts/tts.py` | Base voice kept as a fallback; the fine-tune for non-commercial use (CC BY-NC base) |
+| **SeamlessM4T v2** (`facebook/seamless-m4t-v2-large`) | Alternative talking-video voice (`--tts seamless`) | More natural than base MMS-TTS | `packages/talk/tts/seamless.py` | Available; not used in published videos |
 | **Muse Spark Open** (`meta-models/muse-spark-open-1026`) | Scoring comments in batches of 25: idea or not, in character, funny, new; cluster label. Drafting character replies | Comment volume grows with the audience; open weights on Baseten or Modal keep it off the per-token API budget | `packages/story/src/listen.ts`, `engage.ts`, `llm.ts` (role `listener`) | Done with mock; falls back to Muse Spark until hosting is set (`MUSE_SPARK_OPEN_URL`, `MUSE_SPARK_OPEN_KEY`) |
 
 ## Meta platform APIs

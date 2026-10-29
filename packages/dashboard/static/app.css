@@ -616,6 +616,10 @@ img.sheet { max-width: 100%; }
 .clip img { width: 100%; aspect-ratio: 4 / 5; object-fit: cover; border-radius: var(--r-sm); border: 1px solid var(--hairline); background: #fff; }
 .clip figcaption { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
 .clip figcaption form { margin-left: auto; }
+/* Text clips: pasted lines and Threads replies. */
+.text-tile { display: grid; place-items: center; width: 44px; height: 55px; flex: none; border-radius: 8px; border: 1px solid var(--hairline); background: var(--paper, #fff); font-size: 22px; }
+.clip-text { margin: 0; aspect-ratio: 4 / 5; overflow: hidden; padding: 10px 12px; border-radius: var(--r-sm); border: 1px solid var(--hairline); background: #fff; white-space: pre-line; font-size: 13px; line-height: 1.45; }
+.idea .example { font-weight: 600; font-style: italic; }
 .btn.tiny { padding: 3px 9px; font-size: 12px; }
 .notes, .compare { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; }
 .notes li, .compare li { display: flex; gap: 12px; align-items: flex-start; }
@@ -659,3 +663,41 @@ img.sheet { max-width: 100%; }
 @media (prefers-reduced-motion: reduce) { @view-transition { navigation: none; } }
 
 .settings-side { display: grid; gap: 18px; align-content: start; }
+
+/* Video: shots checked one by one, pictures large enough to see a stray hand. */
+.vsteps { display: flex; flex-wrap: wrap; gap: 6px; list-style: none; padding: 0; margin: 0 0 18px; }
+.vsteps li { font-size: 12.5px; font-weight: 600; padding: 4px 11px; border-radius: 99px; background: var(--glass); color: var(--muted); }
+.vsteps li.done { color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, transparent); }
+.vgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
+.vcard { display: flex; gap: 14px; align-items: flex-start; }
+.vcard img, .vthumb-empty { width: 72px; aspect-ratio: 9 / 16; object-fit: cover; border-radius: 10px; flex: none; }
+.vthumb-empty { display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); font-size: 22px; }
+.vshot { padding: 16px 18px; }
+.vshot.checked { box-shadow: inset 4px 0 0 var(--ok), var(--shadow); }
+.vshot-head { display: flex; flex-wrap: wrap; gap: 10px; align-items: baseline; }
+.bubble-text { font-size: 13px; color: var(--accent-2); }
+.vlines { margin: 6px 0 10px; font-size: 14.5px; }
+.vpics { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 6px; }
+.vpics figure { margin: 0; flex: none; display: flex; flex-direction: column; gap: 4px; }
+.vpics figure.mouth { flex-direction: row; flex-wrap: wrap; width: 250px; }
+.vpics figure.mouth img { width: 120px; }
+.vpics img { width: 220px; aspect-ratio: 9 / 16; object-fit: cover; border-radius: 10px; display: block; }
+.vpics figure.empty { width: 160px; min-height: 120px; border-radius: 10px; border: 1.5px dashed var(--hairline); display: grid; place-items: center; padding: 8px; color: var(--muted); font-size: 12.5px; text-align: center; }
+.vpics figure.warnfig { border-color: var(--warn); }
+.vpics img.faded { opacity: .45; width: 140px; }
+.vpics figcaption { font-size: 12px; color: var(--muted); width: 100%; }
+.vactions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 10px 0; }
+.vactions input { font: inherit; font-size: 13px; padding: 6px 10px; border-radius: 99px; border: 1px solid var(--hairline); min-width: 220px; }
+.vactions form.inline { display: inline-flex; gap: 6px; }
+.tag.ok { color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, transparent); }
+.warn-text { color: var(--warn); }
+.vvideos { display: flex; flex-wrap: wrap; gap: 16px; }
+.vvideo { margin: 0; }
+.vvideo video { width: 240px; aspect-ratio: 9 / 16; border-radius: 14px; background: #000; }
+.vvideo figcaption { font-size: 12.5px; color: var(--muted); margin-top: 4px; }
+.vstills { display: flex; gap: 8px; overflow-x: auto; }
+.vstill { position: relative; flex: none; }
+.vstill img { width: 72px; aspect-ratio: 9 / 16; object-fit: cover; border-radius: 8px; }
+.vstill input { position: absolute; top: 4px; left: 4px; }
+details summary { cursor: pointer; font-size: 13px; color: var(--accent-2); margin-top: 6px; }
+@media (max-width: 640px) { .vpics img { width: 150px; } .vactions input { min-width: 0; width: 100%; } }

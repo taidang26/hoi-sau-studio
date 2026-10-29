@@ -43,16 +43,36 @@ cast:
   - cay-muc
   - chon-bac-ma
 relationships:
-  - { a: cu-li, b: sao-la, dynamic: "Lolo thần tượng Uni và khen suốt, nên Uni sợ Lolo nhất phòng" }
-  - { a: ca-noc, b: cu-li, dynamic: "Chị Poppy chăm Lolo như em ruột, nhưng hoá đơn tạm ứng của Lolo thì vẫn trả về" }
-  - { a: te-te, b: cu-li, dynamic: "Anh Pango che cho Lolo trước sếp, rồi quay về giao hết việc cho Lolo" }
-  - { a: ca-noc, b: te-te, dynamic: "Hai người lâu năm nhất phòng, cãi nhau như vợ chồng già về cái điều hoà" }
-  - { a: ca-noc, b: sao-la, dynamic: "Uni chỉ nói chuyện bình thường với chị Poppy, vì chị không bao giờ khen ai" }
-  - { a: te-te, b: sao-la, dynamic: "Anh Pango lấy việc của Uni làm ví dụ ở mọi cuộc họp; Uni chỉ muốn biến mất" }
-  - { a: cay-muc, b: te-te, dynamic: "Giám đốc giao việc qua Pango; Pango cuộn tròn ngay khi nghe tiếng thang máy" }
-  - { a: chon-bac-ma, b: te-te, dynamic: "Đối thủ 9 năm: Rico tranh công, Pango cuộn tròn chịu trận, nhưng cuối cùng Pango vẫn thắng mà không cần cố" }
-  - { a: chon-bac-ma, b: cu-li, dynamic: "Rico rủ Lolo làm chung rồi đứng tên một mình; Lolo chưa nhận ra, khán giả thì nhận ra" }
-  - { a: cay-muc, b: cu-li, dynamic: "Giám đốc gọi nhầm tên Lolo mỗi lần một kiểu, nhưng con mèo Tuyết chỉ chịu nằm trong lòng Lolo" }
+  - a: cu-li
+    b: sao-la
+    dynamic: Lolo thần tượng Uni và khen suốt, nên Uni sợ Lolo nhất phòng
+  - a: ca-noc
+    b: cu-li
+    dynamic: Chị Poppy chăm Lolo như em ruột, nhưng hoá đơn tạm ứng của Lolo thì vẫn trả về
+  - a: te-te
+    b: cu-li
+    dynamic: Anh Pango che cho Lolo trước sếp, rồi quay về giao hết việc cho Lolo
+  - a: ca-noc
+    b: te-te
+    dynamic: Hai người lâu năm nhất phòng, cãi nhau như vợ chồng già về cái điều hoà
+  - a: ca-noc
+    b: sao-la
+    dynamic: Uni chỉ nói chuyện bình thường với chị Poppy, vì chị không bao giờ khen ai
+  - a: te-te
+    b: sao-la
+    dynamic: Anh Pango lấy việc của Uni làm ví dụ ở mọi cuộc họp; Uni chỉ muốn biến mất
+  - a: cay-muc
+    b: te-te
+    dynamic: Giám đốc giao việc qua Pango; Pango cuộn tròn ngay khi nghe tiếng thang máy
+  - a: chon-bac-ma
+    b: te-te
+    dynamic: "Đối thủ 9 năm: Rico tranh công, Pango cuộn tròn chịu trận, nhưng cuối cùng Pango vẫn thắng mà không cần cố"
+  - a: chon-bac-ma
+    b: cu-li
+    dynamic: Rico rủ Lolo làm chung rồi đứng tên một mình; Lolo chưa nhận ra, khán giả thì nhận ra
+  - a: cay-muc
+    b: cu-li
+    dynamic: Giám đốc gọi nhầm tên Lolo mỗi lần một kiểu, nhưng con mèo Tuyết chỉ chịu nằm trong lòng Lolo
 season:
   arc: 'Mùa 1 "Dự Án Tết": cả phòng phải xong một chiến dịch Tết trong 30 tập; khán giả quyết định chiến dịch thành hay hỏng.'
   milestones:
@@ -60,4 +80,89 @@ season:
     - Tập 10 sếp giao dự án Tết
     - Tập 20 dự án gặp sự cố lớn
     - Tập 30 ra mắt chiến dịch
-canon: []
+canon:
+  - episode: ep-001
+    fact: "Cả tầng 7 đi khám sức khoẻ định kỳ chung ở phòng họp Sáng Tạo: Tũn thâm mắt vì làm đêm, Tê cứng lưng vì cuộn tròn trong họp, Bống phồng lên tăng huyết áp khi thấy hoá đơn 16h59."
+    characters:
+      - cu-li
+      - te-te
+      - ca-noc
+  - episode: ep-001
+    fact: Tũn đóng băng ôm đầu khi nghe hỏi xong chưa em lúc chờ rút máu.
+    characters:
+      - cu-li
+  - episode: ep-001
+    fact: Lẻo khoe tờ kết quả đẹp nhất tầng với Mực nhưng bị bác sĩ chốt khoẻ vậy chắc vì không làm gì.
+    characters:
+      - chon-bac-ma
+      - cay-muc
+  - episode: ep-001
+    fact: Mèo Tuyết bỏ Mực để nhảy vào lòng Tũn nằm, rồi lườm Lẻo lúc Lẻo khoe.
+    characters:
+      - cu-li
+      - chon-bac-ma
+      - cay-muc
+  - episode: ep-001
+    fact: Máy pha cà phê ở pantry lại hỏng đúng lúc cả tầng đói meo cần nhất.
+    characters:
+      - cu-li
+      - te-te
+      - ca-noc
+  - episode: ep-001
+    fact: Cả tầng 7 đi khám sức khoẻ định kỳ chung trong phòng họp Sáng Tạo, ai cũng mặt bơ phờ vì nhịn ăn, phiếu khám ghi bệnh do công việc.
+    characters:
+      - cu-li
+      - chon-bac-ma
+      - cay-muc
+  - episode: ep-001
+    fact: Lẻo ưỡn ngực khoe với Mực tờ kết quả hoàn hảo nhất tầng.
+    characters:
+      - chon-bac-ma
+      - cay-muc
+  - episode: ep-001
+    fact: Bác sĩ nhìn tờ kết quả của Lẻo rồi chốt khoẻ vậy chắc vì không làm gì cả.
+    characters:
+      - chon-bac-ma
+      - cay-muc
+  - episode: ep-001
+    fact: Mèo Tuyết bỏ tay Mực để nhảy vào lòng Tũn nằm rồi lườm Lẻo.
+    characters:
+      - cu-li
+      - chon-bac-ma
+      - cay-muc
+  - episode: ep-001
+    fact: Tũn thâm mắt vì làm đêm, ôm đầu đóng băng khi chờ khám.
+    characters:
+      - cu-li
+  - episode: ep-002
+    fact: 16h55 Mực đứng trước bàn Tũn giảng một tràng về file báo cáo trên laptop, một tay vẫn đỡ mèo Tuyết đang ngủ gật.
+    characters:
+      - cu-li
+      - cay-muc
+  - episode: ep-002
+    fact: Tũn bị giảng mà ngả lưng như đi spa, tay ôm cốc trà gừng bốc khói, mắt lim dim nhưng mồ hôi túa sau gáy.
+    characters:
+      - cu-li
+  - episode: ep-002
+    fact: Lẻo kẹp tờ khám sức khỏe, giơ số 02 ngáp dài xếp hàng chờ tới lượt sau Tũn.
+    characters:
+      - chon-bac-ma
+      - cu-li
+      - cay-muc
+  - episode: ep-003
+    fact: Sáng đó Tũn lao tới máy chấm công lúc 8h59, mồ hôi văng tóc bay, một ngón dí máy một tay giơ chữ V như check-in du lịch.
+    characters:
+      - cu-li
+  - episode: ep-003
+    fact: Mực đứng ngay cạnh máy chấm công cầm đồng hồ bấm giờ, nói là bấm giờ thang máy chậm.
+    characters:
+      - cay-muc
+  - episode: ep-003
+    fact: Sáng đó mèo Tuyết đi cùng Mực ra cửa máy chấm công và lườm Tũn.
+    characters:
+      - cay-muc
+      - cu-li
+  - episode: ep-003
+    fact: Lẻo hôm đó đến sớm ngồi sau uống cà phê hóng, túi áo vẫn vo tờ số 02 chờ bị mắng từ hôm trước.
+    characters:
+      - chon-bac-ma

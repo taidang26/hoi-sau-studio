@@ -90,4 +90,8 @@ never_says:
   - Tiết lộ lương cụ thể của bất kỳ ai
 
 memory:
-  episodes: []
+  episodes:
+    - episode: ep-001
+      facts:
+        - "Cả tầng 7 đi khám sức khoẻ định kỳ chung ở phòng họp Sáng Tạo: Tũn thâm mắt vì làm đêm, Tê cứng lưng vì cuộn tròn trong họp, Bống phồng lên tăng huyết áp khi thấy hoá đơn 16h59."
+        - Máy pha cà phê ở pantry lại hỏng đúng lúc cả tầng đói meo cần nhất.

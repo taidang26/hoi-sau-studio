@@ -441,5 +441,12 @@ test("a finished video is approved with its caption, and only that video and cap
   assert.throws(() => approveVideo("pilot-2", video, postFile, { dir: episodes }), /is for pilot-1/);
   writeFileSync(postFile, JSON.stringify({ ...post, format: "carousel-4x5" }));
   assert.throws(() => approveVideo("pilot-1", video, postFile, { dir: episodes }), /reels-9x16/);
+  // A still for Threads is approved the same way.
+  const still = join(root, "still.jpg");
+  writeFileSync(still, "picture bytes");
+  const imagePost = { ...post, episodeId: "pilot-1-still", format: "image-4x5" as const, mediaUrls: ["https://example.com/still.jpg"] };
+  writeFileSync(postFile, JSON.stringify(imagePost));
+  assert.ok(approveVideo("pilot-1-still", still, postFile, { dir: episodes }).files["image.jpg"]);
+  assert.deepEqual(approvalProblems(join(episodes, "pilot-1-still"), imagePost), []);
   rmSync(root, { recursive: true, force: true });
 });

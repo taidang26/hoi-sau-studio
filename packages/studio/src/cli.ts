@@ -20,8 +20,8 @@
  *   npm run studio -- episode approve <id> [--post post.json] [--despite-warnings]
  *       the owner's sign-off; `channel publish` refuses anything not approved as it is
  *   npm run studio -- episode list
- *   npm run studio -- video approve <id> <video.mp4> --post post.json
- *       the same sign-off for a finished video made outside the episode steps (talk illustrate, talk sync)
+ *   npm run studio -- video approve <id> <video.mp4|still.jpg> --post post.json
+ *       the same sign-off for a finished video (reels-9x16) or still (image-4x5) made outside the episode steps
  *
  * Reads META_API_KEY (or MODEL_API_KEY) from the environment or .env.
  * Output goes to output/characters/<slug>/ and output/style/.
@@ -220,7 +220,7 @@ async function main(argv: string[]): Promise<void> {
     const postFile = opt("--post");
     if (!id || !video || !postFile) throw new Error("usage: video approve <id> <video.mp4> --post post.json");
     const a = approveVideo(id, video, postFile);
-    console.log(`${id} approved by ${a.approvedBy}: the video and the post. Publish with: npm run channel -- publish ${postFile}`);
+    console.log(`${id} approved by ${a.approvedBy}: ${Object.keys(a.files)[0]} and the post. Publish with: npm run channel -- publish ${postFile}`);
     return;
   }
 

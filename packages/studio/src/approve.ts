@@ -10,7 +10,7 @@
  */
 
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { extname, join } from "node:path";
 import { loadSafety, ruleCheck, type SafetyPolicy } from "@hoi-sau/story";
 import { APPROVAL_FILE, type Approval, type EpisodePost, hashFiles, postHash } from "@hoi-sau/channel";
 import { EPISODE_STEPS, episodeDir, episodeTexts, type PanelReview, readStep, type SafetyRecord, textsHash } from "./episode.js";
@@ -98,36 +98,39 @@ export interface ApproveVideoOptions {
   now?: Date;
 }
 
-/** Where an approved stand-alone video is kept, inside its episode folder. */
+/** Where an approved stand-alone video or picture is kept, inside its episode folder. */
 export const VIDEO_FILE = "video.mp4";
+const mediaFile = (format: EpisodePost["format"], src: string) => (format === "reels-9x16" ? VIDEO_FILE : `image${extname(src).toLowerCase() || ".jpg"}`);
 
 /**
- * The owner's sign-off on a finished video that did not come from the episode
- * steps (`talk illustrate`, `talk sync`): the video is copied into
- * episodes/<id>/ and hashed with the post, and the caption goes through the
- * safety rules. `channel publish` then holds it to the same check as an episode.
+ * The owner's sign-off on finished media that did not come from the episode
+ * steps (`talk illustrate`, `talk sync`): one reels-9x16 video, or one
+ * image-4x5 picture (a still from the clip for Threads). The file is copied
+ * into episodes/<id>/ and hashed with the post, and the caption goes through
+ * the safety rules. `channel publish` then holds it to the same check as an episode.
  */
 export function approveVideo(id: string, video: string, postFile: string, opts: ApproveVideoOptions = {}): Approval {
-  if (!existsSync(video)) throw new Error(`no video at ${video}`);
+  if (!existsSync(video)) throw new Error(`no file at ${video}`);
   const post = JSON.parse(readFileSync(postFile, "utf8")) as EpisodePost;
   if (post.episodeId !== id) throw new Error(`${postFile} is for ${post.episodeId}, not ${id}`);
-  if (post.format !== "reels-9x16" || post.mediaUrls.length !== 1) throw new Error(`${postFile} must be one reels-9x16 video`);
+  if (!["reels-9x16", "image-4x5"].includes(post.format) || post.mediaUrls.length !== 1) throw new Error(`${postFile} must be one reels-9x16 video or one image-4x5 picture`);
   const texts = [{ where: "caption", text: post.caption }, ...Object.entries(post.captions ?? {}).map(([p, text]) => ({ where: `caption (${p})`, text: text ?? "" }))];
   const issues = ruleCheck(texts, opts.safety ?? loadSafety());
   if (issues.length) throw new Error(`${id} cannot be approved, the caption breaks the safety rules:\n  - ${issues.map((i) => `${i.where}: ${i.topic} (${i.detail})`).join("\n  - ")}`);
 
   const folder = episodeDir(id, opts.dir);
   mkdirSync(folder, { recursive: true });
-  copyFileSync(video, join(folder, VIDEO_FILE));
+  const file = mediaFile(post.format, video);
+  copyFileSync(video, join(folder, file));
   const by = opts.by ?? whoAmI();
   const approval: Approval = {
     episodeId: id,
     approvedBy: by,
     approvedAt: (opts.now ?? new Date()).toISOString(),
-    files: hashFiles(folder, [VIDEO_FILE]),
+    files: hashFiles(folder, [file]),
     post: postHash(post),
   };
   writeFileSync(join(folder, APPROVAL_FILE), JSON.stringify(approval, null, 2) + "\n");
-  logProvenance(folder, { event: "approved", by, detail: `video ${video} and post` });
+  logProvenance(folder, { event: "approved", by, detail: `${file === VIDEO_FILE ? "video" : "picture"} ${video} and post` });
   return approval;
 }

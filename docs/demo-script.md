@@ -34,6 +34,10 @@ Fill the bracketed numbers from [metrics.md](metrics.md) on 3 Nov.
 - The first line says what existed before and what was built this week, as the organisers ask. Keep it in line with "Pre-existing work" in the README: planning notes, and an early scaffold and publisher prototype in another repository that were rewritten from scratch and are not used.
 - Upload as public or unlisted and check it plays logged out. Post the same video on X for Most Viral.
 
+- Judges stop watching at 3:00 sharp, so the cut ends by 2:55.
+- Show the product running for real (real Muse calls, real posts on our Pages), not the offline mock, and name the Meta model on screen at each step where it is used.
+- English throughout: English voice-over plus English subtitles, including over every Vietnamese panel.
+- No Meta mascot images and no "Muse" in our own names, logos or characters; Meta model names appear only as the tools we used.
 - Show only work from this repository, built after kickoff. Do not show earlier products.
 - No client names, no real people's faces. Show commenter names only if they are public on the Page; blur otherwise.
 - Say plainly that the Meta app runs in Development mode on our own Pages.

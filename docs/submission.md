@@ -126,7 +126,7 @@ Every commit in the repository is from after kickoff (26 Oct 2026, 23:24 Hanoi t
 
 | Award | Why Hồi Sau fits | What the submission must show |
 | --- | --- | --- |
-| Best Build on Meta Open Weight Models ($10k) | Comment listening runs on Muse Spark Open (`meta-models/muse-spark-open-1026` on Baseten) | A real listen run on Baseten, not the Muse Spark fallback; say so in the video |
+| Best Build on Meta Open Weight Models ($10k) | Comment listening on Muse Spark Open; the characters' voice is MMS-TTS fine-tuned on our own Hà Nội recordings; SAM 3.1 finds the mouth and eyes for lip-sync | The fine-tuned voice in a published video, and a real listen run on Muse Spark Open if hosting is set (else say it falls back to Muse Spark); name each open-weight model in the video |
 | Best Creative Build ($5k) | Muse Image draws an original comic against locked model sheets | Model sheets and finished episodes |
 | Best Agentic Use-Case ($5k) | The daily loop runs on its own: listen, write, draw, review, letter, publish, coach | One unattended run, with the review catching a panel |
 | Most Viral ($20k) | The series is made to be shared | The demo posted on X, link submitted; engagement counts through 8 Nov |

@@ -22,6 +22,7 @@
  *   npm run studio -- episode list
  *   npm run studio -- video approve <id> <video.mp4|still.jpg> --post post.json
  *       the same sign-off for a finished video (reels-9x16) or still (image-4x5) made outside the episode steps
+ *   npm run studio -- tai                        the owner's phone page (site/public/tai) from every approved video and photo post
  *
  * Reads META_API_KEY (or MODEL_API_KEY) from the environment or .env.
  * Output goes to output/characters/<slug>/ and output/style/.
@@ -38,13 +39,14 @@ import { listCharacters, loadProfile } from "./profile.js";
 import { createCharacter, writeProfile } from "./create.js";
 import { approveEpisode, approveVideo, checkForApproval } from "./approve.js";
 import { whoAmI } from "./provenance.js";
-import { createEpisode, doneSteps, setHeadline, episodeDir, EPISODE_FORMATS, EPISODE_STEPS, type EpisodeFormat, type EpisodeStep, listEpisodes, readStep, runEpisode } from "./episode.js";
+import { createEpisode, doneSteps, setHeadline, episodeDir, EPISODES_DIR, EPISODE_FORMATS, EPISODE_STEPS, type EpisodeFormat, type EpisodeStep, listEpisodes, readStep, runEpisode } from "./episode.js";
 import { approveSheet, openStudio } from "./studio.js";
 import { approveStyle, loadStyle, runStyleTest, styleReference, styleText } from "./style.js";
 import { loadOffice, officePlanSvg } from "./office.js";
 import { loadBrandList, makeBrandArt } from "./brand-art.js";
 import { makeEdgeArt } from "./edge-art.js";
 import { SERIES_DIR } from "./bible.js";
+import { buildTai } from "./tai.js";
 import { ALL_FONT_PATHS, svgToPng } from "@hoi-sau/svg-text";
 
 const ROOT = fileURLToPath(new URL("../../..", import.meta.url));
@@ -212,6 +214,13 @@ async function main(argv: string[]): Promise<void> {
     for (const w of warnings) console.log(`warning: ${w.text}`);
     const a = approveEpisode(id, { postFile: opt("--post"), despiteWarnings: flags.has("--despite-warnings") });
     console.log(`${id} approved by ${a.approvedBy}: ${Object.keys(a.files).length} files${a.post ? " and the post" : "; no post file yet, approve again once it exists"}.`);
+    return;
+  }
+
+  if (cmd === "tai") {
+    const { file, items, skipped } = buildTai({ episodes: EPISODES_DIR, posts: join(ROOT, "data", "posts"), site: join(ROOT, "site", "public") });
+    for (const s of skipped) console.log(`left out ${s}`);
+    console.log(`${file}: ${items.length} posts. Deploy with: npm run site -- deploy`);
     return;
   }
 

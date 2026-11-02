@@ -292,6 +292,7 @@ export const LOOK = [
   "The picture fills the whole frame edge to edge: no borders, no empty colour bands at the top or bottom. Keep the top fifth and the bottom fifth calm (a speech bubble and captions go there).",
   "Only draw a computer or phone when the scene needs one; a screen nobody in the scene uses never glows toward the viewer.",
   "Absolutely no text, letters, numbers, signs, speech bubbles or captions anywhere; a clock shows hands only, at the time the scene asks.",
+  "A character seen from behind shows only the back: front-only details (a chest pin, a tie, a badge or lanyard on the front, the face) are not visible.",
 ].join(" ");
 
 const CHECK = S.obj({ pass: S.bool(), problems: S.arr(S.str("one concrete problem"), 0, 8), fix: S.str("English edit instruction naming only what to change, or empty if pass") });

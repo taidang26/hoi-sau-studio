@@ -18,7 +18,7 @@
  *   npm run talk -- demo                                                   offline: mock pictures, hummed voice
  */
 
-import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { probeVideo, reelsProblems } from "@hoi-sau/motion";
@@ -318,20 +318,31 @@ async function main() {
         makeMusic(spec.music, plan.end, music, log);
         writeFileSync(promptFile, spec.music);
       }
-      // A shot that kept one pose still moves: its eyes blink (a shut-eye copy of pose A, found inside the faces).
+      // Faces once per picture (faces.json, keyed by picture signature): where to lower each picture, and where its eyes are.
+      // A shot that kept one pose still moves: its eyes blink (a shut-eye copy of pose A, found inside the face).
+      const faceTop: Record<string, number | undefined> = {};
       if (run("render") || step === "blink") {
         const species = (ctx.profiles.get(slug)?.species ?? "character").split("(")[0].trim();
-        for (const s of plan.shots.filter((x) => !x.src && (!only || only.includes(x.id)))) {
+        const facesFile = join(out, "faces.json");
+        const known: Record<string, { sig: string; box?: { x: number; y: number; w: number; h: number } }> = existsSync(facesFile) ? JSON.parse(readFileSync(facesFile, "utf8")) : {};
+        for (const s of plan.shots.filter((x) => !x.src)) {
           const a = join(shots, `${s.id}.png`), b2 = join(shots, `${s.id}-b2.png`), blink = join(shots, `${s.id}-blink.png`);
-          if (!existsSync(a) || existsSync(b2) || existsSync(blink)) continue;
-          const rgb = new Uint8Array(await sharp(a).resize(1080, 1920, { fit: "cover" }).removeAlpha().raw().toBuffer());
-          const face = await facesBox(Sam.fromEnv(), rgb, species);
+          if (!existsSync(a)) continue;
+          const sig = String(statSync(a).mtimeMs);
+          if (known[s.id]?.sig !== sig) {
+            const rgb = new Uint8Array(await sharp(a).resize(1080, 1920, { fit: "cover" }).removeAlpha().raw().toBuffer());
+            known[s.id] = { sig, box: await facesBox(Sam.fromEnv(), rgb, species) };
+            writeFileSync(facesFile, JSON.stringify(known, null, 1));
+          }
+          const face = known[s.id].box;
+          faceTop[s.id] = face?.y;
+          if ((only && !only.includes(s.id)) || existsSync(b2) || existsSync(blink)) continue;
           if (face) makeBlink(a, blink, face, log);
           else log(`${s.id}: no face found, no blink`);
         }
       }
       if (run("render")) {
-        const video = await renderMeme(plan, shots, spec.music.trim() ? music : undefined, join(out, `${slug}.mp4`), log);
+        const video = await renderMeme(plan, shots, spec.music.trim() ? music : undefined, join(out, `${slug}.mp4`), log, faceTop);
         const problems = reelsProblems(await probeVideo(video));
         log(problems.length ? `Reels check: ${problems.join("; ")}` : "Reels check: ok for Facebook/Instagram Reels and TikTok");
         console.log(video);

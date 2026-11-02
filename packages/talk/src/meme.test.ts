@@ -31,9 +31,11 @@ test("a one-pose shot blinks briefly; the pictures move down under the text", ()
   assert.equal(blinkShut(1.85), true);
   assert.equal(blinkShut(2.1), false);
   assert.equal(blinkShut(4.25), true);
-  assert.equal(memeLower(150), 0);
-  assert.equal(memeLower(600), 380);
-  assert.equal(memeLower(2000), 520);
+  // Faces already under the text: no move. Faces up high: down until they clear it. Never more than 520.
+  assert.equal(memeLower(720, 1300), 0);
+  assert.equal(memeLower(720, 700), 160);
+  assert.equal(memeLower(720, 100), 520);
+  assert.equal(memeLower(720), 300);
   assert.match(MEME_FRAME, /No clocks/);
 });
 

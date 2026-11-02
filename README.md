@@ -13,6 +13,7 @@ Meta Global AI Developer Hackathon 2026 · Indie Developer track · *Build for Y
 | How it is built | [docs/architecture.md](docs/architecture.md) · [docs/studio-pipeline.md](docs/studio-pipeline.md) |
 | Where each Meta tool is used | [docs/meta-tools.md](docs/meta-tools.md) |
 | Results | [docs/metrics.md](docs/metrics.md) |
+| Short videos and scheduled posting | [docs/short-videos.md](docs/short-videos.md) |
 | Daily build log | [docs/build-log.md](docs/build-log.md) |
 
 ## Why this exists
@@ -83,12 +84,13 @@ npm run channel -- publish post.json --brand poppy instagram   # one brand and p
 | Short videos: checks each picture (on-model, drawn once, no stray text, fills the 9:16 frame) | Muse Spark (vision) |
 | Short videos: the character in both poses so the background stays still; the mouth, nose and eyes | SAM 3.1 |
 | Word times of the voice, for captions and the moving mouth | MMS-1B (`facebook/mms-1b-all`, open weights, local); Muse Voice Transcribe once the key can call it |
+| Short videos: instrumental background music | MusicGen (`facebook/musicgen-small`, open weights, local) |
 | A character's own voice, when a video needs one | MMS-TTS (`facebook/mms-tts-vie`, plus our Hà Nội fine-tune) or SeamlessM4T v2, open weights, local |
 | Publishing, comments, inbox, insights | Facebook Pages API, Instagram Graph API, Threads API, Messenger Platform |
 
 Every call by step, with its command and file: [docs/meta-tools.md](docs/meta-tools.md).
 
-**Meta models only.** Every model the product calls is Meta's: the Muse models and SAM 3.1 through the Meta Model API, and Meta open weights (Muse Spark Open, MMS-1B, MMS-TTS, SeamlessM4T v2) on our own machine or on Baseten/Modal. No third-party AI service is used. Tools that are not models (ffmpeg, open-licensed fonts) are listed in [docs/meta-tools.md](docs/meta-tools.md).
+**Meta models only.** Every model the product calls is Meta's: the Muse models and SAM 3.1 through the Meta Model API, and Meta open weights (Muse Spark Open, MMS-1B, MMS-TTS, SeamlessM4T v2, MusicGen) on our own machine or on Baseten/Modal. No third-party AI service is used. Tools that are not models (ffmpeg, open-licensed fonts) are listed in [docs/meta-tools.md](docs/meta-tools.md).
 
 ### Vietnamese text layer
 
@@ -108,6 +110,7 @@ Image models distort Vietnamese diacritics, so Muse Image draws panels **with no
 | `packages/motion` | Lettered episode → 9:16 motion comic (ffmpeg) for Reels and Threads |
 | `packages/pipeline` | The daily loop: comments → episode → motion comic → posts, with a scheduler |
 | `packages/talk` | Short 9:16 videos: illustrated voice-over (one picture per shot, two poses, optional moving mouth), talking to camera, lip-sync |
+| `scripts/` | Site build, Windows scheduled tasks: the daily episode, and posting approved clips at set times |
 | `characters/`, `series/` | Character profiles and portraits; series bible and style |
 | `channels.yaml` | Brands (Hồi Sau plus one per character) and their accounts |
 | `docs/` | Architecture, pipeline plan, Meta tools, metrics, demo script, submission draft, integration notes, build log |

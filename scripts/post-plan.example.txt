@@ -1,0 +1,4 @@
+# One line per approved clip: local date and time, then the post id (data/posts/<id>.json).
+# Copy to data/post-plan.txt, then: powershell -ExecutionPolicy Bypass -File scripts\schedule-posts.ps1
+2026-11-03 12:00 pilot-satank-9
+2026-11-03 20:00 pilot-chikhang-10

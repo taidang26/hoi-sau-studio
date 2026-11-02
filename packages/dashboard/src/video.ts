@@ -331,7 +331,7 @@ export class Videos {
   /** The files that make up one shot on screen, for the tick and for knowing the video is stale. */
   shotFiles(id: string, s: Shot): string[] {
     const d = this.shotsDir(id);
-    return [s.id, `${s.id}-b2`].flatMap((p) => [`${p}.png`, `${p}-s.png`, `${p}-m.png`]).map((f) => join(d, f));
+    return [...[s.id, `${s.id}-b2`].flatMap((p) => [`${p}.png`, `${p}-s.png`, `${p}-m.png`]), `${s.id}-blink.png`].map((f) => join(d, f));
   }
 
   /** The lines heard during a shot, with their index in plan.lines. */
@@ -385,7 +385,7 @@ export class Videos {
     }
     this.forget(id, [s.id]);
     this.background(id, async (log) => {
-      this.dropPictures(id, [s.id, `${s.id}-b`, `${s.id}-b2`], ["", "-s", "-m", "-s.raw", "-m.raw", "-mask"]);
+      this.dropPictures(id, [s.id, `${s.id}-b`, `${s.id}-b2`], ["", "-s", "-m", "-s.raw", "-m.raw", "-mask", "-blink"]);
       await this.talk(id, "draw", log, ["--only", s.id]);
       await this.talk(id, "poses", log, ["--only", s.id]);
       await this.fillGaps(id, log, [s.id]);

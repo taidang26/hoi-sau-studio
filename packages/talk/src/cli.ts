@@ -13,7 +13,7 @@
  *                    the clip's voice and cuts, one picture per shot of <slug> acting it out (Muse Image, checked by Muse Spark), two poses on one background (SAM 3.1)
  *   npm run talk -- cover <slug> --out <illustrate dir> --quote "“line|line *key*.”" [--shot s08] [--episode <id>]
  *                    TikTok cover: the line on a white badge (key words red) + "Hồi Sau" tag over a shot, inside the grid's safe zone and off the faces (SAM 3.1)
- *   npm run talk -- meme <slug> --out <dir with meme.json> [--step plan|draw|poses|stabilize|music|render|all] [--only s01]
+ *   npm run talk -- meme <slug> --out <dir with meme.json> [--step plan|draw|poses|stabilize|music|blink|render|all] [--only s01]
  *                    silent text meme: two beats of big text over one or two pictures (two poses, still background), MusicGen music
  *   npm run talk -- demo                                                   offline: mock pictures, hummed voice
  */
@@ -33,8 +33,9 @@ import { MuseTranscribe, type TimedWord } from "./transcribe.js";
 import { checkScript, PACE, writeScript, type TalkScript } from "./script.js";
 import { buildTimeline, FPS } from "./timeline.js";
 import { mouthTrack, RATE, ttsArg, voiceFor, type Tts } from "./voice.js";
-import { makeCover } from "./cover.js";
-import { makeMusic, planMeme, readMeme, renderMeme } from "./meme.js";
+import { facesBox, makeCover } from "./cover.js";
+import sharp from "sharp";
+import { makeBlink, makeMusic, planMeme, readMeme, renderMeme } from "./meme.js";
 import { drawMouths, drawPoses, drawShots, gateToWords, groupLines, hearWords, planShots, renderIllustrated, sceneCuts, shotSpans, stabilizePoses, timeWords, type Line, type Plan } from "./illustrate.js";
 
 const ROOT = fileURLToPath(new URL("../../..", import.meta.url));
@@ -294,7 +295,7 @@ async function main() {
     }
     case "meme": {
       const [slug] = pos;
-      if (!slug || !opt.out) throw new Error("Usage: talk meme <slug> --out <dir with meme.json> [--step plan|draw|poses|stabilize|music|render|all] [--only s01]");
+      if (!slug || !opt.out) throw new Error("Usage: talk meme <slug> --out <dir with meme.json> [--step plan|draw|poses|stabilize|music|blink|render|all] [--only s01]");
       const out = fromCwd(opt.out as string);
       const step = String(opt.step ?? "all");
       const only = opt.only ? String(opt.only).split(",") : undefined;
@@ -316,6 +317,18 @@ async function main() {
       if (spec.music.trim() && (step === "music" || ((step === "all" || step === "render") && !fresh))) {
         makeMusic(spec.music, plan.end, music, log);
         writeFileSync(promptFile, spec.music);
+      }
+      // A shot that kept one pose still moves: its eyes blink (a shut-eye copy of pose A, found inside the faces).
+      if (run("render") || step === "blink") {
+        const species = (ctx.profiles.get(slug)?.species ?? "character").split("(")[0].trim();
+        for (const s of plan.shots.filter((x) => !x.src && (!only || only.includes(x.id)))) {
+          const a = join(shots, `${s.id}.png`), b2 = join(shots, `${s.id}-b2.png`), blink = join(shots, `${s.id}-blink.png`);
+          if (!existsSync(a) || existsSync(b2) || existsSync(blink)) continue;
+          const rgb = new Uint8Array(await sharp(a).resize(1080, 1920, { fit: "cover" }).removeAlpha().raw().toBuffer());
+          const face = await facesBox(Sam.fromEnv(), rgb, species);
+          if (face) makeBlink(a, blink, face, log);
+          else log(`${s.id}: no face found, no blink`);
+        }
       }
       if (run("render")) {
         const video = await renderMeme(plan, shots, spec.music.trim() ? music : undefined, join(out, `${slug}.mp4`), log);

@@ -140,6 +140,26 @@ export async function facesBox(sam: Sam, rgb: Uint8Array, species: string): Prom
   return maskBox(mask, OUT.w, OUT.h);
 }
 
+/** How far a picture is lowered when no shot has room above the faces. */
+export const COVER_LOWER = 380;
+
+/**
+ * The picture moved down by `dy` pixels, its top wall stretched to fill the gap
+ * (softened so the stretch does not show); the bottom is cut. Used for text
+ * memes and covers when the faces fill the middle and there is no wall above.
+ */
+export async function lowerPicture(file: string, dy: number): Promise<Buffer> {
+  const pic = await sharp(file).resize(OUT.w, OUT.h, { fit: "cover" }).removeAlpha().png().toBuffer();
+  if (dy <= 0) return pic;
+  const strip = Math.min(40, dy);
+  const wall = await sharp(pic).extract({ left: 0, top: 0, width: OUT.w, height: strip }).resize(OUT.w, dy + strip, { fit: "fill" }).blur(6).png().toBuffer();
+  const body = await sharp(pic).extract({ left: 0, top: 0, width: OUT.w, height: OUT.h - dy }).png().toBuffer();
+  return sharp({ create: { width: OUT.w, height: OUT.h, channels: 3, background: "#ffffff" } })
+    .composite([{ input: wall, top: 0, left: 0 }, { input: body, top: dy, left: 0 }])
+    .png()
+    .toBuffer();
+}
+
 /**
  * The cover of an illustrated clip: `<out>-bia.jpg` and the check `<out>-bia-safe.jpg`.
  * Tries `shot` first, then the plan's other shots, and stops at the first that leaves room.
@@ -153,16 +173,23 @@ export async function makeCover(sam: Sam, ctx: StudioContext, plan: Plan, dir: s
   const ids = plan.shots.map((s) => s.id);
   const order = opts.shot ? [opts.shot, ...ids.filter((i) => i !== opts.shot)] : ids;
   const avatar = dataUrl(await sharp(opts.avatar).resize(160, 160, { fit: "cover" }).png().toBuffer(), "image/png");
+  // First every shot as drawn; then, if the faces leave no room anywhere, every shot lowered (faces found once per shot).
+  const faces = new Map<string, Box | undefined>();
+  for (const dy of [0, COVER_LOWER])
   for (const id of order) {
     const file = join(dir, `${id}.png`);
     if (!existsSync(file)) continue;
-    const rgb = new Uint8Array(await sharp(file).resize(OUT.w, OUT.h, { fit: "cover" }).removeAlpha().raw().toBuffer());
-    const face = await facesBox(sam, rgb, species);
+    if (!faces.has(id)) {
+      const rgb = new Uint8Array(await sharp(file).resize(OUT.w, OUT.h, { fit: "cover" }).removeAlpha().raw().toBuffer());
+      faces.set(id, await facesBox(sam, rgb, species));
+    }
+    const found = faces.get(id);
+    const face = found && { ...found, y: found.y + dy, h: Math.min(found.h, OUT.h - found.y - dy) };
     const at = coverLayout(fitQuote(lines, font).block, face);
-    if ("problem" in at) { opts.log?.(`${id}: ${at.problem}`); continue; }
+    if ("problem" in at) { opts.log?.(`${id}${dy ? " lowered" : ""}: ${at.problem}`); continue; }
     const why = coverProblem(plain(lines), font, at, face);
-    if (why) { opts.log?.(`${id}: ${why}`); continue; }
-    const picture = dataUrl(await sharp(file).resize(OUT.w, OUT.h, { fit: "cover" }).png().toBuffer(), "image/png");
+    if (why) { opts.log?.(`${id}${dy ? " lowered" : ""}: ${why}`); continue; }
+    const picture = dataUrl(await lowerPicture(file, dy), "image/png");
     const png = svgToPng(coverSvg(picture, lines, at, font, avatar));
     const coverFile = `${out}-bia.jpg`, safeFile = `${out}-bia-safe.jpg`;
     await sharp(png).jpeg({ quality: 92 }).toFile(coverFile);

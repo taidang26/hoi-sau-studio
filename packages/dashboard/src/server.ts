@@ -523,7 +523,11 @@ export function handler(opts: DashboardOptions) {
         const form = await readUpload(req, 300 * 1024 * 1024);
         const file = form.get("clip");
         const upload = file instanceof File && file.size ? { name: file.name, bytes: new Uint8Array(await file.arrayBuffer()) } : undefined;
-        const id = vd.create({ slug: String(form.get("slug") ?? ""), mouth: form.get("mouth") === "1", title: String(form.get("title") ?? ""), sample: String(form.get("sample") ?? "") || undefined, upload });
+        const field = (k: string) => String(form.get(k) ?? "");
+        const meme = field("kind") === "meme"
+          ? { top: field("top"), punch: field("punch"), scenes: field("scenes") === "1" ? [field("scene1")] : [field("scene1"), field("scene2")], music: field("music"), seconds: Number(field("seconds")) || 14 }
+          : undefined;
+        const id = vd.create({ kind: meme ? "meme" : "illustrate", slug: field("slug"), mouth: form.get("mouth") === "1", title: field("title"), sample: field("sample") || undefined, upload, meme });
         return redirect(res, `/video/${id}`);
       } catch (e) {
         return fail("/video", e);
@@ -541,7 +545,7 @@ export function handler(opts: DashboardOptions) {
         }
         if (act === "approve") {
           const form = await readForm(req);
-          await vd.approve(id, { caption: form.get("caption") ?? "", threadsCaption: form.get("threadsCaption") ?? "", version: form.get("version") === "mouth" ? "mouth" : "plain", still: form.getAll("still"), when: form.get("when") ?? "" });
+          await vd.approve(id, { caption: form.get("caption") ?? "", threadsCaption: form.get("threadsCaption") ?? "", version: form.get("version") === "mouth" ? "mouth" : "plain", still: form.getAll("still"), when: form.get("when") ?? "", cover: form.get("cover") ?? undefined });
           return redirect(res, withNote(`/video/${id}#approve`, "ok", t("Đã duyệt. Bấm Đăng ngay, hoặc để máy tự đăng đúng giờ hẹn.")));
         }
         return redirect(res, `/video/${id}`);

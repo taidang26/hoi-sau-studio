@@ -7,7 +7,7 @@ import { after, before, test } from "node:test";
 import sharp from "sharp";
 import { writeDemoData } from "./seed.js";
 import { startDashboard } from "./server.js";
-import { mockExec, videoPage, Videos, type Exec } from "./video.js";
+import { DRIFT_WARN, edgeDrift, mockExec, videoPage, Videos, type Exec } from "./video.js";
 
 const root = mkdtempSync(join(tmpdir(), "hoisau-video-"));
 const calls: string[][] = [];
@@ -73,6 +73,9 @@ test("nothing is approved before every shot is ticked and the render is newer th
   await v.settle(id);
 
   await v.approve(id, { caption: "Làm tốt thì thêm việc 🙃 #HoiSau", threadsCaption: "thứ hai vs thứ sáu? #danvanphong", version: "mouth", still: ["s01", "s01-b2"], when: "" });
+  await v.settle(id);
+  assert.ok(calls.some((c) => c[0] === "packages/studio/dist/cli.js" && c[1] === "tai"), "the download page is rebuilt");
+  assert.ok(!existsSync(v.coverFile(id)), "no cover line, no cover");
   const ep = join(root, "episodes", `v-${id}`);
   const post = JSON.parse(readFileSync(join(ep, "post.json"), "utf8"));
   assert.equal(post.format, "reels-9x16");
@@ -103,7 +106,10 @@ test("an approved video posts once: Reels and TikTok with the video, Threads wit
   for (const s of v.unchecked(id)) v.tick(id, s);
   v.render(id);
   await v.settle(id);
-  await v.approve(id, { caption: "Làm tốt thì thêm việc 🙃", version: "plain", still: ["s01"], when: new Date(Date.now() + 3600_000).toISOString() });
+  await v.approve(id, { caption: "Làm tốt thì thêm việc 🙃", version: "plain", still: ["s01"], when: new Date(Date.now() + 3600_000).toISOString(), cover: "Làm tốt|thì *thêm việc*" });
+  await v.settle(id);
+  assert.ok(existsSync(v.coverFile(id)), "the TikTok cover is made on approval");
+  assert.equal(v.meta(id).cover, "Làm tốt|thì *thêm việc*");
   assert.deepEqual(v.due(), [], "not yet");
   calls.length = 0;
   assert.deepEqual(v.due(new Date(Date.now() + 2 * 3600_000)), [id]);
@@ -149,4 +155,53 @@ test("the dashboard lists videos, serves their pictures and takes the shot butto
   assert.equal(res.status, 303);
   assert.equal(v.plan(id)!.shots[1].bubble, "Ba việc?!");
   assert.equal(v.plan(id)!.lines[1].text, "sếp giao thêm ba việc nữa");
+});
+
+test("a text meme is planned from two lines of text, drawn, rendered and approved with its cover", async () => {
+  assert.throws(() => v.create({ kind: "meme", slug: "cu-li", mouth: false, meme: { top: "Sếp bảo tăng ca là cơ hội", punch: "", scenes: ["", ""], music: "", seconds: 14 } }), /câu chốt/);
+  assert.throws(() => v.create({ kind: "meme", slug: "cu-li", mouth: false, meme: { top: "a", punch: "b", scenes: [""], music: "", seconds: 40 } }), /Độ dài/);
+  calls.length = 0;
+  const id = v.create({ kind: "meme", slug: "cu-li", mouth: false, meme: { top: "Sếp bảo tăng ca là cơ hội", punch: "Cơ hội để sếp về sớm", scenes: ["Tũn ngáp ở bàn", ""], music: "soft lo-fi", seconds: 14 } });
+  await v.settle(id);
+  assert.equal(v.jobs.get(id)?.error, undefined);
+  assert.equal(v.kind(id), "meme");
+  assert.ok(calls.every((c) => c[1] === "meme"), "every step runs talk meme");
+  assert.deepEqual(calls.map((c) => c[c.indexOf("--step") + 1]), ["plan", "draw", "poses", "stabilize"]);
+  const plan = v.plan(id)!;
+  assert.deepEqual(plan.lines.map((l) => l.text), ["Sếp bảo tăng ca là cơ hội", "Cơ hội để sếp về sớm"]);
+  assert.deepEqual(plan.shots.map((s) => s.t), [0, 6.3]);
+  for (const s of v.unchecked(id)) v.tick(id, s);
+  v.render(id);
+  await v.settle(id);
+  assert.ok(!v.stale(id, "plain"));
+  await v.approve(id, { caption: "Cơ hội 🙃 #danvanphong", version: "plain", still: [] });
+  await v.settle(id);
+  assert.ok(existsSync(v.coverFile(id)), "the cover defaults to the two lines");
+  const html = videoPage(v, id)!;
+  assert.match(html, /Sếp bảo tăng ca là cơ hội\|\*Cơ hội để sếp về sớm\*/);
+  assert.match(html, /cover\.jpg/);
+});
+
+test("a second pose that moves the room is measured and flagged", async () => {
+  const id = v.list().find((m) => m.kind === "meme")!.id;
+  const d = v.shotsDir(id);
+  assert.ok((v.meta(id).drift?.s01 ?? 1) < DRIFT_WARN, "the pose on a still background passes");
+  assert.equal(await edgeDrift(join(d, "s01.png"), join(d, "s01.png")), 0);
+  await sharp({ create: { width: 1080, height: 1920, channels: 3, background: "#1a1a1a" } }).png().toFile(join(d, "s01-b2.png"));
+  await v.measureDrift(id, ["s01"]);
+  assert.ok(v.meta(id).drift!.s01 > DRIFT_WARN);
+  assert.match(videoPage(v, id)!, /Nền lệch giữa 2 tư thế/);
+});
+
+test("the Video screen offers the text meme form and takes it", async () => {
+  const list = await (await fetch(`${base}/video`)).text();
+  assert.match(list, /Làm clip chữ/);
+  const form = new FormData();
+  for (const [k, val] of Object.entries({ kind: "meme", top: "Lương về", punch: "Lương đi", slug: "cu-li", scenes: "1", seconds: "12", scene1: "", music: "" })) form.append(k, val);
+  const res = await fetch(`${base}/video/new`, { method: "POST", body: form, redirect: "manual" });
+  assert.equal(res.status, 303);
+  const id = res.headers.get("location")!.split("/").pop()!;
+  await v.settle(id);
+  assert.equal(v.plan(id)!.shots.length, 1);
+  assert.equal(v.plan(id)!.end, 12);
 });

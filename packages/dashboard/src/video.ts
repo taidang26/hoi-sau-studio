@@ -10,8 +10,15 @@
  * Publishing then puts the video (and a still for Threads) on the public site
  * and posts it, now or at a set time.
  *
- * Each video is a folder under `dir`: clip.*, meta.json (the dashboard's own
- * notes), plan.json, words.json, shots/ and the rendered mp4s from talk.
+ * A text meme is the other kind: no sample clip, two lines of text typed by
+ * the owner, one or two pictures and MusicGen music (`talk meme`). It goes
+ * through the same drawing, ticking and approval.
+ *
+ * Approving also makes the TikTok cover (`talk cover`) when a cover line is
+ * given, and rebuilds the owner's download page (`studio tai`).
+ *
+ * Each video is a folder under `dir`: clip.* or meme.json, meta.json (the
+ * dashboard's own notes), plan.json, words.json, shots/ and the rendered mp4s.
  */
 
 import { spawn, spawnSync } from "node:child_process";
@@ -44,8 +51,21 @@ export interface VideoOptions {
   deploy: boolean;
 }
 
+export type VideoKind = "illustrate" | "meme";
+
+/** What the owner types for a text meme (talk's MemeSpec). */
+export interface MemeInput {
+  top: string;
+  punch: string;
+  scenes: string[];
+  music: string;
+  seconds: number;
+}
+
 interface Meta {
   id: string;
+  /** Missing on videos made before text memes: illustrate. */
+  kind?: VideoKind;
   slug: string;
   clip: string;
   title: string;
@@ -66,6 +86,11 @@ interface Meta {
   /** ISO time to publish at; empty publishes when the button is pressed. */
   when?: string;
   posted?: { at: string; log: string };
+  /** The TikTok cover's line ("line|line *key*"), and what went wrong making it. */
+  cover?: string;
+  coverProblem?: string;
+  /** Per shot: share of the frame's edge that differs between the two poses (0–1); high means the picture shifted. */
+  drift?: Record<string, number>;
 }
 
 export interface Shot {
@@ -102,6 +127,10 @@ interface Job {
 const TALK = "packages/talk/dist/cli.js";
 const CHANNEL = "packages/channel/dist/cli.js";
 const SITE = "scripts/site.mjs";
+const STUDIO = "packages/studio/dist/cli.js";
+/** Above this share of changed edge pixels the second pose has moved the room. */
+export const DRIFT_WARN = 0.2;
+export const MEME_MUSIC = "light playful lo-fi office background music, soft marimba and pizzicato, no vocals";
 const CLIP_TYPES = /\.(mp4|mov|m4v|webm)$/i;
 /** Captions stay short; the owner's rule. */
 export const CAPTION_MAX = 220;
@@ -173,8 +202,9 @@ export class Videos {
   }
 
   /** A new video from a sample clip (a path from samples()) or uploaded bytes; starts listening and planning. */
-  create(input: { slug: string; mouth: boolean; title?: string; sample?: string; upload?: { name: string; bytes: Uint8Array } }): string {
+  create(input: { kind?: VideoKind; slug: string; mouth: boolean; title?: string; sample?: string; upload?: { name: string; bytes: Uint8Array }; meme?: MemeInput }): string {
     if (!this.opts.cast().some((c) => c.slug === input.slug)) throw new Error(t("Chọn nhân vật chính."));
+    if (input.kind === "meme") return this.createMeme(input.slug, input.title ?? "", input.meme);
     let source: string | undefined;
     if (input.sample) {
       source = this.samples().find((s) => s.path === input.sample)?.path;
@@ -194,8 +224,34 @@ export class Videos {
     return id;
   }
 
+  /** A text meme: the words and scene notes go to meme.json, then planning and drawing start. */
+  private createMeme(slug: string, title: string, meme?: MemeInput): string {
+    const spec: MemeInput = {
+      top: (meme?.top ?? "").trim(),
+      punch: (meme?.punch ?? "").trim(),
+      scenes: (meme?.scenes ?? [""]).map((s) => s.trim()).slice(0, 2),
+      music: (meme?.music ?? "").trim(),
+      seconds: Number(meme?.seconds) || 14,
+    };
+    if (!spec.scenes.length) spec.scenes = [""];
+    if (!spec.top) throw new Error(t("Viết dòng chữ 1."));
+    if (!spec.punch) throw new Error(t("Viết dòng chữ 2 (câu chốt)."));
+    if (spec.top.length > 90 || spec.punch.length > 90) throw new Error(t("Mỗi dòng chữ tối đa {n} ký tự.", { n: 90 }));
+    if (spec.seconds < 10 || spec.seconds > 20) throw new Error(t("Độ dài từ 10 đến 20 giây."));
+    let id = `${slug}-${stamp()}`;
+    for (let n = 2; existsSync(this.folder(id)); n++) id = `${slug}-${stamp()}-${n}`;
+    mkdirSync(this.folder(id), { recursive: true });
+    writeFileSync(join(this.folder(id), "meme.json"), JSON.stringify(spec, null, 2) + "\n");
+    this.save({ id, kind: "meme", slug, clip: "", title: title.trim() || spec.top.slice(0, 40), mouth: false, createdAt: new Date().toISOString(), checked: {}, stabilize: {}, mouths: {}, cover: `${spec.top}|*${spec.punch}*` });
+    this.continue(id);
+    return id;
+  }
+
+  kind = (id: string): VideoKind => this.meta(id).kind ?? "illustrate";
+
   private talk(id: string, step: string, log: (s: string) => void, extra: string[] = []): Promise<string> {
     const m = this.meta(id);
+    if (m.kind === "meme") return this.opts.exec(TALK, ["meme", m.slug, "--out", this.folder(id), "--step", step, ...extra], log);
     return this.opts.exec(TALK, ["illustrate", m.slug, join(this.folder(id), m.clip), "--out", this.folder(id), "--step", step, ...extra], log);
   }
 
@@ -250,6 +306,7 @@ export class Videos {
       await this.talk(id, "stabilize", log, ["--only", toStabilize.join(",")]);
       this.remember(id);
     }
+    await this.measureDrift(id, shots.map((s) => s.id));
     if (!meta.mouth) return;
     const after = this.meta(id);
     const pics = shots.flatMap((s) => [s.id, `${s.id}-b2`]).filter((p) => existsSync(join(dir, `${p}.png`)) && !existsSync(join(dir, `${p}-m.png`)) && (onlyShots || !after.mouths[p]));
@@ -257,6 +314,18 @@ export class Videos {
       await this.talk(id, "mouths", log, ["--only", pics.join(",")]);
       this.remember(id);
     }
+  }
+
+  /** How much of the frame's edge changes between the two poses of each shot; kept so the page can warn. */
+  async measureDrift(id: string, shots: string[]): Promise<void> {
+    const m = this.meta(id);
+    m.drift ??= {};
+    for (const s of shots) {
+      const a = join(this.shotsDir(id), `${s}.png`), b = join(this.shotsDir(id), `${s}-b2.png`);
+      if (existsSync(a) && existsSync(b)) m.drift[s] = await edgeDrift(a, b);
+      else delete m.drift[s];
+    }
+    this.save(m);
   }
 
   /** The files that make up one shot on screen, for the tick and for knowing the video is stale. */
@@ -403,7 +472,7 @@ export class Videos {
    * The owner's sign-off: every shot ticked, a fresh render, a short caption.
    * Copies the video (and the Threads still) to the site, writes the posts and approves them.
    */
-  async approve(id: string, form: { caption: string; threadsCaption?: string; version: "mouth" | "plain"; still: string[]; when?: string }): Promise<void> {
+  async approve(id: string, form: { caption: string; threadsCaption?: string; version: "mouth" | "plain"; still: string[]; when?: string; cover?: string }): Promise<void> {
     const m = this.meta(id);
     const left = this.unchecked(id);
     if (left.length) throw new Error(t("Còn {n} cảnh chưa soát: {list}.", { n: left.length, list: left.join(", ") }));
@@ -434,11 +503,34 @@ export class Videos {
       writeFileSync(stillFile, JSON.stringify(stillPost, null, 2) + "\n");
       approveVideo(`${ep}-still`, jpg, stillFile, { dir: this.opts.episodesDir });
     }
-    Object.assign(m, { caption, threadsCaption: form.threadsCaption?.trim() || undefined, version: form.version, still, when });
+    const cover = form.cover === undefined ? m.cover : form.cover.trim() || undefined;
+    Object.assign(m, { caption, threadsCaption: form.threadsCaption?.trim() || undefined, version: form.version, still, when, cover });
     delete m.posted;
+    delete m.coverProblem;
     this.save(m);
-    if (this.opts.deploy) this.background(id, (log) => this.opts.exec(SITE, ["deploy"], log));
+    // The TikTok cover and the download page; a cover that cannot be made does not undo the approval.
+    if (this.jobs.get(id)?.running) return;
+    this.background(id, async (log) => {
+      if (cover) {
+        try {
+          const out = await this.opts.exec(TALK, ["cover", m.slug, "--out", this.folder(id), "--quote", cover], log);
+          const file = out.trim().split(/\r?\n/).pop()?.trim() ?? "";
+          if (!existsSync(file)) throw new Error(t("Không thấy ảnh bìa vừa làm."));
+          copyFileSync(file, join(this.opts.episodesDir, ep, "cover.jpg"));
+          copyFileSync(file, join(this.folder(id), "cover.jpg"));
+        } catch (e) {
+          const mm = this.meta(id);
+          mm.coverProblem = e instanceof Error ? e.message : String(e);
+          this.save(mm);
+        }
+      }
+      await this.opts.exec(STUDIO, ["tai"], log);
+      if (this.opts.deploy) await this.opts.exec(SITE, ["deploy"], log);
+    });
   }
+
+  /** The TikTok cover, once made. */
+  coverFile = (id: string) => join(this.opts.episodesDir, this.epId(id), "cover.jpg");
 
   approved(id: string): boolean {
     return Boolean(readApproval(join(this.opts.episodesDir, this.epId(id))));
@@ -495,6 +587,25 @@ export async function writeStill(pics: string[], out: string): Promise<void> {
     .toFile(out);
 }
 
+/**
+ * Share of the frame's edge (top fifth, outer tenth left and right) that is
+ * clearly different between two pictures. The second pose keeps the first
+ * one's background, so anything well above zero means the room moved.
+ */
+export async function edgeDrift(a: string, b: string): Promise<number> {
+  const W = 54, H = 96;
+  const grey = (f: string) => sharp(f).resize(W, H, { fit: "fill" }).greyscale().raw().toBuffer();
+  const [pa, pb] = await Promise.all([grey(a), grey(b)]);
+  let n = 0, moved = 0;
+  for (let y = 0; y < H; y++)
+    for (let x = 0; x < W; x++) {
+      if (!(y < H * 0.2 || x < W * 0.1 || x >= W * 0.9)) continue;
+      n++;
+      if (Math.abs(pa[y * W + x] - pb[y * W + x]) > 24) moved++;
+    }
+  return +(moved / n).toFixed(3);
+}
+
 // ------------------------------------------------------------------ pages
 
 const img = (id: string, file: string, cls = "") => `<a href="/video-media/${esc(id)}/shots/${esc(file)}" target="_blank"><img class="${cls}" src="/video-media/${esc(id)}/shots/${esc(file)}" alt="" loading="lazy"></a>`;
@@ -533,7 +644,7 @@ export function videosPage(v: Videos, err?: string, ok?: string): string {
     .join("");
   const form = `<section class="card"><h2>${esc(t("Làm video mới"))}</h2>
 <form class="form" method="post" action="/video/new" enctype="multipart/form-data">
-<label>${esc(t("Kiểu video"))}<select name="kind"><option value="illustrate">${esc(t("Tranh minh hoạ theo lời (2 tư thế, nền đứng yên)"))}</option></select></label>
+<input type="hidden" name="kind" value="illustrate">
 <div class="row"><label>${esc(t("Clip mẫu"))}<select name="sample"><option value="">${esc(t("— tải clip lên ở dưới —"))}</option>${samples.map((s) => `<option value="${esc(s.path)}">${esc(s.label)}</option>`).join("")}</select></label>
 <label>${esc(t("Hoặc tải clip lên"))}<input type="file" name="clip" accept="video/*"></label></div>
 <div class="row"><label>${esc(t("Nhân vật chính"))}<select name="slug">${cast.map((c) => `<option value="${esc(c.slug)}"${c.slug === "cu-li" ? " selected" : ""}>${esc(c.name)}</option>`).join("")}</select></label>
@@ -541,7 +652,21 @@ export function videosPage(v: Videos, err?: string, ok?: string): string {
 <label class="check"><input type="checkbox" name="mouth" value="1" checked> ${esc(t("Nhép miệng theo lời"))}</label>
 <p class="muted small">${esc(t("Giữ tiếng và nhịp cắt của clip mẫu. Máy tự chia cảnh, vẽ, vẽ tư thế 2 và miệng. Anh soát từng cảnh rồi mới dựng và đăng."))}</p>
 <button class="btn on">${esc(t("Bắt đầu"))}</button></form></section>`;
-  return layout(t("Video"), "/video", `<header class="head"><h1>${esc(t("Video"))}</h1></header>${flash(ok, err)}${form}${cards ? `<div class="vgrid">${cards}</div>` : `<p class="muted">${esc(t("Chưa có video nào."))}</p>`}`);
+  const meme = `<section class="card"><h2>${esc(t("Làm clip chữ (không lời)"))}</h2>
+<form class="form" method="post" action="/video/new" enctype="multipart/form-data">
+<input type="hidden" name="kind" value="meme">
+<label>${esc(t("Dòng chữ 1: câu dẫn"))}<input name="top" maxlength="90" required placeholder="${esc(t("vd: Sếp bảo tăng ca là cơ hội phát triển"))}"></label>
+<label>${esc(t("Dòng chữ 2: câu chốt (hiện sau, chữ đỏ)"))}<input name="punch" maxlength="90" required placeholder="${esc(t("vd: Cơ hội để sếp về sớm"))}"></label>
+<div class="row"><label>${esc(t("Nhân vật chính"))}<select name="slug">${cast.map((c) => `<option value="${esc(c.slug)}"${c.slug === "cu-li" ? " selected" : ""}>${esc(c.name)}</option>`).join("")}</select></label>
+<label>${esc(t("Số cảnh"))}<select name="scenes"><option value="2">2</option><option value="1">1</option></select></label>
+<label>${esc(t("Độ dài (giây)"))}<input type="number" name="seconds" min="10" max="20" value="14"></label></div>
+<label>${esc(t("Cảnh 1 vẽ gì (để trống: máy tự nghĩ)"))}<input name="scene1" placeholder="${esc(t("vd: Tũn ngồi bàn làm việc, mắt díp lại"))}"></label>
+<label>${esc(t("Cảnh 2 vẽ gì"))}<input name="scene2" placeholder="${esc(t("vd: Sếp Mực đếm tiền, tiền lật lật"))}"></label>
+<label>${esc(t("Nhạc nền (tiếng Anh cho MusicGen; để trống: không nhạc)"))}<input name="music" value="${esc(MEME_MUSIC)}"></label>
+<label>${esc(t("Tên video"))}<input name="title"></label>
+<p class="muted small">${esc(t("Bối cảnh mặc định là văn phòng Hồi Sau, nhân vật đúng trang phục. Máy vẽ từng cảnh và tư thế 2 trên nền đứng yên, làm nhạc, rồi anh soát từng cảnh trước khi dựng."))}</p>
+<button class="btn on">${esc(t("Bắt đầu"))}</button></form></section>`;
+  return layout(t("Video"), "/video", `<header class="head"><h1>${esc(t("Video"))}</h1></header>${flash(ok, err)}${meme}${form}${cards ? `<div class="vgrid">${cards}</div>` : `<p class="muted">${esc(t("Chưa có video nào."))}</p>`}`);
 }
 
 function shotCard(v: Videos, m: Meta, plan: Plan, s: Shot, busy: boolean): string {
@@ -561,6 +686,8 @@ function shotCard(v: Videos, m: Meta, plan: Plan, s: Shot, busy: boolean): strin
       if (has(`${p}-m.png`)) pics.push(`<figure class="mouth">${img(id, `${p}-s.png`)}${img(id, `${p}-m.png`)}<figcaption>${esc(t("Miệng ngậm / há"))}</figcaption></figure>`);
       else if (m.mouths[p]) pics.push(`<figure class="empty"><figcaption>${esc(t("Không nhép: {why}", { why: m.mouths[p].problem ?? "" }))}</figcaption></figure>`);
     }
+  const drift = m.drift?.[s.id] ?? 0;
+  if (drift > DRIFT_WARN) pics.push(`<figure class="empty warnfig"><figcaption>${esc(t("Nền lệch giữa 2 tư thế ({p}% mép khung đổi). Bấm Vẽ lại tư thế 2 hoặc Giữ 1 tư thế.", { p: Math.round(drift * 100) }))}</figcaption></figure>`);
   const actions = busy
     ? ""
     : `<div class="vactions">${checked ? `<span class="tag ok">✓ ${esc(t("Đã soát"))}</span>` : has(`${s.id}.png`) ? button(`/video/${id}/shot/${s.id}/ok`, `✓ ${esc(t("Đã soát cỡ thật, ổn"))}`, "btn on") : ""}
@@ -620,12 +747,14 @@ export function videoPage(v: Videos, id: string, err?: string, ok?: string): str
 <div class="row"><label>${esc(t("Bản đăng"))}<select name="version">${m.mouth ? `<option value="mouth"${version === "mouth" ? " selected" : ""}>${esc(t("Có nhép miệng"))}</option>` : ""}<option value="plain"${version === "plain" ? " selected" : ""}>${esc(t("Không nhép"))}</option></select></label>
 <label>${esc(t("Hẹn giờ đăng (giờ máy này; để trống để đăng tay)"))}<input type="datetime-local" name="when" value="${esc(m.when ? new Date(Date.parse(m.when) - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16) : "")}"></label></div>
 <label>${esc(t("Threads: ảnh thay video (chọn 1–2 tranh; bỏ trống thì Threads đăng video)"))}</label><div class="vstills">${stillChoices}</div>
+<label>${esc(t("Chữ trên bìa TikTok (| để xuống dòng, *chữ đỏ*; để trống: không làm bìa)"))}<input name="cover" maxlength="120" value="${esc(m.cover ?? "")}"></label>
+${existsSync(join(v.folder(id), "cover.jpg")) ? `<a href="/video-media/${esc(id)}/cover.jpg" target="_blank"><img class="vcover" src="/video-media/${esc(id)}/cover.jpg" alt="" loading="lazy" style="max-width:180px"></a>` : ""}${m.coverProblem ? `<div class="warn small">${esc(t("Chưa làm được bìa: {why}", { why: m.coverProblem }))}</div>` : ""}
 <label>${esc(t("Chú thích Threads (một câu hỏi, 1 thẻ chủ đề)"))}<input name="threadsCaption" maxlength="${CAPTION_MAX}" value="${esc(m.threadsCaption ?? "")}"></label>
 <button class="btn on"${busy ? " disabled" : ""}>${esc(approved ? t("Duyệt lại") : t("Duyệt"))}</button>
-<p class="muted small">${esc(t("Duyệt chỉ nhận khi mọi cảnh đã soát và video mới hơn tranh. Đăng Reels lên Facebook và Instagram, gửi nháp TikTok, Threads đăng ảnh hoặc video."))}</p></form>${publish}</section>`;
+<p class="muted small">${esc(t("Duyệt chỉ nhận khi mọi cảnh đã soát và video mới hơn tranh. Duyệt xong máy tự làm bìa TikTok và cập nhật trang tải clip về điện thoại. Đăng Reels lên Facebook và Instagram, gửi nháp TikTok, Threads đăng ảnh hoặc video."))}</p></form>${publish}</section>`;
   const body = `<header class="head"><a class="muted" href="/video">← ${esc(t("Video"))}</a><h1>${esc(m.title)}</h1></header>${bar}${stepBar(stepsOf(v, m))}
 ${videos ? `<section class="card"><div class="vvideos">${videos}</div></section>` : ""}${tools}
-${plan ? `<h2>${esc(t("Soát từng cảnh ở cỡ thật"))}</h2><p class="muted small">${esc(t("Bấm vào tranh để xem cỡ thật. Soi mặt, tay, đồ vật, chữ, đồng hồ, và nền giữa 2 tư thế."))}</p>${shots}` : `<p class="muted">${esc(t("Đang nghe lời và chia cảnh…"))}</p>`}
+${plan ? `<h2>${esc(t("Soát từng cảnh ở cỡ thật"))}</h2><p class="muted small">${esc(t("Bấm vào tranh để xem cỡ thật. Soi mặt, tay, đồ vật, chữ, đồng hồ, và nền giữa 2 tư thế."))}</p>${shots}` : `<p class="muted">${esc(m.kind === "meme" ? t("Đang lên cảnh…") : t("Đang nghe lời và chia cảnh…"))}</p>`}
 ${plan ? approve : ""}`;
   return layout(m.title, "/video", body);
 }
@@ -645,11 +774,27 @@ export function mockExec(): Exec {
       .toFile(file);
   return async (script, args, log) => {
     if (script === SITE) return "deployed";
+    if (script === STUDIO) return "tai: built";
+    const at = (flag: string) => (args.includes(flag) ? args[args.indexOf(flag) + 1] : "");
+    if (args[0] === "cover") {
+      const file = join(at("--out"), `${args[1]}-cover.jpg`);
+      await sharp(join(at("--out"), "shots", "s01.png")).resize(540, 960).jpeg().toFile(file);
+      log(`cover: ${at("--quote")}`);
+      return `${file}\n`;
+    }
+    if (args[0] === "meme" && at("--step") === "plan") {
+      const out = at("--out");
+      const spec = JSON.parse(readFileSync(join(out, "meme.json"), "utf8")) as MemeInput;
+      const punchAt = +(spec.seconds * (spec.scenes.length > 1 ? 0.45 : 0.4)).toFixed(2);
+      const shots: Shot[] = spec.scenes.map((note, i) => ({ id: `s0${i + 1}`, t: i ? punchAt : 0, act: note || "the lead at the office desk", pose: "blinks and moves a hand", bubble: "", cast: [] }));
+      writeFileSync(join(out, "plan.json"), JSON.stringify({ slug: args[1], clip: "", end: spec.seconds, lines: [{ text: spec.top, start: 0, end: punchAt }, { text: spec.punch, start: punchAt, end: spec.seconds }], shots }, null, 2) + "\n");
+      return "";
+    }
     if (script === CHANNEL) {
       const platforms = args.slice(2);
       return platforms.map((p) => `hoi-sau ${p}: https://example.com/${p}/demo-post`).join("\n") + "\n";
     }
-    const [, slug, , , out, , step] = args;
+    const slug = args[1], out = at("--out"), step = at("--step");
     const only = args.includes("--only") ? args[args.indexOf("--only") + 1].split(",") : undefined;
     const dir = join(out, "shots");
     mkdirSync(dir, { recursive: true });
@@ -681,7 +826,8 @@ export function mockExec(): Exec {
       const report = [];
       for (const s of plan.shots.filter((x) => pick(x) && existsSync(join(dir, `${x.id}-b.png`)))) {
         const ok = s.id !== "s02";
-        if (ok) copyFileSync(join(dir, `${s.id}-b.png`), join(dir, `${s.id}-b2.png`));
+        // Pose B on pose A's background: only the middle (the character) changes.
+        if (ok) await sharp(join(dir, `${s.id}.png`)).composite([{ input: Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1920"><circle cx="600" cy="860" r="240" fill="hsl(200, 40%, 55%)"/></svg>`) }]).png().toFile(join(dir, `${s.id}-b2.png`));
         report.push({ id: s.id, ok, problem: ok ? "" : "ghost of pose A left behind", tries: 1 });
       }
       writeFileSync(join(out, "stabilize.json"), JSON.stringify(report));

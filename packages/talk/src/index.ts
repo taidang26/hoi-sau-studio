@@ -15,3 +15,4 @@ export * from "./sync.js";
 export * from "./transcribe.js";
 export * from "./timeline.js";
 export * from "./voice.js";
+export * from "./meme.js";

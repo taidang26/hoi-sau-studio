@@ -79,7 +79,7 @@ npm run channel -- publish post.json --brand poppy instagram   # one brand and p
 | Series style, model and pose sheets, brand art, panels, single-detail redraws | Muse Image |
 | Scoring comments, character replies | Muse Spark Open (open weights, on Baseten or Modal) |
 | Coach lessons from what worked | Muse Spark |
-| Short videos: what each shot shows, the second pose, the bubble; title and caption | Muse Spark |
+| Short videos: what each shot shows, the second pose, the bubble; title and caption; the shots of a text meme from its two lines | Muse Spark |
 | Short videos: one full-frame picture per shot, a second pose, a shut and an open mouth | Muse Image |
 | Short videos: checks each picture (on-model, drawn once, no stray text, fills the 9:16 frame) | Muse Spark (vision) |
 | Short videos: the character in both poses so the background stays still; the mouth, nose and eyes | SAM 3.1 |
@@ -109,7 +109,7 @@ Image models distort Vietnamese diacritics, so Muse Image draws panels **with no
 | `packages/dashboard` | One web screen over all of it |
 | `packages/motion` | Lettered episode → 9:16 motion comic (ffmpeg) for Reels and Threads |
 | `packages/pipeline` | The daily loop: comments → episode → motion comic → posts, with a scheduler |
-| `packages/talk` | Short 9:16 videos: illustrated voice-over (one picture per shot, two poses, optional moving mouth), talking to camera, lip-sync |
+| `packages/talk` | Short 9:16 videos: illustrated voice-over (one picture per shot, two poses, optional moving mouth), text memes (two beats of text, MusicGen music), TikTok covers, talking to camera, lip-sync |
 | `scripts/` | Site build, Windows scheduled tasks: the daily episode, and posting approved clips at set times |
 | `characters/`, `series/` | Character profiles and portraits; series bible and style |
 | `channels.yaml` | Brands (Hồi Sau plus one per character) and their accounts |

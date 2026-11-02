@@ -13,6 +13,8 @@
  *                    the clip's voice and cuts, one picture per shot of <slug> acting it out (Muse Image, checked by Muse Spark), two poses on one background (SAM 3.1)
  *   npm run talk -- cover <slug> --out <illustrate dir> --quote "“line|line *key*.”" [--shot s08] [--episode <id>]
  *                    TikTok cover: the line on a white badge (key words red) + "Hồi Sau" tag over a shot, inside the grid's safe zone and off the faces (SAM 3.1)
+ *   npm run talk -- meme <slug> --out <dir with meme.json> [--step plan|draw|poses|stabilize|music|render|all] [--only s01]
+ *                    silent text meme: two beats of big text over one or two pictures (two poses, still background), MusicGen music
  *   npm run talk -- demo                                                   offline: mock pictures, hummed voice
  */
 
@@ -32,6 +34,7 @@ import { checkScript, PACE, writeScript, type TalkScript } from "./script.js";
 import { buildTimeline, FPS } from "./timeline.js";
 import { mouthTrack, RATE, ttsArg, voiceFor, type Tts } from "./voice.js";
 import { makeCover } from "./cover.js";
+import { makeMusic, planMeme, readMeme, renderMeme } from "./meme.js";
 import { drawMouths, drawPoses, drawShots, gateToWords, groupLines, hearWords, planShots, renderIllustrated, sceneCuts, shotSpans, stabilizePoses, timeWords, type Line, type Plan } from "./illustrate.js";
 
 const ROOT = fileURLToPath(new URL("../../..", import.meta.url));
@@ -283,6 +286,39 @@ async function main() {
         }
         const video = await renderIllustrated(plan, words, shots, join(out, `${slug}${opt.mouth ? "-mouth" : ""}.mp4`), { mouth: track, log });
         await silentCopy(video);
+        const problems = reelsProblems(await probeVideo(video));
+        log(problems.length ? `Reels check: ${problems.join("; ")}` : "Reels check: ok for Facebook/Instagram Reels and TikTok");
+        console.log(video);
+      }
+      return;
+    }
+    case "meme": {
+      const [slug] = pos;
+      if (!slug || !opt.out) throw new Error("Usage: talk meme <slug> --out <dir with meme.json> [--step plan|draw|poses|stabilize|music|render|all] [--only s01]");
+      const out = fromCwd(opt.out as string);
+      const step = String(opt.step ?? "all");
+      const only = opt.only ? String(opt.only).split(",") : undefined;
+      const run = (s: string) => step === "all" || step === s;
+      const spec = readMeme(out);
+      const ctx = openStudio({ log });
+      const planFile = join(out, "plan.json"), shots = join(out, "shots"), music = join(out, "music.wav");
+      if (run("plan") && (step === "plan" || !existsSync(planFile))) {
+        writeFileSync(planFile, JSON.stringify(await planMeme(ctx, slug, spec), null, 2) + "\n");
+        log(`${planFile}: ${spec.scenes.length} scene(s)`);
+      }
+      const plan: Plan = JSON.parse(readFileSync(planFile, "utf8"));
+      if (run("draw")) await drawShots(ctx, plan, shots, { only, log });
+      if (run("poses")) await drawPoses(ctx, plan, shots, { only, log });
+      if (run("stabilize")) writeFileSync(join(out, "stabilize.json"), JSON.stringify(await stabilizePoses(Sam.fromEnv(), ctx, plan, shots, { only, log }), null, 1));
+      // Music once per prompt: a new prompt (or --step music) makes it again.
+      const promptFile = join(out, "music.prompt");
+      const fresh = existsSync(music) && existsSync(promptFile) && readFileSync(promptFile, "utf8") === spec.music;
+      if (spec.music.trim() && (step === "music" || ((step === "all" || step === "render") && !fresh))) {
+        makeMusic(spec.music, plan.end, music, log);
+        writeFileSync(promptFile, spec.music);
+      }
+      if (run("render")) {
+        const video = await renderMeme(plan, shots, spec.music.trim() ? music : undefined, join(out, `${slug}.mp4`), log);
         const problems = reelsProblems(await probeVideo(video));
         log(problems.length ? `Reels check: ${problems.join("; ")}` : "Reels check: ok for Facebook/Instagram Reels and TikTok");
         console.log(video);

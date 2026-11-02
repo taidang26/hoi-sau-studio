@@ -88,7 +88,7 @@ export async function planMeme(ctx: StudioContext, slug: string, spec: MemeSpec)
         `A silent Vietnamese text meme is being made with our cartoon character ${p.name} (${p.species}, ${p.role}). The joke is two lines of text shown in two beats; the pictures only act it out. Write exactly ${spec.scenes.length} shot(s).`,
         `Text 1 (set-up): ${spec.top}\nText 2 (punchline): ${spec.punch}`,
         scenes,
-        `Rules: ${p.name} wears the usual outfit from the reference sheet; the setting is the Hồi Sau office unless a scene note says otherwise; one clear action and a strong expression; nothing with lettering on it (no shirts, signs or screens with words); no clocks. Call ${p.name} by name, never "he" or "she". Other cast if needed: ${cast}.${boss ? ` When the text says "sếp" (the boss), the boss is ${boss.name} (${boss.slug}): put ${boss.slug} in cast and draw ${boss.name}, not another colleague.` : ""}`,
+        `Rules: ${p.name} wears the usual outfit from the reference sheet; the setting is the Hồi Sau office unless a scene note says otherwise; one clear action and a strong expression; nothing with lettering on it (no shirts, signs or screens with words); no clocks; every scene has the same time of day and lighting (daytime office unless a note says night). Call ${p.name} by name, never "he" or "she". Other cast if needed: ${cast}.${boss ? ` When the text says "sếp" (the boss), the boss is ${boss.name} (${boss.slug}): put ${boss.slug} in cast and draw ${boss.name}, not another colleague.` : ""}`,
       ].join("\n\n"),
     },
   ];

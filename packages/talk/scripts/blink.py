@@ -37,7 +37,8 @@ def pair(sat):
             (cxi, cyi), (cxj, cyj) = cen[i], cen[j]
             r = max(st[i, 2], st[i, 3], st[j, 2], st[j, 3]) * 0.55
             dx, dy = abs(cxi - cxj), abs(cyi - cyj)
-            if dy > max(r, 0.08 * fw) or not (2.2 * r <= dx <= 0.7 * fw) or r > 0.18 * fw:
+            # Real eyes are not specks: a radius under 4% of the face is a fleck of colour, not an iris.
+            if dy > max(r, 0.08 * fw) or not (2.2 * r <= dx <= 0.7 * fw) or not (0.04 * fw <= r <= 0.18 * fw):
                 continue
             score = ai + aj
             if best is None or score > best[0]:

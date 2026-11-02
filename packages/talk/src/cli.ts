@@ -11,14 +11,16 @@
  *                    make/sync take --bg plain[:#hex], office|pantry|phong-tro|cafe, or photo.jpg: the cut-out character stands in front of it
  *   npm run talk -- illustrate <slug> <clip.mp4> [--vocals stem.wav] [--lines lines.json] [--end s] [--step plan|draw|poses|stabilize|mouths|render|all] [--mouth] [--only s01,s02] [--out dir]
  *                    the clip's voice and cuts, one picture per shot of <slug> acting it out (Muse Image, checked by Muse Spark), two poses on one background (SAM 3.1)
+ *   npm run talk -- cover <slug> --out <illustrate dir> --quote "“line|line *key*.”" [--shot s08] [--episode <id>]
+ *                    TikTok cover: the line on a white badge (key words red) + "Hồi Sau" tag over a shot, inside the grid's safe zone and off the faces (SAM 3.1)
  *   npm run talk -- demo                                                   offline: mock pictures, hummed voice
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { probeVideo, reelsProblems } from "@hoi-sau/motion";
-import { openStudio } from "@hoi-sau/studio";
+import { episodeDir, openStudio } from "@hoi-sau/studio";
 import { Sam } from "@hoi-sau/dance";
 import { cutTalkArt, drawTalkArt, loadArt, talkDir, type Pose } from "./art.js";
 import { drawSets, resolveBackground, setsDir } from "./sets.js";
@@ -29,6 +31,7 @@ import { MuseTranscribe, type TimedWord } from "./transcribe.js";
 import { checkScript, PACE, writeScript, type TalkScript } from "./script.js";
 import { buildTimeline, FPS } from "./timeline.js";
 import { mouthTrack, RATE, ttsArg, voiceFor, type Tts } from "./voice.js";
+import { makeCover } from "./cover.js";
 import { drawMouths, drawPoses, drawShots, gateToWords, groupLines, hearWords, planShots, renderIllustrated, sceneCuts, shotSpans, stabilizePoses, timeWords, type Line, type Plan } from "./illustrate.js";
 
 const ROOT = fileURLToPath(new URL("../../..", import.meta.url));
@@ -284,6 +287,20 @@ async function main() {
         log(problems.length ? `Reels check: ${problems.join("; ")}` : "Reels check: ok for Facebook/Instagram Reels and TikTok");
         console.log(video);
       }
+      return;
+    }
+    case "cover": {
+      const [slug] = pos;
+      if (!slug || !opt.out || !opt.quote) throw new Error('Usage: talk cover <slug> --out <illustrate dir> --quote "“line|line *key*.”" [--shot s08] [--episode <id>]');
+      const out = fromCwd(opt.out as string);
+      const plan: Plan = JSON.parse(readFileSync(join(out, "plan.json"), "utf8"));
+      // The tag's avatar: the channel's profile picture (studio brand-art), else the lead's portrait.
+      const brand = join(ROOT, "output", "brand-art", "hoi-sau", "avatar.png");
+      const avatar = existsSync(brand) ? brand : join(CHARACTERS, slug, "portrait.svg");
+      const made = await makeCover(Sam.fromEnv(), openStudio({ log }), plan, join(out, "shots"), String(opt.quote), join(out, slug), { avatar, shot: opt.shot ? String(opt.shot) : undefined, log });
+      // --episode: the approved video's folder, where `studio tai` picks the cover up.
+      if (opt.episode) copyFileSync(made.file, join(episodeDir(String(opt.episode)), "cover.jpg"));
+      console.log(made.file);
       return;
     }
     case "make":

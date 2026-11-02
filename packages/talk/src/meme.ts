@@ -23,6 +23,7 @@ import sharp from "sharp";
 import { DELIVERY } from "@hoi-sau/motion";
 import { S, type ChatMessage, type StudioContext } from "@hoi-sau/studio";
 import { COMIC_FONT_PATH, escapeXml, loadFont, measure, svgToPng } from "@hoi-sau/svg-text";
+import { lowerPicture } from "./cover.js";
 import { popScale, type Line, type Plan, type Shot } from "./illustrate.js";
 import { OUT, SAFE } from "./timeline.js";
 import { python } from "./voice.js";
@@ -85,7 +86,7 @@ export async function planMeme(ctx: StudioContext, slug: string, spec: MemeSpec)
         `A silent Vietnamese text meme is being made with our cartoon character ${p.name} (${p.species}, ${p.role}). The joke is two lines of text shown in two beats; the pictures only act it out. Write exactly ${spec.scenes.length} shot(s).`,
         `Text 1 (set-up): ${spec.top}\nText 2 (punchline): ${spec.punch}`,
         scenes,
-        `Rules: ${p.name} wears the usual outfit from the reference sheet; the setting is the Hồi Sau office unless a scene note says otherwise; one clear action and a strong expression; nothing with lettering on it (no shirts, signs or screens with words). Other cast if needed: ${cast}.`,
+        `Rules: ${p.name} wears the usual outfit from the reference sheet; the setting is the Hồi Sau office unless a scene note says otherwise; one clear action and a strong expression; nothing with lettering on it (no shirts, signs or screens with words); no clocks. Call ${p.name} by name, never "he" or "she". Other cast if needed: ${cast}.`,
       ].join("\n\n"),
     },
   ];
@@ -98,7 +99,7 @@ export async function planMeme(ctx: StudioContext, slug: string, spec: MemeSpec)
   const shots: Shot[] = spec.scenes.map((_, i) => ({
     id: `s${String(i + 1).padStart(2, "0")}`,
     t: i === 0 ? 0 : punchAt,
-    act: r.shots[i]?.act ?? r.shots[0]?.act ?? "",
+    act: `${r.shots[i]?.act ?? r.shots[0]?.act ?? ""} ${MEME_FRAME}`,
     pose: r.shots[i]?.pose ?? "",
     bubble: "",
     cast: r.shots[i]?.cast ?? [],
@@ -106,6 +107,9 @@ export async function planMeme(ctx: StudioContext, slug: string, spec: MemeSpec)
   }));
   return { slug, clip: "", end: spec.seconds, lines, shots };
 }
+
+/** Added to every meme picture: room for the text on top, and none of what went wrong in tests. */
+export const MEME_FRAME = "The top third of the frame is plain empty office wall with nothing on it (big text goes there); the characters sit in the lower two thirds. No clocks.";
 
 const MUSICGEN = fileURLToPath(new URL("../scripts/musicgen.py", import.meta.url));
 
@@ -131,13 +135,24 @@ function wrap(text: string, size: number, maxW: number): string[] {
   return lines;
 }
 
-/** The largest size (down to 48) at which a beat fits in three lines. */
-export function fitText(text: string, maxW = SAFE.right - SAFE.left - 60): { size: number; lines: string[] } {
-  for (let size = 78; size >= 48; size -= 4) {
-    const lines = wrap(text, size, maxW);
-    if (lines.length <= 3) return { size, lines };
+/** The narrowest width that keeps the same number of lines, so the last line is not one lonely word. */
+function balance(text: string, size: number, maxW: number): string[] {
+  const n = wrap(text, size, maxW).length;
+  let lo = maxW * 0.4, hi = maxW;
+  for (let k = 0; k < 14; k++) {
+    const mid = (lo + hi) / 2;
+    if (wrap(text, size, mid).length > n) lo = mid;
+    else hi = mid;
   }
-  return { size: 48, lines: wrap(text, 48, maxW) };
+  return wrap(text, size, hi);
+}
+
+/** The largest size (92 down to 60) at which a beat fits in three lines, lines balanced. */
+export function fitText(text: string, maxW = OUT.w - 100): { size: number; lines: string[] } {
+  for (let size = 92; size >= 60; size -= 4) {
+    if (wrap(text, size, maxW).length <= 3) return { size, lines: balance(text, size, maxW) };
+  }
+  return { size: 60, lines: balance(text, 60, maxW) };
 }
 
 /** One beat of text: dark letters with a thick white outline; the punchline in red. */
@@ -158,18 +173,43 @@ export function memePose(since: number, poses: number): number {
   return since % cycle < a ? 0 : 1;
 }
 
+/** A blink: shut for 0.15 s every 2.4 s, the first at 1.8 s into the shot. */
+export const BLINK = { first: 1.8, every: 2.4, shut: 0.15 };
+export function blinkShut(since: number): boolean {
+  if (since < BLINK.first) return false;
+  return (since - BLINK.first) % BLINK.every < BLINK.shut;
+}
+
+/** How far the pictures move down so the text sits on the wall above the characters, not on their heads. */
+export function memeLower(textBottom: number): number {
+  return Math.max(0, Math.min(520, Math.round(textBottom - 220)));
+}
+
+const BLINK_PY = fileURLToPath(new URL("../scripts/blink.py", import.meta.url));
+
+/** A shut-eye copy of a picture (`<id>-blink.png`) inside the faces box; false when no eyes are found. */
+export function makeBlink(src: string, out: string, box: { x: number; y: number; w: number; h: number }, log?: (s: string) => void): boolean {
+  const r = spawnSync(python(), [BLINK_PY, src, out, [box.x, box.y, box.x + box.w, box.y + box.h].map(Math.round).join(",")], { encoding: "utf8" });
+  const ok = r.status === 0 && existsSync(out) && /eye at/.test(r.stdout);
+  log?.(ok ? `${out}: blink` : `no blink for ${src}: ${(r.stderr || r.stdout || "no eyes found").trim().split("\n").pop()}`);
+  return ok;
+}
+
 /** Frames where something changes, then ffmpeg with the music (or silence) at 30 fps CFR. */
 export async function renderMeme(plan: Plan, dir: string, music: string | undefined, out: string, log?: (s: string) => void): Promise<string> {
-  const plate = (f: string) => sharp(f).resize(OUT.w, OUT.h, { fit: "cover" }).png().toBuffer();
-  const plates: Record<string, Buffer[]> = {};
+  const [top, punch] = plan.lines;
+  const topImg = top ? beatSvg(top.text, false) : undefined;
+  const punchImg = punch ? beatSvg(punch.text, true) : undefined;
+  const dy = memeLower(SAFE.top + 10 + (topImg?.height ?? 0) + 10 + (punchImg?.height ?? 0));
+  const plate = (f: string) => lowerPicture(f, dy);
+  // Per shot: pose A, then pose B if it pasted cleanly, else a shut-eye copy of A for blinks.
+  const plates: Record<string, Buffer[]> = {}, blinks: Record<string, boolean> = {};
   for (const s of plan.shots) {
     const id = s.src ?? s.id;
     plates[s.id] = [await plate(join(dir, `${id}.png`))];
     if (existsSync(join(dir, `${id}-b2.png`))) plates[s.id].push(await plate(join(dir, `${id}-b2.png`)));
+    else if (existsSync(join(dir, `${id}-blink.png`))) (plates[s.id].push(await plate(join(dir, `${id}-blink.png`))), (blinks[s.id] = true));
   }
-  const [top, punch] = plan.lines;
-  const topImg = top ? beatSvg(top.text, false) : undefined;
-  const punchImg = punch ? beatSvg(punch.text, true) : undefined;
   const topPng = topImg ? await sharp(svgToPng(topImg.svg)).png().toBuffer() : undefined;
   const punchPng = punchImg ? await sharp(svgToPng(punchImg.svg)).png().toBuffer() : undefined;
   const textTop = SAFE.top + 10;
@@ -185,7 +225,8 @@ export async function renderMeme(plan: Plan, dir: string, music: string | undefi
   for (const s of plan.shots) {
     const end = plan.shots.find((x) => x.t > s.t)?.t ?? plan.end;
     times.add(s.t);
-    for (let t = s.t; t < end; t += 2.4) (times.add(+t.toFixed(3)), times.add(+(t + 1.4).toFixed(3)));
+    if (blinks[s.id]) for (let t = s.t + BLINK.first; t < end; t += BLINK.every) (times.add(+t.toFixed(3)), times.add(+(t + BLINK.shut).toFixed(3)));
+    else for (let t = s.t; t < end; t += 2.4) (times.add(+t.toFixed(3)), times.add(+(t + 1.4).toFixed(3)));
   }
   if (punch) for (const d of [0, 0.05, 0.11]) times.add(+(punchAt + d).toFixed(3));
   const ts = [...times].filter((t) => t >= 0 && t <= plan.end).sort((a, b) => a - b);
@@ -196,7 +237,7 @@ export async function renderMeme(plan: Plan, dir: string, music: string | undefi
     const t = ts[i], d = ts[i + 1] - t;
     if (d < 0.005) continue;
     const shot = [...plan.shots].reverse().find((s) => s.t <= t + 1e-6) ?? plan.shots[0];
-    const pose = memePose(t - shot.t, plates[shot.id].length);
+    const pose = blinks[shot.id] ? (blinkShut(t - shot.t + 1e-4) ? 1 : 0) : memePose(t - shot.t, plates[shot.id].length);
     const showTop = t >= topShow - 1e-6;
     const pop = punch ? popScale(t - punchAt) : null;
     const key = `${shot.id}|${pose}|${showTop}|${pop}`;

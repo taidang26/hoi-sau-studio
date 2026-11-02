@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import sharp from "sharp";
-import { fitText, memePose, memeProblems, punchTime, renderMeme } from "./meme.js";
+import { blinkShut, fitText, MEME_FRAME, memeLower, memePose, memeProblems, punchTime, renderMeme } from "./meme.js";
 
 const ok = { top: "Sếp bảo làm thêm giờ là cơ hội", punch: "Cơ hội để sếp về sớm", scenes: ["", ""], music: "", seconds: 14 };
 
@@ -24,6 +24,23 @@ test("the punchline lands at scene 2, or before the middle with one scene; poses
   assert.equal(memePose(1.6, 2), 1);
   assert.equal(memePose(2.5, 2), 0);
   assert.equal(memePose(1.6, 1), 0);
+});
+
+test("a one-pose shot blinks briefly; the pictures move down under the text", () => {
+  assert.equal(blinkShut(1), false);
+  assert.equal(blinkShut(1.85), true);
+  assert.equal(blinkShut(2.1), false);
+  assert.equal(blinkShut(4.25), true);
+  assert.equal(memeLower(150), 0);
+  assert.equal(memeLower(600), 380);
+  assert.equal(memeLower(2000), 520);
+  assert.match(MEME_FRAME, /No clocks/);
+});
+
+test("text stays big, and the last line is never one lonely word", () => {
+  const punch = fitText("Cơ hội để sếp về sớm");
+  assert.ok(punch.size >= 60);
+  assert.ok(punch.lines.every((l) => l.split(" ").length > 1), punch.lines.join(" / "));
 });
 
 test("long text shrinks to fit three lines", () => {

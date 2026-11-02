@@ -78,6 +78,8 @@ export async function planMeme(ctx: StudioContext, slug: string, spec: MemeSpec)
   const p = ctx.profiles.get(slug);
   if (!p) throw new Error(`No character "${slug}".`);
   const cast = [...ctx.profiles.values()].filter((c) => c.slug !== slug).map((c) => `${c.slug} = ${c.name} (${c.species}, ${c.role})`).join("; ");
+  // "Sếp" in a joke is the most senior cast member (the director), never just any colleague.
+  const boss = [...ctx.profiles.values()].find((c) => c.slug !== slug && /giám đốc|director|founder/i.test(c.role));
   const scenes = spec.scenes.map((n, i) => `Scene ${i + 1}: ${n.trim() || "(your choice)"}`).join("\n");
   const messages: ChatMessage[] = [
     {
@@ -86,7 +88,7 @@ export async function planMeme(ctx: StudioContext, slug: string, spec: MemeSpec)
         `A silent Vietnamese text meme is being made with our cartoon character ${p.name} (${p.species}, ${p.role}). The joke is two lines of text shown in two beats; the pictures only act it out. Write exactly ${spec.scenes.length} shot(s).`,
         `Text 1 (set-up): ${spec.top}\nText 2 (punchline): ${spec.punch}`,
         scenes,
-        `Rules: ${p.name} wears the usual outfit from the reference sheet; the setting is the Hồi Sau office unless a scene note says otherwise; one clear action and a strong expression; nothing with lettering on it (no shirts, signs or screens with words); no clocks. Call ${p.name} by name, never "he" or "she". Other cast if needed: ${cast}.`,
+        `Rules: ${p.name} wears the usual outfit from the reference sheet; the setting is the Hồi Sau office unless a scene note says otherwise; one clear action and a strong expression; nothing with lettering on it (no shirts, signs or screens with words); no clocks. Call ${p.name} by name, never "he" or "she". Other cast if needed: ${cast}.${boss ? ` When the text says "sếp" (the boss), the boss is ${boss.name} (${boss.slug}): put ${boss.slug} in cast and draw ${boss.name}, not another colleague.` : ""}`,
       ].join("\n\n"),
     },
   ];
@@ -180,9 +182,21 @@ export function blinkShut(since: number): boolean {
   return (since - BLINK.first) % BLINK.every < BLINK.shut;
 }
 
-/** How far the pictures move down so the text sits on the wall above the characters, not on their heads. */
-export function memeLower(textBottom: number): number {
-  return Math.max(0, Math.min(520, Math.round(textBottom - 220)));
+/**
+ * How far a picture moves down so the text sits on the wall above the
+ * characters, not on their heads: just enough to put the top of the faces
+ * (`faceTop`, from SAM) a little under the text, none when they already are.
+ * Without a face, a smaller fixed guess.
+ */
+export function memeLower(textBottom: number, faceTop?: number): number {
+  const want = faceTop === undefined ? textBottom - 420 : textBottom + 140 - faceTop;
+  return Math.max(0, Math.min(faceTop === undefined ? 300 : 520, Math.round(want)));
+}
+
+/** Where the two beats of text end, in pixels from the top. */
+export function memeTextBottom(plan: Plan): number {
+  const [top, punch] = plan.lines;
+  return SAFE.top + 10 + (top ? beatSvg(top.text, false).height : 0) + 10 + (punch ? beatSvg(punch.text, true).height : 0);
 }
 
 const BLINK_PY = fileURLToPath(new URL("../scripts/blink.py", import.meta.url));
@@ -196,16 +210,18 @@ export function makeBlink(src: string, out: string, box: { x: number; y: number;
 }
 
 /** Frames where something changes, then ffmpeg with the music (or silence) at 30 fps CFR. */
-export async function renderMeme(plan: Plan, dir: string, music: string | undefined, out: string, log?: (s: string) => void): Promise<string> {
+export async function renderMeme(plan: Plan, dir: string, music: string | undefined, out: string, log?: (s: string) => void, faceTop: Record<string, number | undefined> = {}): Promise<string> {
   const [top, punch] = plan.lines;
   const topImg = top ? beatSvg(top.text, false) : undefined;
   const punchImg = punch ? beatSvg(punch.text, true) : undefined;
-  const dy = memeLower(SAFE.top + 10 + (topImg?.height ?? 0) + 10 + (punchImg?.height ?? 0));
-  const plate = (f: string) => lowerPicture(f, dy);
+  const textBottom = memeTextBottom(plan);
   // Per shot: pose A, then pose B if it pasted cleanly, else a shut-eye copy of A for blinks.
   const plates: Record<string, Buffer[]> = {}, blinks: Record<string, boolean> = {};
   for (const s of plan.shots) {
     const id = s.src ?? s.id;
+    const dy = memeLower(textBottom, faceTop[id]);
+    log?.(`${s.id}: lowered ${dy}px`);
+    const plate = (f: string) => lowerPicture(f, dy);
     plates[s.id] = [await plate(join(dir, `${id}.png`))];
     if (existsSync(join(dir, `${id}-b2.png`))) plates[s.id].push(await plate(join(dir, `${id}-b2.png`)));
     else if (existsSync(join(dir, `${id}-blink.png`))) (plates[s.id].push(await plate(join(dir, `${id}-blink.png`))), (blinks[s.id] = true));

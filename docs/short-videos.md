@@ -75,3 +75,18 @@ powershell -ExecutionPolicy Bypass -File scripts\schedule-posts.ps1 -Remove    #
 ```
 
 The tasks wake the computer from sleep; it must not be shut down. Only approved posts go out: `channel publish` refuses a post whose files changed after approval.
+
+
+## From text or pictures
+
+The **Làm từ chữ hoặc ảnh** box at the top of the Video screen takes what the owner would hand to a person: a line of text, up to four pictures (a screenshot of a quote post, a meme picture), or both.
+
+- `talk idea --out <dir>` reads `input.txt` and the pictures in the folder. Muse Spark (vision) returns `idea.json`:
+  - every word read from the pictures, verbatim, with page names, avatars and ticks ignored;
+  - a recommendation, either a two-beat text clip or a one-panel comic;
+  - both versions filled in: lines, scenes in the Hồi Sau office with our cast, comic direction and cast;
+  - a title and a caption with `#danvanphong` first, at most 5 tags and no source credit.
+- Only the idea and the words are taken from a picture, never its drawing, layout, clothes or props.
+- Typed text with no picture is split without losing a word (`splitBeats`).
+- The proposal page shows the pictures beside the text read from them. The fields are editable. **Làm clip chữ** creates the text clip, and **Làm tranh 1 khung** creates and starts a one-panel episode in Studio.
+- A video step that dies on the network (`fetch failed`, reset, timeout) runs once more before the run stops.

@@ -95,6 +95,18 @@ interface Meta {
   done?: Done;
 }
 
+/** What Muse Spark proposes to make from text or pictures (talk's IdeaPlan). */
+export interface IdeaPlan {
+  kind: "meme" | "comic";
+  reply: string;
+  read: string;
+  lead: string;
+  meme: { top: string; punch: string; scenes: string[] };
+  comic: { direction: string; with: string[] };
+  title: string;
+  caption?: string;
+}
+
 /** One edit Muse Spark proposes from the owner's note (talk's FixAction). */
 export interface FixAction {
   do: "line_text" | "line_time" | "add_line" | "drop_line" | "bubble" | "fix_detail" | "redraw" | "add_shot" | "redo_pose" | "one_pose" | "no_mouth";
@@ -235,9 +247,17 @@ export class Videos {
   }
 
   /** A new video from a sample clip (a path from samples()) or uploaded bytes; starts listening and planning. */
-  create(input: { kind?: VideoKind; slug: string; mouth: boolean; title?: string; sample?: string; upload?: { name: string; bytes: Uint8Array }; meme?: MemeInput }): string {
+  create(input: { kind?: VideoKind; slug: string; mouth: boolean; title?: string; sample?: string; upload?: { name: string; bytes: Uint8Array }; meme?: MemeInput; caption?: string }): string {
     if (!this.opts.cast().some((c) => c.slug === input.slug)) throw new Error(t("Chọn nhân vật chính."));
-    if (input.kind === "meme") return this.createMeme(input.slug, input.title ?? "", input.meme);
+    if (input.kind === "meme") {
+      const id = this.createMeme(input.slug, input.title ?? "", input.meme);
+      if (input.caption?.trim()) {
+        const m = this.meta(id);
+        m.caption = input.caption.trim().slice(0, CAPTION_MAX);
+        this.save(m);
+      }
+      return id;
+    }
     let source: string | undefined;
     if (input.sample) {
       source = this.samples().find((s) => s.path === input.sample)?.path;
@@ -282,7 +302,19 @@ export class Videos {
 
   kind = (id: string): VideoKind => this.meta(id).kind ?? "illustrate";
 
-  private talk(id: string, step: string, log: (s: string) => void, extra: string[] = []): Promise<string> {
+  /** One more try when a step dies on the network (a "fetch failed" once killed a whole run of poses). */
+  private async talk(id: string, step: string, log: (s: string) => void, extra: string[] = []): Promise<string> {
+    try {
+      return await this.talkOnce(id, step, log, extra);
+    } catch (e) {
+      if (!/fetch failed|ECONNRESET|ETIMEDOUT|ENOTFOUND|socket hang up|EAI_AGAIN/i.test(e instanceof Error ? e.message : String(e))) throw e;
+      log(t("Mạng chập chờn, chạy lại bước {step}…", { step }));
+      await new Promise((r) => setTimeout(r, this.opts.deploy ? 5000 : 10));
+      return this.talkOnce(id, step, log, extra);
+    }
+  }
+
+  private talkOnce(id: string, step: string, log: (s: string) => void, extra: string[] = []): Promise<string> {
     const m = this.meta(id);
     if (m.kind === "meme") return this.opts.exec(TALK, ["meme", m.slug, "--out", this.folder(id), "--step", step, ...extra], log);
     return this.opts.exec(TALK, ["illustrate", m.slug, join(this.folder(id), m.clip), "--out", this.folder(id), "--step", step, ...extra], log);
@@ -625,6 +657,52 @@ export class Videos {
     if (m.mouth) await this.talk(id, "render", log, ["--mouth"]);
   }
 
+  // ------------------------------------------------------------ from text or pictures
+
+  ideasDir = () => join(this.opts.dir, "_ideas");
+  ideaDir = (id: string) => join(this.ideasDir(), id);
+
+  /** What the owner dropped in (text, pictures or both); Muse Spark proposes a text clip or a one-panel comic. */
+  newIdea(text: string, files: Array<{ name: string; bytes: Uint8Array }>, want: "" | "meme" | "comic" = ""): string {
+    const pics = files.filter((f) => f.bytes.length && /\.(png|jpe?g|webp|gif)$/i.test(f.name)).slice(0, 4);
+    if (!text.trim() && !pics.length) throw new Error(t("Dán chữ hoặc thêm ít nhất một ảnh."));
+    let id = `y-${stamp()}`;
+    for (let n = 2; existsSync(this.ideaDir(id)); n++) id = `y-${stamp()}-${n}`;
+    const dir = this.ideaDir(id);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "input.txt"), text.trim());
+    pics.forEach((f, i) => writeFileSync(join(dir, `img-${i + 1}${extname(f.name).toLowerCase().replace(".jpeg", ".jpg")}`), f.bytes));
+    this.background(`idea:${id}`, async (log) => {
+      log(t("Máy đang đọc chữ và ảnh…"));
+      await this.opts.exec(TALK, ["idea", "--out", dir, ...(want ? ["--kind", want] : [])], log);
+    });
+    return id;
+  }
+
+  /** Reads the same drop-in again (a new answer from Muse Spark). */
+  rereadIdea(id: string): void {
+    const i = this.idea(id);
+    if (!i) throw new Error(t("Không thấy mục này."));
+    rmSync(join(this.ideaDir(id), "idea.json"), { force: true });
+    this.background(`idea:${id}`, async (log) => {
+      log(t("Máy đang đọc chữ và ảnh…"));
+      await this.opts.exec(TALK, ["idea", "--out", this.ideaDir(id)], log);
+    });
+  }
+
+  idea(id: string): { id: string; text: string; images: string[]; plan?: IdeaPlan; job?: Job } | undefined {
+    if (!/^y-[a-z0-9-]+$/.test(id) || !existsSync(this.ideaDir(id))) return undefined;
+    const dir = this.ideaDir(id);
+    const f = join(dir, "idea.json");
+    return {
+      id,
+      text: readFileSync(join(dir, "input.txt"), "utf8"),
+      images: readdirSync(dir).filter((x) => /^img-\d+\.(png|jpe?g|webp|gif)$/i.test(x)).sort(),
+      plan: existsSync(f) ? (JSON.parse(readFileSync(f, "utf8")) as IdeaPlan) : undefined,
+      job: this.jobs.get(`idea:${id}`),
+    };
+  }
+
   // ------------------------------------------------------------ fixing by note
 
   undoDir = (id: string) => join(this.folder(id), "undo");
@@ -956,6 +1034,67 @@ function stepsOf(v: Videos, m: Meta): Array<[string, boolean]> {
 
 const stepBar = (steps: Array<[string, boolean]>) => `<ol class="vsteps">${steps.map(([n, d]) => `<li class="${d ? "done" : ""}">${d ? "✓ " : ""}${esc(n)}</li>`).join("")}</ol>`;
 
+/** The one box for what the owner would otherwise hand to Claude: text, pictures, or both. */
+function ideaBox(v: Videos): string {
+  const recent = existsSync(v.ideasDir())
+    ? readdirSync(v.ideasDir()).filter((x) => x.startsWith("y-")).sort().reverse().slice(0, 5)
+    : [];
+  const list = recent.map((id) => {
+    const i = v.idea(id)!;
+    return `<li><a href="/video/idea/${esc(id)}">${esc(i.plan?.title || i.text.slice(0, 40) || t("{n} ảnh", { n: i.images.length }))}</a>${i.job?.running ? ` <span class="spinner"></span>` : ""}</li>`;
+  }).join("");
+  return `<section class="card ideabox"><h2>${esc(t("Làm từ chữ hoặc ảnh"))}</h2>
+<p class="muted small">${esc(t("Như gửi cho Claude: dán câu, ảnh chụp bài đăng, ảnh meme, hoặc cả chữ lẫn ảnh. Máy đọc rồi đề xuất làm clip chữ hay tranh, anh xem lại và sửa trước khi bấm làm."))}</p>
+<form class="form" method="post" action="/video/idea" enctype="multipart/form-data">
+<textarea name="text" rows="3" placeholder="${esc(t("vd: Đi làm đã mệt rồi còn phải ăn bữa cơm dở ẹc do mình tự nấu mang theo"))}"></textarea>
+<div class="row"><label>${esc(t("Ảnh (tối đa 4)"))}<input type="file" name="images" accept="image/*" multiple></label>
+<label>${esc(t("Làm thành"))}<select name="want"><option value="">${esc(t("Máy tự chọn"))}</option><option value="meme">${esc(t("Clip chữ (video)"))}</option><option value="comic">${esc(t("Tranh 1 khung"))}</option></select></label></div>
+<button class="btn on">${esc(t("Đọc và đề xuất"))}</button></form>${list ? `<ul class="small idealist">${list}</ul>` : ""}</section>`;
+}
+
+/** The proposal for one drop-in: what was read (evidence), then the clip and the comic forms, filled and editable. */
+export function ideaPage(v: Videos, id: string, studio: boolean, err?: string): string | undefined {
+  const i = v.idea(id);
+  if (!i) return undefined;
+  const cast = v.opts.cast();
+  const busy = Boolean(i.job?.running);
+  const pics = i.images.map((f) => `<a href="/video-media/_ideas/${esc(id)}/${esc(f)}" target="_blank"><img src="/video-media/_ideas/${esc(id)}/${esc(f)}" alt="" loading="lazy"></a>`).join("");
+  const input = `<section class="card"><h2>${esc(t("Anh đưa"))}</h2>${i.text ? `<p class="ideatext">${esc(i.text)}</p>` : ""}${pics ? `<div class="ideapics">${pics}</div>` : ""}</section>`;
+  if (busy || !i.plan) {
+    const bar = busy
+      ? `<div class="notice"><span class="spinner"></span>${esc(i.job?.step ?? t("Máy đang đọc chữ và ảnh…"))}</div><meta http-equiv="refresh" content="3">`
+      : `<div class="warn small">${esc(t("Chưa đọc được"))}: ${esc(i.job?.error ?? "")}</div>`;
+    return layout(t("Làm từ chữ hoặc ảnh"), "/video", `<header class="head"><a class="muted" href="/video">← ${esc(t("Video"))}</a><h1>${esc(t("Làm từ chữ hoặc ảnh"))}</h1></header>${bar}${input}`);
+  }
+  const p = i.plan;
+  const pick = (name: string, sel: string) => `<select name="${name}">${cast.map((c) => `<option value="${esc(c.slug)}"${c.slug === sel ? " selected" : ""}>${esc(c.name)}</option>`).join("")}</select>`;
+  const meme = `<form class="form" method="post" action="/video/new" enctype="multipart/form-data"><input type="hidden" name="kind" value="meme"><input type="hidden" name="scenes" value="${p.meme.scenes.length > 1 ? 2 : 1}">
+<label>${esc(t("Dòng chữ 1: câu dẫn"))}<input name="top" maxlength="90" required value="${esc(p.meme.top)}"></label>
+<label>${esc(t("Dòng chữ 2: câu chốt (hiện sau, chữ đỏ)"))}<input name="punch" maxlength="90" required value="${esc(p.meme.punch)}"></label>
+<label>${esc(t("Cảnh 1 vẽ gì"))}<input name="scene1" value="${esc(p.meme.scenes[0] ?? "")}"></label>
+${p.meme.scenes.length > 1 ? `<label>${esc(t("Cảnh 2 vẽ gì"))}<input name="scene2" value="${esc(p.meme.scenes[1] ?? "")}"></label>` : ""}
+<div class="row"><label>${esc(t("Nhân vật chính"))}${pick("slug", p.lead)}</label><label>${esc(t("Tên video"))}<input name="title" value="${esc(p.title)}"></label></div>
+<label>${esc(t("Chú thích (ngắn, tối đa 5 hashtag không dấu)"))}<input name="caption" maxlength="${CAPTION_MAX}" value="${esc(p.caption ?? "")}"></label>
+<input type="hidden" name="music" value="${esc(MEME_MUSIC)}">
+<p class="muted small">${esc(t("Chữ giữ nguyên văn. Câu chốt hiện ngay khi đọc xong dòng 1. Có nhạc nền."))}</p>
+<button class="btn on">▶ ${esc(t("Làm clip chữ"))}</button></form>`;
+  const comic = studio
+    ? `<form class="form" method="post" action="/studio/new"><input type="hidden" name="format" value="single"><input type="hidden" name="run" value="1">
+<div class="row"><label>${esc(t("Nhân vật chính"))}${pick("lead", p.lead)}</label></div>
+${cast.filter((c) => c.slug !== p.lead).length ? `<fieldset><legend>${esc(t("Cùng xuất hiện"))}</legend>${cast.filter((c) => c.slug !== p.lead).map((c) => `<label class="check"><input type="checkbox" name="with" value="${esc(c.slug)}"${p.comic.with.includes(c.slug) ? " checked" : ""}> ${esc(c.name)}</label>`).join("")}</fieldset>` : ""}
+<label>${esc(t("Tranh vẽ gì, ai nói gì"))}<textarea name="direction" rows="3" required>${esc(p.comic.direction)}</textarea></label>
+<button class="btn on">▶ ${esc(t("Làm tranh 1 khung"))}</button></form>`
+    : `<p class="muted small">${esc(t("Phần làm tranh chưa bật trên máy này."))}</p>`;
+  const first = p.kind === "comic" ? [t("Tranh 1 khung"), comic, t("Hoặc làm clip chữ"), meme] : [t("Clip chữ (video)"), meme, t("Hoặc làm tranh 1 khung"), comic];
+  const body = `<header class="head"><a class="muted" href="/video">← ${esc(t("Video"))}</a><h1>${esc(p.title || t("Làm từ chữ hoặc ảnh"))}</h1></header>${flash(undefined, err)}
+${input}
+<section class="card"><p><b>${esc(t("Máy hiểu"))}:</b> ${esc(p.reply)}</p>${p.read ? `<p class="small"><b>${esc(t("Chữ đọc được trong ảnh"))}:</b> “${esc(p.read)}”</p><p class="muted small">${esc(t("Đối chiếu với ảnh ở trên. Sai chữ nào thì sửa ngay trong ô bên dưới."))}</p>` : ""}</section>
+<section class="card"><h2>${esc(first[0])}</h2>${first[1]}</section>
+<details class="card"><summary>${esc(first[2])}</summary>${first[3]}</details>
+<form class="inline" method="post" action="/video/idea/${esc(id)}/again"><button class="btn">${esc(t("Đọc lại"))}</button></form>`;
+  return layout(p.title || t("Làm từ chữ hoặc ảnh"), "/video", body);
+}
+
 export function videosPage(v: Videos, err?: string, ok?: string): string {
   const cast = v.opts.cast();
   const samples = v.samples();
@@ -969,7 +1108,7 @@ export function videosPage(v: Videos, err?: string, ok?: string): string {
       return `<a class="card vcard" href="/video/${esc(m.id)}">${cover}<div><b>${esc(m.title)}</b><p class="muted small">${esc(cast.find((c) => c.slug === m.slug)?.name ?? m.slug)} · ${esc(when(m.createdAt))}</p>${job?.running ? `<span class="tag due"><span class="spinner"></span>${esc(t("đang chạy…"))}</span>` : `<span class="tag">${esc(next ? t("Tiếp: {s}", { s: next }) : t("Đã đăng"))}</span>`}</div></a>`;
     })
     .join("");
-  const form = `<section class="card"><h2>${esc(t("Làm video mới"))}</h2>
+  const form = `<section class="card"><h2>${esc(t("Làm video có lời từ clip mẫu"))}</h2>
 <form class="form" method="post" action="/video/new" enctype="multipart/form-data">
 <input type="hidden" name="kind" value="illustrate">
 <div class="row"><label>${esc(t("Clip mẫu"))}<select name="sample"><option value="">${esc(t("— tải clip lên ở dưới —"))}</option>${samples.map((s) => `<option value="${esc(s.path)}">${esc(s.label)}</option>`).join("")}</select></label>
@@ -979,7 +1118,7 @@ export function videosPage(v: Videos, err?: string, ok?: string): string {
 <label class="check"><input type="checkbox" name="mouth" value="1" checked> ${esc(t("Nhép miệng theo lời"))}</label>
 <p class="muted small">${esc(t("Giữ tiếng và nhịp cắt của clip mẫu. Máy tự chia cảnh, vẽ, vẽ tư thế 2 và miệng. Anh soát từng cảnh rồi mới dựng và đăng."))}</p>
 <button class="btn on">${esc(t("Bắt đầu"))}</button></form></section>`;
-  const meme = `<section class="card"><h2>${esc(t("Làm clip chữ (không lời)"))}</h2>
+  const meme = `<details class="card"><summary>${esc(t("Tự gõ clip chữ (không lời)"))}</summary>
 <form class="form" method="post" action="/video/new" enctype="multipart/form-data">
 <input type="hidden" name="kind" value="meme">
 <label>${esc(t("Dòng chữ 1: câu dẫn"))}<input name="top" maxlength="90" required placeholder="${esc(t("vd: Sếp bảo tăng ca là cơ hội phát triển"))}"></label>
@@ -992,8 +1131,8 @@ export function videosPage(v: Videos, err?: string, ok?: string): string {
 <label>${esc(t("Nhạc nền (tiếng Anh cho MusicGen; để trống: không nhạc)"))}<input name="music" value="${esc(MEME_MUSIC)}"></label>
 <label>${esc(t("Tên video"))}<input name="title"></label>
 <p class="muted small">${esc(t("Bối cảnh mặc định là văn phòng Hồi Sau, nhân vật đúng trang phục. Máy vẽ từng cảnh và tư thế 2 trên nền đứng yên, làm nhạc, rồi anh soát từng cảnh trước khi dựng."))}</p>
-<button class="btn on">${esc(t("Bắt đầu"))}</button></form></section>`;
-  return layout(t("Video"), "/video", `<header class="head"><h1>${esc(t("Video"))}</h1></header>${flash(ok, err)}${meme}${form}${cards ? `<div class="vgrid">${cards}</div>` : `<p class="muted">${esc(t("Chưa có video nào."))}</p>`}`);
+<button class="btn on">${esc(t("Bắt đầu"))}</button></form></details>`;
+  return layout(t("Video"), "/video", `<header class="head"><h1>${esc(t("Video"))}</h1></header>${flash(ok, err)}${ideaBox(v)}${meme}${form}${cards ? `<div class="vgrid">${cards}</div>` : `<p class="muted">${esc(t("Chưa có video nào."))}</p>`}`);
 }
 
 function shotCard(v: Videos, m: Meta, plan: Plan, s: Shot, busy: boolean): string {
@@ -1219,6 +1358,25 @@ export function mockExec(): Exec {
       await sharp(join(at("--out"), "shots", "s01.png")).resize(540, 960).jpeg().toFile(file);
       log(`cover: ${at("--quote")}`);
       return `${file}\n`;
+    }
+    if (args[0] === "idea") {
+      const out = at("--out");
+      const text = readFileSync(join(out, "input.txt"), "utf8").trim();
+      const pics = readdirSync(out).filter((f) => f.startsWith("img-"));
+      const words = text || "Ai cũng xứng đáng có một công việc ổn định. Trừ tôi, tôi xứng đáng trúng số rồi nghỉ việc";
+      const cut = words.indexOf(". ");
+      const plan: IdeaPlan = {
+        kind: (at("--kind") as "meme" | "comic") || (pics.length || /\. /.test(words) ? "meme" : "comic"),
+        reply: pics.length ? "Ảnh là một câu than, làm clip chữ 2 nhịp." : "Làm clip chữ từ câu anh gõ.",
+        read: pics.length ? words : "",
+        lead: "cu-li",
+        meme: { top: cut > 0 ? words.slice(0, cut + 1) : words, punch: cut > 0 ? words.slice(cut + 2) : "", scenes: ["Tũn vỗ vai đồng nghiệp", "Tũn ôm vé số mơ màng"] },
+        comic: { direction: `Tũn ở văn phòng: ${words}`, with: [] },
+        title: "Trúng số nghỉ việc",
+        caption: "Ổn định là cho người khác #danvanphong #HoiSau",
+      };
+      writeFileSync(join(out, "idea.json"), JSON.stringify(plan, null, 2));
+      return "";
     }
     if (args[0] === "meme" && at("--step") === "plan") {
       const out = at("--out");

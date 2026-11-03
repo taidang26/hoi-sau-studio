@@ -267,7 +267,7 @@ export function sceneCuts(clip: string, threshold = 0.2): number[] {
 const PLAN = S.obj({
   shots: S.arr(
     S.obj({
-      act: S.str("English, one sentence: the lead character acting out exactly what these words say, with the 1-3 props they need, and which way things face; if the words name a time, say what time a clock in the picture shows"),
+      act: S.str("English, one sentence: the lead character acting out exactly what these words say, with the 1-3 props they need, and which way things face; no clock unless the words name a time"),
       pose: S.str("English: the next moment of the same picture, a different pose or expression; same place, same props"),
       bubble: S.str("Vietnamese, at most 7 words, our own punchy words for this beat (never copy the spoken line)"),
       cast: S.arr(S.str("slug of another cast member, only if the words need one"), 0, 2),
@@ -288,7 +288,7 @@ export async function planShots(ctx: StudioContext, slug: string, lines: Line[],
         `A narrated Vietnamese short video is being remade with our cartoon character ${p.name} (${p.species}, ${p.role}) as the narrator, acting out each beat in our office comic.`,
         `For each shot write: what ${p.name} does in the picture (act), a second pose for the same picture (pose), a short speech bubble in our own words (bubble), and any other cast member the words really need (cast; others: ${cast}).`,
         "Keep each picture simple: one clear action, a strong expression, two or three props. Screens face whoever uses them.",
-        "When the words name a time (4 giờ chiều, 8 giờ sáng), any clock in that shot and the next ones shows that time, so write it into act and pose; leave the clock out when no time is said.",
+        "No clocks: only when the words name a time (4 giờ chiều, 8 giờ sáng) may that one shot show a clock at that time; otherwise never mention a clock in act or pose.",
         beats,
       ].join("\n\n"),
     },
@@ -305,7 +305,7 @@ export const LOOK = [
   "Objects face the right way: a screen faces whoever is using it, a character's body faces what he works on, paws hold things naturally, every character has exactly two arms.",
   "The picture fills the whole frame edge to edge: no borders, no empty colour bands at the top or bottom. Keep the top fifth and the bottom fifth calm (a speech bubble and captions go there).",
   "Only draw a computer or phone when the scene needs one; a screen nobody in the scene uses never glows toward the viewer.",
-  "Absolutely no text, letters, numbers, signs, speech bubbles or captions anywhere; a clock shows hands only, at the time the scene asks.",
+  "Absolutely no text, letters, numbers, signs, speech bubbles or captions anywhere. No clock on the wall or desk unless the scene asks for a time; then it shows hands only, at that time.",
   "A character seen from behind shows only the back: front-only details (a chest pin, a tie, a badge or lanyard on the front, the face) are not visible.",
   "Never draw a real person or a celebrity's likeness: a singer, band, actor or idol the words name appears only as tiny dark silhouettes far away (on a stage, a screen or a poster without a face); our animal cast are the only characters drawn in full.",
 ].join(" ");
@@ -325,7 +325,7 @@ export async function checkPicture(ctx: StudioContext, slug: string, act: string
         `You check one frame of a short comic video before it is posted. The first image is the frame, the second is ${p.name}'s model sheet.`,
         `The frame should show: ${act}.`,
         `Fail it for: ${p.name} off-model (${p.look.signature.join("; ")}); ${p.name} drawn more than once (unless the scene asks for a copy such as a ghost); any drawn text, letters, numbers or speech bubble; a human, or a realistic or recognisable real person (a named singer or idol may only be a tiny faceless silhouette);`,
-        "extra arms or hands, a paw holding something wrongly; objects facing the wrong way (a monitor or phone screen must face the character using it, his body must face what he works on; eyes may look at the viewer); a clock with more or fewer than two hands, or a clock showing a different time from the one asked;",
+        "extra arms or hands, a paw holding something wrongly; objects facing the wrong way (a monitor or phone screen must face the character using it, his body must face what he works on; eyes may look at the viewer); a clock when the frame does not ask for a time, a clock with more or fewer than two hands, or a clock showing a different time from the one asked;",
         "a busy background (crowds, many props) or sparkles, sweat drops, motion lines; a glowing screen facing the viewer while the character uses it; a misshapen or broken prop (a wallet must look like a normal bifold wallet); empty colour bands across the top or bottom.",
         "If it fails, write the fix as a short edit instruction.",
       ].join(" "),
@@ -386,6 +386,13 @@ export async function fixShot(ctx: StudioContext, plan: Plan, dir: string, id: s
         opts.log?.(`${id}: ${why}`);
         continue;
       }
+      // The edit has to have done what was asked, and only that: Muse Spark compares the two pictures.
+      const same = await compareFix(ctx, before, pasted.image, note.trim());
+      if (!same.ok) {
+        why = same.problem || "the change asked for is not in the new picture";
+        opts.log?.(`${id}: ${why}`);
+        continue;
+      }
       const v = await checkPicture(ctx, plan.slug, `${s.act}; changed: ${note.trim()}`, pasted.image);
       opts.log?.(`${id}: ${v.pass ? "check passed" : `check failed: ${v.problems.join("; ")}`}`);
       writeFileSync(file, pasted.image);
@@ -402,6 +409,26 @@ export async function fixShot(ctx: StudioContext, plan: Plan, dir: string, id: s
     writeFileSync(file, before);
     throw new Error(`${id}: the picture was left as it was (${why})`);
   }
+}
+
+const COMPARE = S.obj({
+  done: S.bool(),
+  clean: S.bool(),
+  problem: S.str("short English: what is wrong, or empty"),
+});
+
+/** Muse Spark looks at the picture before and after a detail fix: is the asked change there, and nothing else touched? */
+export async function compareFix(ctx: StudioContext, before: Buffer, after: Buffer, note: string): Promise<{ ok: boolean; problem: string }> {
+  const small = async (b: Buffer) => `data:image/jpeg;base64,${(await sharp(b).resize(540, 960, { fit: "cover" }).jpeg({ quality: 80 }).toBuffer()).toString("base64")}`;
+  const r = await ctx.spark.json<{ done: boolean; clean: boolean; problem: string }>("fix_compare", COMPARE, [{
+    role: "user",
+    content: [
+      { type: "text", text: `Two versions of one cartoon frame: the first before a fix, the second after. The fix asked for: "${note}". Answer done=true only if that change is clearly visible in the second (a thing to remove is fully gone). Answer clean=true only if everything else is the same: look hard for ghosted or doubled outlines, smears or stripes, and characters or props that moved or changed.` },
+      { type: "image_url", image_url: { url: await small(before) } },
+      { type: "image_url", image_url: { url: await small(after) } },
+    ],
+  }]);
+  return r.done && r.clean ? { ok: true, problem: "" } : { ok: false, problem: r.problem || (!r.done ? "the change asked for is not in the new picture" : "other parts of the picture changed") };
 }
 
 /**

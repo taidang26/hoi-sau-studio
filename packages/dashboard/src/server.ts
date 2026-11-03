@@ -108,7 +108,12 @@ const redirect = (res: ServerResponse, to: string) => {
 };
 
 /** `to` with ?ok= or ?err= added, for the one-line result on the next page. */
-const withNote = (to: string, key: "ok" | "err", text: string) => `${to}${to.includes("?") ? "&" : "?"}${key}=${encodeURIComponent(text)}`;
+/** Adds ?ok= or ?err= to a link, before its #part: after the hash the page never sees it. */
+export const withNote = (to: string, key: "ok" | "err", text: string) => {
+  const h = to.indexOf("#");
+  const [path, hash] = h < 0 ? [to, ""] : [to.slice(0, h), to.slice(h)];
+  return `${path}${path.includes("?") ? "&" : "?"}${key}=${encodeURIComponent(text)}${hash}`;
+};
 
 function send(res: ServerResponse, status: number, body: string, type = "text/html; charset=utf-8"): void {
   // no-cache, not no-store: the page is still fetched fresh, but Back can restore it instantly.

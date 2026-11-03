@@ -397,3 +397,12 @@ test("illustrate: a detail fix is never pasted where the thing was not in the pi
   const px = await sharp(ok.image).raw().toBuffer();
   assert.equal(px[(1500 * w + 100) * 3], 0xdd);
 });
+
+test("illustrate: a detail fix is refused when Muse Spark sees the change missing or something else touched", async () => {
+  const { compareFix } = await import("./illustrate.js");
+  const png = await sharp({ create: { width: 60, height: 100, channels: 3, background: "#ccc" } }).png().toBuffer();
+  const ctx = (r: object) => ({ spark: { json: async () => r } }) as never;
+  assert.deepEqual(await compareFix(ctx({ done: true, clean: true, problem: "" }), png, png, "remove the clock"), { ok: true, problem: "" });
+  assert.match((await compareFix(ctx({ done: false, clean: true, problem: "" }), png, png, "remove the clock")).problem, /not in the new picture/);
+  assert.match((await compareFix(ctx({ done: true, clean: false, problem: "Rico is doubled" }), png, png, "remove the clock")).problem, /doubled/);
+});

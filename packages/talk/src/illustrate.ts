@@ -557,7 +557,8 @@ export async function pasteRegion(sam: Sam, before: Buffer, edited: Buffer, find
   const core = m1.map((v, i) => v | (m2[i] & near[i] & (inBox ? inBox[i] : 1)));
   const share = core.reduce((n, v) => n + v, 0) / core.length;
   if (share > 0.3) return { image: before, problem: `"${find}" covers ${Math.round(share * 100)}% of the picture, too much for a detail fix` };
-  const mask = dilate(core, w, h, 24);
+  // A removal is grown further so the feather does not blend the thing's rim and drop shadow back in.
+  const mask = dilate(core, w, h, removal ? 56 : 24);
   const ring = dilate(mask, w, h, 40).map((v, i) => v & (mask[i] ^ 1));
   const diff = (sel: Uint8Array) => {
     let n = 0, d = 0;

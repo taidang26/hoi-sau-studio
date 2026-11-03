@@ -55,6 +55,12 @@ function urls(ids) {
 }
 
 function deploy() {
+  // /tai is rebuilt from the approvals first, so a deploy never ships an old download page.
+  const studio = join(ROOT, "packages", "studio", "dist", "cli.js");
+  if (existsSync(studio)) {
+    const tai = spawnSync(process.execPath, [studio, "tai"], { cwd: ROOT, stdio: "inherit" });
+    if (tai.status !== 0) process.exit(tai.status ?? 1);
+  }
   const res = spawnSync("firebase", ["deploy", "--only", "hosting:hoisau", "--project", "default"], { cwd: ROOT, stdio: "inherit", shell: process.platform === "win32" });
   process.exit(res.status ?? 1);
 }

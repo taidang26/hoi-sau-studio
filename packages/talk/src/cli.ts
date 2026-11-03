@@ -9,16 +9,20 @@
  *   npm run talk -- cut <slug> [--phrase "cartoon character"] [--keep desk|none] [--force]  SAM 3.1 cuts the character (and desk) out
  *   npm run talk -- sets [--only office,cafe] [--force]                    Muse Image draws empty background sets in series/sets/
  *                    make/sync take --bg plain[:#hex], office|pantry|phong-tro|cafe, or photo.jpg: the cut-out character stands in front of it
- *   npm run talk -- illustrate <slug> <clip.mp4> [--vocals stem.wav] [--lines lines.json] [--end s] [--step plan|draw|poses|stabilize|mouths|render|all] [--mouth] [--only s01,s02] [--out dir]
+ *   npm run talk -- illustrate <slug> <clip.mp4> [--vocals stem.wav] [--lines lines.json] [--end s] [--step plan|draw|fix|ask|gaps|poses|stabilize|mouths|render|all] [--find <thing>] [--at <s>] [--only s01] [--note <what to change>] [--mouth] [--only s01,s02] [--out dir]
  *                    the clip's voice and cuts, one picture per shot of <slug> acting it out (Muse Image, checked by Muse Spark), two poses on one background (SAM 3.1)
+ *   npm run talk -- cover <slug> --out <illustrate dir> --quote "“line|line *key*.”" [--shot s08] [--episode <id>]
+ *                    TikTok cover: the line on a white badge (key words red) + "Hồi Sau" tag over a shot, inside the grid's safe zone and off the faces (SAM 3.1)
+ *   npm run talk -- meme <slug> --out <dir with meme.json> [--step plan|draw|fix|ask|poses|stabilize|music|blink|render|all] [--find <thing>] [--at <s>] [--only s01] [--note <what to change>]
+ *                    silent text meme: two beats of big text over one or two pictures (two poses, still background), MusicGen music
  *   npm run talk -- demo                                                   offline: mock pictures, hummed voice
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { probeVideo, reelsProblems } from "@hoi-sau/motion";
-import { openStudio } from "@hoi-sau/studio";
+import { episodeDir, openStudio } from "@hoi-sau/studio";
 import { Sam } from "@hoi-sau/dance";
 import { cutTalkArt, drawTalkArt, loadArt, talkDir, type Pose } from "./art.js";
 import { drawSets, resolveBackground, setsDir } from "./sets.js";
@@ -29,7 +33,11 @@ import { MuseTranscribe, type TimedWord } from "./transcribe.js";
 import { checkScript, PACE, writeScript, type TalkScript } from "./script.js";
 import { buildTimeline, FPS } from "./timeline.js";
 import { mouthTrack, RATE, ttsArg, voiceFor, type Tts } from "./voice.js";
-import { drawMouths, drawPoses, drawShots, gateToWords, groupLines, hearWords, planShots, renderIllustrated, sceneCuts, shotSpans, stabilizePoses, timeWords, type Line, type Plan } from "./illustrate.js";
+import { facesBox, makeCover } from "./cover.js";
+import sharp from "sharp";
+import { makeBlink, makeMusic, planMeme, readMeme, renderMeme } from "./meme.js";
+import { askFixes, speechGaps } from "./fixes.js";
+import { drawMouths, drawPoses, drawShots, fixShot, gateToWords, groupLines, hearWords, planShots, renderIllustrated, sceneCuts, shotSpans, stabilizePoses, timeWords, type Line, type Plan } from "./illustrate.js";
 
 const ROOT = fileURLToPath(new URL("../../..", import.meta.url));
 const CHARACTERS = join(ROOT, "characters");
@@ -245,7 +253,7 @@ async function main() {
     }
     case "illustrate": {
       const [slug, clip] = pos;
-      if (!slug || !clip) throw new Error("Usage: talk illustrate <slug> <clip.mp4> [--vocals stem.wav] [--lines lines.json] [--step plan|draw|poses|stabilize|mouths|render|all] [--mouth]");
+      if (!slug || !clip) throw new Error("Usage: talk illustrate <slug> <clip.mp4> [--vocals stem.wav] [--lines lines.json] [--step plan|draw|fix|ask|gaps|poses|stabilize|mouths|render|all] [--find <thing>] [--at <s>] [--only s01] [--note <what to change>] [--mouth]");
       const out = opt.out ? fromCwd(opt.out as string) : join(ROOT, "data", "talk", `${slug}-illustrate-${stamp()}`);
       mkdirSync(out, { recursive: true });
       const step = String(opt.step ?? "all");
@@ -263,12 +271,24 @@ async function main() {
         log(`${planFile}: ${lines.length} lines, ${shotsPlan.length} shots (edit it before drawing if needed)`);
       }
       const plan: Plan = JSON.parse(readFileSync(planFile, "utf8"));
+      if (step === "fix") for (const id of only ?? []) await fixShot(ctx, plan, shots, id, String(opt.note ?? ""), { log, find: opt.find ? String(opt.find) : undefined, sam: opt.find ? Sam.fromEnv() : undefined });
+      if (step === "ask") {
+        const gaps = existsSync(join(out, "gaps.json")) ? JSON.parse(readFileSync(join(out, "gaps.json"), "utf8")) : [];
+        const at = opt.at !== undefined && opt.at !== "" ? Number(opt.at) : undefined;
+        writeFileSync(join(out, "fixes.json"), JSON.stringify(await askFixes(ctx, plan, shots, String(opt.note ?? ""), at, gaps), null, 1));
+        log(`${join(out, "fixes.json")}: written`);
+        return;
+      }
       if (run("draw")) await drawShots(ctx, plan, shots, { only, log });
       if (run("poses")) await drawPoses(ctx, plan, shots, { only, log });
       if (run("stabilize")) writeFileSync(join(out, "stabilize.json"), JSON.stringify(await stabilizePoses(Sam.fromEnv(), ctx, plan, shots, { only, log }), null, 1));
       // --mouth: the lead talks; without it the clip renders as before.
       const mouth = !!opt.mouth || step === "mouths";
       if (mouth && run("mouths")) writeFileSync(join(out, "mouths.json"), JSON.stringify(await drawMouths(Sam.fromEnv(), ctx, plan, shots, { only, log }), null, 1));
+      if (run("render") || step === "gaps") {
+        const pcm = await readSound(opt.vocals ? fromCwd(opt.vocals as string) : plan.clip, join(out, "voice.m4a"));
+        writeFileSync(join(out, "gaps.json"), JSON.stringify(speechGaps(pcm, plan.lines)));
+      }
       if (run("render")) {
         const heard = JSON.parse(readFileSync(wordsFile, "utf8"));
         const words = timeWords(plan.lines, heard);
@@ -284,6 +304,84 @@ async function main() {
         log(problems.length ? `Reels check: ${problems.join("; ")}` : "Reels check: ok for Facebook/Instagram Reels and TikTok");
         console.log(video);
       }
+      return;
+    }
+    case "meme": {
+      const [slug] = pos;
+      if (!slug || !opt.out) throw new Error("Usage: talk meme <slug> --out <dir with meme.json> [--step plan|draw|fix|ask|poses|stabilize|music|blink|render|all] [--find <thing>] [--at <s>] [--only s01] [--note <what to change>]");
+      const out = fromCwd(opt.out as string);
+      const step = String(opt.step ?? "all");
+      const only = opt.only ? String(opt.only).split(",") : undefined;
+      const run = (s: string) => step === "all" || step === s;
+      const spec = readMeme(out);
+      const ctx = openStudio({ log });
+      const planFile = join(out, "plan.json"), shots = join(out, "shots"), music = join(out, "music.wav");
+      if (run("plan") && (step === "plan" || !existsSync(planFile))) {
+        writeFileSync(planFile, JSON.stringify(await planMeme(ctx, slug, spec), null, 2) + "\n");
+        log(`${planFile}: ${spec.scenes.length} scene(s)`);
+      }
+      const plan: Plan = JSON.parse(readFileSync(planFile, "utf8"));
+      if (step === "fix") for (const id of only ?? []) await fixShot(ctx, plan, shots, id, String(opt.note ?? ""), { log, find: opt.find ? String(opt.find) : undefined, sam: opt.find ? Sam.fromEnv() : undefined });
+      if (step === "ask") {
+        const gaps = existsSync(join(out, "gaps.json")) ? JSON.parse(readFileSync(join(out, "gaps.json"), "utf8")) : [];
+        const at = opt.at !== undefined && opt.at !== "" ? Number(opt.at) : undefined;
+        writeFileSync(join(out, "fixes.json"), JSON.stringify(await askFixes(ctx, plan, shots, String(opt.note ?? ""), at, gaps), null, 1));
+        log(`${join(out, "fixes.json")}: written`);
+        return;
+      }
+      if (run("draw")) await drawShots(ctx, plan, shots, { only, log });
+      if (run("poses")) await drawPoses(ctx, plan, shots, { only, log });
+      if (run("stabilize")) writeFileSync(join(out, "stabilize.json"), JSON.stringify(await stabilizePoses(Sam.fromEnv(), ctx, plan, shots, { only, log }), null, 1));
+      // Music once per prompt: a new prompt (or --step music) makes it again.
+      const promptFile = join(out, "music.prompt");
+      const fresh = existsSync(music) && existsSync(promptFile) && readFileSync(promptFile, "utf8") === spec.music;
+      if (spec.music.trim() && (step === "music" || ((step === "all" || step === "render") && !fresh))) {
+        makeMusic(spec.music, plan.end, music, log);
+        writeFileSync(promptFile, spec.music);
+      }
+      // Faces once per picture (faces.json, keyed by picture signature): where to lower each picture, and where its eyes are.
+      // A shot that kept one pose still moves: its eyes blink (a shut-eye copy of pose A, found inside the face).
+      const faceTop: Record<string, number | undefined> = {};
+      if (run("render") || step === "blink") {
+        const species = (ctx.profiles.get(slug)?.species ?? "character").split("(")[0].trim();
+        const facesFile = join(out, "faces.json");
+        const known: Record<string, { sig: string; box?: { x: number; y: number; w: number; h: number } }> = existsSync(facesFile) ? JSON.parse(readFileSync(facesFile, "utf8")) : {};
+        for (const s of plan.shots.filter((x) => !x.src)) {
+          const a = join(shots, `${s.id}.png`), b2 = join(shots, `${s.id}-b2.png`), blink = join(shots, `${s.id}-blink.png`);
+          if (!existsSync(a)) continue;
+          const sig = String(statSync(a).mtimeMs);
+          if (known[s.id]?.sig !== sig) {
+            const rgb = new Uint8Array(await sharp(a).resize(1080, 1920, { fit: "cover" }).removeAlpha().raw().toBuffer());
+            known[s.id] = { sig, box: await facesBox(Sam.fromEnv(), rgb, species) };
+            writeFileSync(facesFile, JSON.stringify(known, null, 1));
+          }
+          const face = known[s.id].box;
+          faceTop[s.id] = face?.y;
+          if ((only && !only.includes(s.id)) || existsSync(b2) || existsSync(blink)) continue;
+          if (face) makeBlink(a, blink, face, log);
+          else log(`${s.id}: no face found, no blink`);
+        }
+      }
+      if (run("render")) {
+        const video = await renderMeme(plan, shots, spec.music.trim() ? music : undefined, join(out, `${slug}.mp4`), log, faceTop);
+        const problems = reelsProblems(await probeVideo(video));
+        log(problems.length ? `Reels check: ${problems.join("; ")}` : "Reels check: ok for Facebook/Instagram Reels and TikTok");
+        console.log(video);
+      }
+      return;
+    }
+    case "cover": {
+      const [slug] = pos;
+      if (!slug || !opt.out || !opt.quote) throw new Error('Usage: talk cover <slug> --out <illustrate dir> --quote "“line|line *key*.”" [--shot s08] [--episode <id>]');
+      const out = fromCwd(opt.out as string);
+      const plan: Plan = JSON.parse(readFileSync(join(out, "plan.json"), "utf8"));
+      // The tag's avatar: the channel's profile picture (studio brand-art), else the lead's portrait.
+      const brand = join(ROOT, "output", "brand-art", "hoi-sau", "avatar.png");
+      const avatar = existsSync(brand) ? brand : join(CHARACTERS, slug, "portrait.svg");
+      const made = await makeCover(Sam.fromEnv(), openStudio({ log }), plan, join(out, "shots"), String(opt.quote), join(out, slug), { avatar, shot: opt.shot ? String(opt.shot) : undefined, log });
+      // --episode: the approved video's folder, where `studio tai` picks the cover up.
+      if (opt.episode) copyFileSync(made.file, join(episodeDir(String(opt.episode)), "cover.jpg"));
+      console.log(made.file);
       return;
     }
     case "make":

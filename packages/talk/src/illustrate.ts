@@ -292,6 +292,7 @@ export const LOOK = [
   "The picture fills the whole frame edge to edge: no borders, no empty colour bands at the top or bottom. Keep the top fifth and the bottom fifth calm (a speech bubble and captions go there).",
   "Only draw a computer or phone when the scene needs one; a screen nobody in the scene uses never glows toward the viewer.",
   "Absolutely no text, letters, numbers, signs, speech bubbles or captions anywhere; a clock shows hands only, at the time the scene asks.",
+  "A character seen from behind shows only the back: front-only details (a chest pin, a tie, a badge or lanyard on the front, the face) are not visible.",
 ].join(" ");
 
 const CHECK = S.obj({ pass: S.bool(), problems: S.arr(S.str("one concrete problem"), 0, 8), fix: S.str("English edit instruction naming only what to change, or empty if pass") });
@@ -344,6 +345,57 @@ export async function drawShots(ctx: StudioContext, plan: Plan, dir: string, opt
   }
 }
 
+/**
+ * Changes one detail of a drawn shot and keeps the rest: Muse Image edits pose A with the owner's note
+ * ("the star pin is on his back, remove it"). The picture before the fix is kept as <id>-prev.png so the
+ * owner can go back. Pose B and the mouths are made again from the fixed picture by the caller.
+ */
+export async function fixShot(ctx: StudioContext, plan: Plan, dir: string, id: string, note: string, opts: { tries?: number; log?: (s: string) => void; find?: string; sam?: Sam } = {}): Promise<void> {
+  const s = plan.shots.find((x) => x.id === id && !x.src);
+  const file = join(dir, `${id}.png`);
+  if (!s || !existsSync(file)) throw new Error(`${id}: no picture to fix`);
+  if (!note.trim()) throw new Error(`${id}: say what to change`);
+  const p = ctx.profiles.get(plan.slug)!;
+  const before = readFileSync(file);
+  writeFileSync(join(dir, `${id}-prev.png`), before);
+  const prompt = `Edit the attached picture. Change only this: ${note.trim()}. Keep everything else exactly the same: framing, camera, background, colours, line style, every other prop, and ${p.name}'s design, pose and place in the frame. ${LOOK}`;
+  let fix = "";
+  for (let attempt = 0; attempt < (opts.tries ?? 2); attempt++) {
+    opts.log?.(`${id}: fixing (${note.trim()})${fix ? ` again (${fix})` : ""}`);
+    const res = await generateSoftly(ctx.image, { prompt: prompt + (fix ? ` Make sure: ${fix}` : ""), size: `${OUT.w}x${OUT.h}`, references: [dataUrl(before), ...characterRefs(ctx, plan.slug)] }, opts.log);
+    // With a thing to find, only that place changes: the edit is pasted back under its (grown, feathered) mask.
+    const image = opts.find && opts.sam ? await pasteRegion(opts.sam, before, res.image, opts.find, opts.log) : res.image;
+    writeFileSync(file, image);
+    const v = await checkPicture(ctx, plan.slug, `${s.act}; changed: ${note.trim()}`, image);
+    opts.log?.(`${id}: ${v.pass ? "check passed" : `check failed: ${v.problems.join("; ")}`}`);
+    if (v.pass) break;
+    fix = v.fix;
+  }
+}
+
+/**
+ * The edited picture pasted onto the original only where `find` is (in either picture), grown and feathered,
+ * so everything else stays pixel for pixel. Falls back to the whole edit when the thing is not found or
+ * covers most of the frame.
+ */
+export async function pasteRegion(sam: Sam, before: Buffer, edited: Buffer, find: string, log?: (s: string) => void): Promise<Buffer> {
+  const { w, h } = OUT;
+  const a = new Uint8Array(await sharp(before).resize(w, h, { fit: "cover" }).removeAlpha().raw().toBuffer());
+  const b = new Uint8Array(await sharp(edited).resize(w, h, { fit: "cover" }).removeAlpha().raw().toBuffer());
+  const m1 = await maskOf(sam, a, [find]), m2 = await maskOf(sam, b, [find]);
+  const mask = dilate(m1.map((v, i) => v | m2[i]), w, h, 24);
+  const share = mask.reduce((n, v) => n + v, 0) / mask.length;
+  if (!share || share > 0.45) {
+    log?.(`"${find}": ${share ? "covers most of the picture" : "not found"}, keeping the whole edit`);
+    return edited;
+  }
+  log?.(`"${find}": changing ${(share * 100).toFixed(1)}% of the picture, the rest stays`);
+  const alpha = await sharp(Buffer.from(mask.map((v) => v * 255)), { raw: { width: w, height: h, channels: 1 } }).blur(8).raw().toBuffer();
+  const rgba = Buffer.alloc(w * h * 4);
+  for (let i = 0; i < w * h; i++) { rgba[i * 4] = b[i * 3]; rgba[i * 4 + 1] = b[i * 3 + 1]; rgba[i * 4 + 2] = b[i * 3 + 2]; rgba[i * 4 + 3] = alpha[i]; }
+  return sharp(Buffer.from(a), { raw: { width: w, height: h, channels: 3 } }).composite([{ input: rgba, raw: { width: w, height: h, channels: 4 } }]).png().toBuffer();
+}
+
 export async function drawPoses(ctx: StudioContext, plan: Plan, dir: string, opts: { only?: string[]; log?: (s: string) => void } = {}): Promise<void> {
   const p = ctx.profiles.get(plan.slug)!;
   for (const s of plan.shots) {
@@ -363,7 +415,7 @@ export async function drawPoses(ctx: StudioContext, plan: Plan, dir: string, opt
 
 const rgbOf = async (file: string) => new Uint8Array(await sharp(file).resize(OUT.w, OUT.h, { fit: "cover" }).removeAlpha().raw().toBuffer());
 
-async function maskOf(sam: Sam, rgb: Uint8Array, phrases: string[]): Promise<Uint8Array> {
+export async function maskOf(sam: Sam, rgb: Uint8Array, phrases: string[]): Promise<Uint8Array> {
   const { w, h } = OUT;
   const url = dataUrl(await sharp(Buffer.from(rgb), { raw: { width: w, height: h, channels: 3 } }).png().toBuffer());
   const mask = new Uint8Array(w * h);
@@ -492,7 +544,8 @@ export function leadMouth(finds: Array<{ mask: Uint8Array; score?: number }>, le
   for (const f of finds) {
     if ((f.score ?? 1) < 0.3) continue;
     const b = maskBox(f.mask, w, h);
-    if (!b || b.w > w * 0.3 || b.h > h * 0.12 || b.w < 6 || b.h < 4) continue;
+    // 40% wide lets a close-up grin through (Rico's is 37%); a whole muzzle (a saola's is over half the picture) still fails.
+    if (!b || b.w > w * 0.4 || b.h > h * 0.12 || b.w < 6 || b.h < 4) continue;
     if (!lead[Math.round(b.y + b.h / 2) * w + Math.round(b.x + b.w / 2)]) continue;
     if (!best || b.w * b.h > best.box.w * best.box.h) best = { mask: f.mask, box: b };
   }
@@ -587,19 +640,38 @@ async function faceProblem(ctx: StudioContext, name: string, shut: Raster, open:
  * is not clearly bigger than the shut one, is too tall, runs into the nose or eyes,
  * or Muse Spark sees a leftover of the old mouth in the face close-up.
  */
+/**
+ * The lead's mouth, asking SAM each phrase in turn: "mouth of the cartoon saola" can return the
+ * whole white muzzle, which leadMouth refuses, while a plain "mouth" finds the line itself.
+ */
+export async function mouthIn(segment: (phrase: string) => Promise<Array<{ mask: Uint8Array; score?: number }>>, phrases: string[], lead: Uint8Array, w: number, h: number): Promise<{ mask: Uint8Array; box: Box } | undefined> {
+  for (const ph of phrases) {
+    const m = leadMouth(await segment(ph), lead, w, h);
+    if (m) return m;
+  }
+  return undefined;
+}
+/** The first outline when SAM found anything for it, else the fallback ("cartoon pufferfish" finds nothing on Poppy). */
+export async function leadOr(first: Uint8Array, fallback: () => Promise<Uint8Array>): Promise<Uint8Array> {
+  return first.some((v) => v) ? first : fallback();
+}
 export async function drawMouths(sam: Sam, ctx: StudioContext, plan: Plan, dir: string, opts: { only?: string[]; log?: (s: string) => void } = {}): Promise<Array<{ pic: string; ok: boolean; problem?: string }>> {
   const { w, h } = OUT;
   const p = ctx.profiles.get(plan.slug)!;
   const species = p.species.split("(")[0].trim();
   const report: Array<{ pic: string; ok: boolean; problem?: string }> = [];
   const pngOf = (rgb: Uint8Array) => sharp(Buffer.from(rgb), { raw: { width: w, height: h, channels: 3 } }).png().toBuffer();
-  const findMouth = async (rgb: Uint8Array) => leadMouth(await sam.segment(`mouth of the cartoon ${species}`, dataUrl(await pngOf(rgb)), w, h), await maskOf(sam, rgb, [`cartoon ${species}`]), w, h);
+  const leadMask = async (rgb: Uint8Array) => leadOr(await maskOf(sam, rgb, [`cartoon ${species}`]), () => maskOf(sam, rgb, ["cartoon character"]));
+  const findMouth = async (rgb: Uint8Array) => {
+    const url = dataUrl(await pngOf(rgb));
+    return mouthIn((ph) => sam.segment(ph, url, w, h), [`mouth of the cartoon ${species}`, "mouth"], await leadMask(rgb), w, h);
+  };
   /**
    * The lead's nose, eyes and eye markings in the picture, grown 3 px: never pasted over, and an open mouth must not reach them.
    * `nearNose` is the nose grown by NOSE_GAP: an open mouth touching it leaves a thin seam under the nose.
    */
   const faceKeep = async (rgb: Uint8Array) => {
-    const url = dataUrl(await pngOf(rgb)), lead = await maskOf(sam, rgb, [`cartoon ${species}`]);
+    const url = dataUrl(await pngOf(rgb)), lead = await leadMask(rgb);
     const keep = new Uint8Array(w * h), nose = new Uint8Array(w * h);
     for (const ph of [`nose of the cartoon ${species}`, `eyes of the cartoon ${species}`, `eye patches of the cartoon ${species}`]) {
       const m = leadFeatures(await sam.segment(ph, url, w, h), lead, w, h);
@@ -740,7 +812,7 @@ export async function renderIllustrated(plan: Plan, words: Word[], dir: string, 
   list.push(list[list.length - 1].split("\n")[0]);
   const listFile = join(dir, "frames.txt");
   writeFileSync(listFile, list.join("\n"));
-  const r = spawnSync(process.env.FFMPEG_PATH || "ffmpeg", ["-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", listFile, "-i", plan.clip, "-map", "0:v", "-map", "1:a", "-vf", "fps=30,format=yuv420p", "-c:v", "libx264", "-preset", "medium", ...DELIVERY, "-t", String(plan.end), out], { encoding: "utf8" });
+  const r = spawnSync(process.env.FFMPEG_PATH || "ffmpeg", ["-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", listFile, "-i", plan.clip, "-map", "0:v", "-map", "1:a", "-vf", "fps=30,format=yuv420p", "-fps_mode", "cfr", "-r", "30", "-c:v", "libx264", "-preset", "medium", ...DELIVERY, "-t", String(plan.end), out], { encoding: "utf8" });
   if (r.status !== 0) throw new Error(`ffmpeg failed: ${r.stderr}`);
   opts.log?.(`${out}: ${cache.size} distinct frames`);
   return out;

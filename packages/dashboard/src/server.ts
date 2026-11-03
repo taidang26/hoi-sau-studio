@@ -523,16 +523,41 @@ export function handler(opts: DashboardOptions) {
         const form = await readUpload(req, 300 * 1024 * 1024);
         const file = form.get("clip");
         const upload = file instanceof File && file.size ? { name: file.name, bytes: new Uint8Array(await file.arrayBuffer()) } : undefined;
-        const id = vd.create({ slug: String(form.get("slug") ?? ""), mouth: form.get("mouth") === "1", title: String(form.get("title") ?? ""), sample: String(form.get("sample") ?? "") || undefined, upload });
+        const field = (k: string) => String(form.get(k) ?? "");
+        const meme = field("kind") === "meme"
+          ? { top: field("top"), punch: field("punch"), scenes: field("scenes") === "1" ? [field("scene1")] : [field("scene1"), field("scene2")], music: field("music"), seconds: Number(field("seconds")) || 14 }
+          : undefined;
+        const id = vd.create({ kind: meme ? "meme" : "illustrate", slug: field("slug"), mouth: form.get("mouth") === "1", title: field("title"), sample: field("sample") || undefined, upload, meme });
         return redirect(res, `/video/${id}`);
       } catch (e) {
         return fail("/video", e);
       }
     }
-    const va = vd && req.method === "POST" ? path.match(/^\/video\/([a-z0-9-]+)\/(continue|render|approve|publish)$/) : null;
+    const va = vd && req.method === "POST" ? path.match(/^\/video\/([a-z0-9-]+)\/(continue|render|approve|publish|addshot|ask|askdrop|apply|keep|undo)$/) : null;
     if (va && vd) {
       const [, id, act] = va;
       try {
+        if (act === "ask") {
+          const form = await readForm(req);
+          vd.ask(id, form.get("note") ?? "", form.get("at") ?? "");
+          return redirect(res, `/video/${id}#fix`);
+        }
+        if (act === "apply") {
+          const form = await readForm(req);
+          vd.apply(id, form.getAll("pick").map(Number));
+          return redirect(res, `/video/${id}#fix`);
+        }
+        if (act === "askdrop" || act === "keep" || act === "undo") {
+          if (act === "askdrop") vd.dropAsk(id);
+          if (act === "keep") vd.keep(id);
+          if (act === "undo") vd.undo(id);
+          return redirect(res, `/video/${id}#fix`);
+        }
+        if (act === "addshot") {
+          const form = await readForm(req);
+          const shot = vd.addShot(id, { t: form.get("t") ?? "", act: form.get("act") ?? "", pose: form.get("pose") ?? "", bubble: form.get("bubble") ?? "" });
+          return redirect(res, `/video/${id}#${shot}`);
+        }
         if (act === "continue") vd.continue(id);
         if (act === "render") vd.render(id);
         if (act === "publish") {
@@ -541,28 +566,48 @@ export function handler(opts: DashboardOptions) {
         }
         if (act === "approve") {
           const form = await readForm(req);
-          await vd.approve(id, { caption: form.get("caption") ?? "", threadsCaption: form.get("threadsCaption") ?? "", version: form.get("version") === "mouth" ? "mouth" : "plain", still: form.getAll("still"), when: form.get("when") ?? "" });
+          await vd.approve(id, { caption: form.get("caption") ?? "", threadsCaption: form.get("threadsCaption") ?? "", version: form.get("version") === "mouth" ? "mouth" : "plain", still: form.getAll("still"), when: form.get("when") ?? "", cover: form.get("cover") ?? undefined });
           return redirect(res, withNote(`/video/${id}#approve`, "ok", t("Đã duyệt. Bấm Đăng ngay, hoặc để máy tự đăng đúng giờ hẹn.")));
         }
         return redirect(res, `/video/${id}`);
       } catch (e) {
-        return fail(`/video/${id}${act === "approve" ? "#approve" : ""}`, e);
+        return fail(`/video/${id}${act === "approve" ? "#approve" : act === "addshot" ? "#add-shot" : ["ask", "apply", "askdrop", "keep", "undo"].includes(act) ? "#fix" : ""}`, e);
       }
     }
-    const vs = vd && req.method === "POST" ? path.match(/^\/video\/([a-z0-9-]+)\/shot\/([a-z0-9-]+)\/(ok|redraw|repose|onepose|nomouth|edit)$/) : null;
+    const vs = vd && req.method === "POST" ? path.match(/^\/video\/([a-z0-9-]+)\/shot\/([a-z0-9-]+)\/(ok|redraw|fix|undo|remove|repose|onepose|nomouth|edit)$/) : null;
     if (vs && vd) {
       const [, id, shot, act] = vs;
       try {
         const form = await readForm(req);
         if (act === "ok") vd.tick(id, shot);
         if (act === "redraw") vd.redraw(id, shot, form.get("note") ?? "");
+        if (act === "fix") vd.fixDetail(id, shot, form.get("note") ?? "");
+        if (act === "undo") vd.undoFix(id, shot);
+        if (act === "remove") {
+          vd.removeShot(id, shot);
+          return redirect(res, `/video/${id}`);
+        }
         if (act === "repose") vd.redrawPose(id, shot);
         if (act === "onepose") vd.onePose(id, shot);
         if (act === "nomouth") vd.noMouth(id, shot);
         if (act === "edit") {
-          const lines: Record<number, string> = {};
-          for (const [k, v] of form) if (k.startsWith("line-")) lines[Number(k.slice(5))] = v;
-          vd.editShot(id, shot, { act: form.get("act") ?? undefined, pose: form.get("pose") ?? undefined, bubble: form.get("bubble") ?? undefined, lines });
+          const lines: Record<number, string> = {}, starts: Record<number, string> = {}, ends: Record<number, string> = {};
+          for (const [k, v] of form) {
+            if (k.startsWith("line-")) lines[Number(k.slice(5))] = v;
+            if (k.startsWith("start-")) starts[Number(k.slice(6))] = v;
+            if (k.startsWith("end-")) ends[Number(k.slice(4))] = v;
+          }
+          vd.editShot(id, shot, {
+            act: form.get("act") ?? undefined,
+            pose: form.get("pose") ?? undefined,
+            bubble: form.get("bubble") ?? undefined,
+            lines,
+            starts,
+            ends,
+            drop: form.getAll("drop").map(Number),
+            add: { text: form.get("add-text") ?? "", start: form.get("add-start") ?? "", end: form.get("add-end") ?? "" },
+            t: form.get("t") ?? undefined,
+          });
         }
         return redirect(res, `/video/${id}#${shot}`);
       } catch (e) {

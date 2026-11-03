@@ -4,7 +4,7 @@ import { loadMemorySync } from "@hoi-sau/story";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { test } from "node:test";
+import { after, test } from "node:test";
 import { parse, parseDocument } from "yaml";
 import { approvalProblems } from "@hoi-sau/channel";
 import {
@@ -42,8 +42,13 @@ import {
   type StudioContext,
 } from "./index.js";
 
+// Each sandbox copies the characters folder (pose sheets and all), so remove them when the file's tests end.
+const sandboxes: string[] = [];
+after(() => { for (const dir of sandboxes) rmSync(dir, { recursive: true, force: true }); });
+
 function sandbox() {
   const root = mkdtempSync(join(tmpdir(), "hoisau-studio-"));
+  sandboxes.push(root);
   const charactersDir = join(root, "characters");
   const seriesDir = join(root, "series");
   cpSync(CHARACTERS_DIR, charactersDir, { recursive: true });

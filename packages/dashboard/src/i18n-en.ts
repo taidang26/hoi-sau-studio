@@ -453,6 +453,7 @@ export const EN: Record<string, string> = {
   "Sao lưu": "Backup",
   "Lần gần nhất: {at}": "Last: {at}",
   "Chưa sao lưu lần nào.": "No backup yet.",
+  "Ổ đĩa còn {gb} GB, chưa sao lưu để không làm đầy ổ. Xoá bớt bản sao lưu cũ hoặc đổi nơi lưu.": "Only {gb} GB free on the drive, so no backup was made (it would fill the drive). Delete old backups or choose another place.",
   "{n} bản": "{n} copies",
   "Tự sao lưu bình luận, tin nhắn, tập đã vẽ, tư liệu và nhân vật mỗi 6 giờ. Khoá bí mật không được chép.": "Comments, messages, drawn episodes, references and characters are copied every 6 hours. Secret keys are never copied.",
   "Thư mục": "Folder",

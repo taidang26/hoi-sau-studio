@@ -13,12 +13,12 @@
  *                    the clip's voice and cuts, one picture per shot of <slug> acting it out (Muse Image, checked by Muse Spark), two poses on one background (SAM 3.1)
  *   npm run talk -- cover <slug> --out <illustrate dir> --quote "“line|line *key*.”" [--shot s08] [--episode <id>]
  *                    TikTok cover: the line on a white badge (key words red) + "Hồi Sau" tag over a shot, inside the grid's safe zone and off the faces (SAM 3.1)
- *   npm run talk -- meme <slug> --out <dir with meme.json> [--step plan|draw|fix|ask|poses|stabilize|music|blink|render|all] [--find <thing>] [--at <s>] [--only s01] [--note <what to change>]
+ *   npm run talk -- meme <slug> --out <dir with meme.json> [--step plan|draw|fix|ask|retime|poses|stabilize|music|blink|render|all] [--find <thing>] [--at <s>] [--only s01] [--note <what to change>]
  *                    silent text meme: two beats of big text over one or two pictures (two poses, still background), MusicGen music
  *   npm run talk -- demo                                                   offline: mock pictures, hummed voice
  */
 
-import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { probeVideo, reelsProblems } from "@hoi-sau/motion";
@@ -35,7 +35,7 @@ import { buildTimeline, FPS } from "./timeline.js";
 import { mouthTrack, RATE, ttsArg, voiceFor, type Tts } from "./voice.js";
 import { facesBox, makeCover } from "./cover.js";
 import sharp from "sharp";
-import { makeBlink, makeMusic, planMeme, readMeme, renderMeme } from "./meme.js";
+import { makeBlink, makeMusic, planMeme, readMeme, renderMeme, retimeMeme } from "./meme.js";
 import { askFixes, speechGaps } from "./fixes.js";
 import { drawMouths, drawPoses, drawShots, fixShot, gateToWords, groupLines, hearWords, planShots, renderIllustrated, sceneCuts, shotSpans, stabilizePoses, timeWords, type Line, type Plan } from "./illustrate.js";
 
@@ -308,7 +308,7 @@ async function main() {
     }
     case "meme": {
       const [slug] = pos;
-      if (!slug || !opt.out) throw new Error("Usage: talk meme <slug> --out <dir with meme.json> [--step plan|draw|fix|ask|poses|stabilize|music|blink|render|all] [--find <thing>] [--at <s>] [--only s01] [--note <what to change>]");
+      if (!slug || !opt.out) throw new Error("Usage: talk meme <slug> --out <dir with meme.json> [--step plan|draw|fix|ask|retime|poses|stabilize|music|blink|render|all] [--find <thing>] [--at <s>] [--only s01] [--note <what to change>]");
       const out = fromCwd(opt.out as string);
       const step = String(opt.step ?? "all");
       const only = opt.only ? String(opt.only).split(",") : undefined;
@@ -316,6 +316,16 @@ async function main() {
       const spec = readMeme(out);
       const ctx = openStudio({ log });
       const planFile = join(out, "plan.json"), shots = join(out, "shots"), music = join(out, "music.wav");
+      if (step === "retime") {
+        // Reading-time pacing on a clip already drawn: --seconds 0 (default) lets the text decide the length.
+        spec.seconds = opt.seconds !== undefined ? Number(opt.seconds) : 0;
+        writeFileSync(join(out, "meme.json"), JSON.stringify(spec, null, 2) + "\n");
+        const p = retimeMeme(JSON.parse(readFileSync(planFile, "utf8")), spec);
+        writeFileSync(planFile, JSON.stringify(p, null, 2) + "\n");
+        log(`punchline at ${p.lines[1]?.start}s, ${p.end}s long; render again (music is made again for the new length)`);
+        rmSync(join(out, "music.prompt"), { force: true });
+        return;
+      }
       if (run("plan") && (step === "plan" || !existsSync(planFile))) {
         writeFileSync(planFile, JSON.stringify(await planMeme(ctx, slug, spec), null, 2) + "\n");
         log(`${planFile}: ${spec.scenes.length} scene(s)`);

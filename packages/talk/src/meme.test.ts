@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import sharp from "sharp";
-import { blinkShut, fitText, MEME_FRAME, memeLower, memePose, memeProblems, punchTime, renderMeme } from "./meme.js";
+import { blinkShut, fitText, MEME_FRAME, memeLower, memePose, memeProblems, memeTiming, readTime, renderMeme, retimeMeme } from "./meme.js";
 
 const ok = { top: "Sếp bảo làm thêm giờ là cơ hội", punch: "Cơ hội để sếp về sớm", scenes: ["", ""], music: "", seconds: 14 };
 
@@ -17,9 +17,20 @@ test("what the owner typed is checked before anything is drawn", () => {
   assert.match(memeProblems({ ...ok, top: "x".repeat(120) }).join(" "), /tối đa/);
 });
 
-test("the punchline lands at scene 2, or before the middle with one scene; poses alternate", () => {
-  assert.equal(punchTime(14, 2), 6.3);
-  assert.equal(punchTime(14, 1), 5.6);
+test("the punchline comes as soon as the first line is read, then holds; poses alternate", () => {
+  // Clip 17: a five-word lead-in is read in 2.4 s, not the old 6.3 s.
+  const t17 = memeTiming({ top: "Đi làm đã mệt rồi", punch: "còn phải ăn bữa cơm dở ẹc do mình tự nấu mang theo", seconds: 0 });
+  assert.equal(t17.punchAt, 2.4);
+  assert.ok(t17.end > 8.5 && t17.end < 10, String(t17.end));
+  const long = memeTiming({ top: "2 nguồn thu nhập thì luôn tốt hơn là chỉ có 1. Vì vậy", punch: "x", seconds: 0 });
+  assert.equal(long.punchAt, +readTime("2 nguồn thu nhập thì luôn tốt hơn là chỉ có 1. Vì vậy").toFixed(2));
+  assert.equal(memeTiming({ top: "a b", punch: "c", seconds: 0 }).end, 6, "never shorter than 6 s");
+  assert.equal(memeTiming({ top: "a b", punch: "c", seconds: 14 }).end, 14, "a set length moves only the end");
+  assert.equal(memeTiming({ top: "a b", punch: "c", seconds: 14 }).punchAt, 2);
+  // Clips already drawn get the new timing without drawing again.
+  const plan = { slug: "cu-li", clip: "", end: 14, lines: [{ text: "Đi làm đã mệt rồi", start: 0, end: 6.3 }, { text: "còn phải ăn bữa cơm dở ẹc do mình tự nấu mang theo", start: 6.3, end: 14 }], shots: [{ id: "s01", t: 0, act: "", pose: "", bubble: "", cast: [] }, { id: "s02", t: 6.3, act: "", pose: "", bubble: "", cast: [] }] };
+  retimeMeme(plan, { top: plan.lines[0].text, punch: plan.lines[1].text, seconds: 0 });
+  assert.deepEqual([plan.lines[0].end, plan.lines[1].start, plan.shots[1].t, plan.end, plan.lines[1].end], [2.4, 2.4, 2.4, t17.end, t17.end]);
   assert.equal(memePose(0.2, 2), 0);
   assert.equal(memePose(1.6, 2), 1);
   assert.equal(memePose(2.5, 2), 0);

@@ -264,13 +264,13 @@ export class Videos {
       punch: (meme?.punch ?? "").trim(),
       scenes: (meme?.scenes ?? [""]).map((s) => s.trim()).slice(0, 2),
       music: (meme?.music ?? "").trim(),
-      seconds: Number(meme?.seconds) || 14,
+      seconds: Number(meme?.seconds) || 0,
     };
     if (!spec.scenes.length) spec.scenes = [""];
     if (!spec.top) throw new Error(t("Viết dòng chữ 1."));
     if (!spec.punch) throw new Error(t("Viết dòng chữ 2 (câu chốt)."));
     if (spec.top.length > 90 || spec.punch.length > 90) throw new Error(t("Mỗi dòng chữ tối đa {n} ký tự.", { n: 90 }));
-    if (spec.seconds < 10 || spec.seconds > 20) throw new Error(t("Độ dài từ 10 đến 20 giây."));
+    if (spec.seconds && (spec.seconds < 6 || spec.seconds > 20)) throw new Error(t("Độ dài từ 6 đến 20 giây, hoặc để trống cho máy tự tính."));
     let id = `${slug}-${stamp()}`;
     for (let n = 2; existsSync(this.folder(id)); n++) id = `${slug}-${stamp()}-${n}`;
     mkdirSync(this.folder(id), { recursive: true });
@@ -986,7 +986,7 @@ export function videosPage(v: Videos, err?: string, ok?: string): string {
 <label>${esc(t("Dòng chữ 2: câu chốt (hiện sau, chữ đỏ)"))}<input name="punch" maxlength="90" required placeholder="${esc(t("vd: Cơ hội để sếp về sớm"))}"></label>
 <div class="row"><label>${esc(t("Nhân vật chính"))}<select name="slug">${cast.map((c) => `<option value="${esc(c.slug)}"${c.slug === "cu-li" ? " selected" : ""}>${esc(c.name)}</option>`).join("")}</select></label>
 <label>${esc(t("Số cảnh"))}<select name="scenes"><option value="2">2</option><option value="1">1</option></select></label>
-<label>${esc(t("Độ dài (giây)"))}<input type="number" name="seconds" min="10" max="20" value="14"></label></div>
+<label>${esc(t("Độ dài (giây; để trống: theo thời gian đọc)"))}<input type="number" name="seconds" min="6" max="20" placeholder="${esc(t("tự tính"))}"></label></div>
 <label>${esc(t("Cảnh 1 vẽ gì (để trống: máy tự nghĩ)"))}<input name="scene1" placeholder="${esc(t("vd: Tũn ngồi bàn làm việc, mắt díp lại"))}"></label>
 <label>${esc(t("Cảnh 2 vẽ gì"))}<input name="scene2" placeholder="${esc(t("vd: Sếp Mực đếm tiền, tiền lật lật"))}"></label>
 <label>${esc(t("Nhạc nền (tiếng Anh cho MusicGen; để trống: không nhạc)"))}<input name="music" value="${esc(MEME_MUSIC)}"></label>
@@ -1223,9 +1223,12 @@ export function mockExec(): Exec {
     if (args[0] === "meme" && at("--step") === "plan") {
       const out = at("--out");
       const spec = JSON.parse(readFileSync(join(out, "meme.json"), "utf8")) as MemeInput;
-      const punchAt = +(spec.seconds * (spec.scenes.length > 1 ? 0.45 : 0.4)).toFixed(2);
+      // Same pacing as talk's memeTiming: the punchline once the first line is read.
+      const read = (x: string) => 1 + x.trim().split(/\s+/).length * 0.28;
+      const punchAt = +Math.max(2, read(spec.top)).toFixed(2);
+      const end = +(spec.seconds || Math.max(6, punchAt + read(spec.punch) + 2.5)).toFixed(2);
       const shots: Shot[] = spec.scenes.map((note, i) => ({ id: `s0${i + 1}`, t: i ? punchAt : 0, act: note || "the lead at the office desk", pose: "blinks and moves a hand", bubble: "", cast: [] }));
-      writeFileSync(join(out, "plan.json"), JSON.stringify({ slug: args[1], clip: "", end: spec.seconds, lines: [{ text: spec.top, start: 0, end: punchAt }, { text: spec.punch, start: punchAt, end: spec.seconds }], shots }, null, 2) + "\n");
+      writeFileSync(join(out, "plan.json"), JSON.stringify({ slug: args[1], clip: "", end, lines: [{ text: spec.top, start: 0, end: punchAt }, { text: spec.punch, start: punchAt, end }], shots }, null, 2) + "\n");
       return "";
     }
     if (script === CHANNEL) {

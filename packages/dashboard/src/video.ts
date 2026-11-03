@@ -612,7 +612,7 @@ export class Videos {
 
   /**
    * Changes only what the note says on pose A and keeps the rest of the picture (talk --step fix);
-   * pose B and the mouths are made again from the fixed picture.
+   * the change is carried into pose B and the mouths, and only what cannot take it is made again.
    */
   fixDetail(id: string, shot: string, note: string): void {
     const s = this.plan(id)?.shots.find((x) => x.id === shot && !x.src);
@@ -625,7 +625,9 @@ export class Videos {
 
   private async fixWork(id: string, s: Shot, note: string, find: string, log: (x: string) => void): Promise<void> {
     await this.talk(id, "fix", log, ["--only", s.id, "--note", note, ...(find.trim() ? ["--find", find.trim()] : [])]);
-    await this.afterNewA(id, s, log);
+    // talk carried the change into pose B and the mouths where it could and removed the rest: only that is made again.
+    if (s.pose && !existsSync(join(this.shotsDir(id), `${s.id}-b.png`))) await this.talk(id, "poses", log, ["--only", s.id]);
+    await this.fillGaps(id, log, [s.id]);
   }
 
   /** Puts back the picture from before the last detail fix. */
@@ -1534,6 +1536,8 @@ export function mockExec(): Exec {
           copyFileSync(join(dir, `${s.id}.png`), join(dir, `${s.id}-prev.png`));
           log(`${s.id}: fixing (${at("--note")})`);
           await picture(join(dir, `${s.id}.png`), `${s.id} A fixed`, hue(i) + 5);
+          // Like talk: a fix found by --find is carried into pose B and the mouths; a whole new picture drops them.
+          if (!at("--find")) for (const p of [`${s.id}-s`, `${s.id}-m`, `${s.id}-b`, `${s.id}-b2`, `${s.id}-b2-s`, `${s.id}-b2-m`]) rmSync(join(dir, `${p}.png`), { force: true });
         }
     if (step === "poses")
       for (const [i, s] of plan.shots.entries()) if (s.pose && pick(s) && (only || !existsSync(join(dir, `${s.id}-b.png`)))) (log(`${s.id}: second pose`), await picture(join(dir, `${s.id}-b.png`), `${s.id} B`, hue(i) + 20));

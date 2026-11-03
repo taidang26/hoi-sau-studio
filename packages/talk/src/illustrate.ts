@@ -399,11 +399,18 @@ export async function fixShot(ctx: StudioContext, plan: Plan, dir: string, id: s
         opts.log?.(`${id}: ${why}`);
         continue;
       }
+      // Pasted under a mask, the rest of the picture is the old one pixel for pixel: the compare is the check
+      // (a whole-picture check here flagged a helmet the fix never touched and sent it into a second edit).
+      if (opts.find && opts.sam) {
+        writeFileSync(file, pasted.image);
+        await carryFix(dir, id, before, pasted.image, opts.log);
+        return;
+      }
       const v = await checkPicture(ctx, plan.slug, `${s.act}; changed: ${note.trim()}`, pasted.image);
       opts.log?.(`${id}: ${v.pass ? "check passed" : `check failed: ${v.problems.join("; ")}`}`);
       writeFileSync(file, pasted.image);
       why = "";
-      if (v.pass) return;
+      if (v.pass) { dropDerived(dir, id, opts.log); return; }
       fix = v.fix;
     }
   } catch (e) {
@@ -415,13 +422,54 @@ export async function fixShot(ctx: StudioContext, plan: Plan, dir: string, id: s
     writeFileSync(file, before);
     throw new Error(`the picture was left as it was (${why})`);
   }
+  dropDerived(dir, id, opts.log);
+}
+
+/** The pictures made from a shot's pose A: pose B (raw and stabilized) and the shut and open mouths of each. */
+const derivedOf = (id: string) => [`${id}-s`, `${id}-m`, `${id}-b`, `${id}-b2`, `${id}-b2-s`, `${id}-b2-m`];
+
+/** Pose A was drawn anew: what was made from it goes, to be made again. */
+function dropDerived(dir: string, id: string, log?: (s: string) => void): void {
+  for (const p of [...derivedOf(id), `${id}-s.raw`, `${id}-m.raw`, `${id}-b2-s.raw`, `${id}-b2-m.raw`, `${id}-mask`]) rmSync(join(dir, `${p}.png`), { force: true });
+  log?.(`${id}: second pose and mouths will be made again from the new picture`);
 }
 
 /**
- * The per-channel shift that brings a flat patch of the edit (`core` in `b`, little variation) to the
- * original's mean tone in the ring around it, or undefined when the patch is not flat (a recoloured
- * object keeps its new colour) or already matches.
+ * A detail fix changed one place of pose A: the same change is pasted into pose B and the mouth pictures,
+ * which share that place, instead of drawing them again (that cost minutes and could lose pose B). A picture
+ * where the place looks different (the character moved over it) is dropped, to be made again.
  */
+export async function carryFix(dir: string, id: string, before: Buffer, after: Buffer, log?: (s: string) => void): Promise<{ carried: string[]; dropped: string[] }> {
+  const { w, h } = OUT;
+  const raw = async (b: Buffer) => new Uint8Array(await sharp(b).resize(w, h, { fit: "cover" }).removeAlpha().raw().toBuffer());
+  const a = await raw(before), b = await raw(after);
+  const changed = new Uint8Array(w * h).map((_, i) => (Math.abs(a[i * 3] - b[i * 3]) + Math.abs(a[i * 3 + 1] - b[i * 3 + 1]) + Math.abs(a[i * 3 + 2] - b[i * 3 + 2]) > 9 ? 1 : 0));
+  const out = { carried: [] as string[], dropped: [] as string[] };
+  if (!changed.some((v) => v)) return out;
+  const region = dilate(changed, w, h, 8);
+  const alpha = await sharp(Buffer.from(region.map((v) => v * 255)), { raw: { width: w, height: h, channels: 1 } }).blur(4).extractChannel(0).raw().toBuffer();
+  const rgba = Buffer.alloc(w * h * 4);
+  for (let i = 0; i < w * h; i++) { rgba[i * 4] = b[i * 3]; rgba[i * 4 + 1] = b[i * 3 + 1]; rgba[i * 4 + 2] = b[i * 3 + 2]; rgba[i * 4 + 3] = alpha[i]; }
+  for (const p of derivedOf(id)) {
+    const f = join(dir, `${p}.png`);
+    if (!existsSync(f)) continue;
+    const q = await raw(readFileSync(f));
+    let n = 0, d = 0;
+    for (let i = 0; i < region.length; i++) if (region[i]) { n++; d += (Math.abs(q[i * 3] - a[i * 3]) + Math.abs(q[i * 3 + 1] - a[i * 3 + 1]) + Math.abs(q[i * 3 + 2] - a[i * 3 + 2])) / 3; }
+    if (n && d / n < 12) {
+      writeFileSync(f, await sharp(Buffer.from(q), { raw: { width: w, height: h, channels: 3 } }).composite([{ input: rgba, raw: { width: w, height: h, channels: 4 } }]).removeAlpha().png().toBuffer());
+      out.carried.push(p);
+    } else {
+      // Pose B gone takes its stabilized copy and mouths with it.
+      const gone = p === `${id}-b` ? [p, `${id}-b2`, `${id}-b2-s`, `${id}-b2-m`] : p === `${id}-b2` ? [p, `${id}-b2-s`, `${id}-b2-m`] : [p];
+      for (const g of gone) { rmSync(join(dir, `${g}.png`), { force: true }); rmSync(join(dir, `${g}.raw.png`), { force: true }); }
+      out.dropped.push(...gone.filter((g) => !out.dropped.includes(g)));
+    }
+  }
+  log?.(`${id}: fix carried into ${out.carried.join(", ") || "nothing"}${out.dropped.length ? `; made again: ${out.dropped.join(", ")}` : ""}`);
+  return out;
+}
+
 /** Least squares plane v = k0 + k1·x + k2·y per channel over the selected pixels (x, y as shares of the frame). */
 function planeFit(img: Uint8Array, sel: Uint8Array, w: number): { k: number[][]; resid: number; n: number } {
   const h = sel.length / w;

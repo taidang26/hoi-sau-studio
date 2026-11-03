@@ -22,7 +22,7 @@
  */
 
 import { spawn, spawnSync } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { basename, extname, join } from "node:path";
 import sharp from "sharp";
 import { readApproval, type EpisodePost } from "@hoi-sau/channel";
@@ -91,6 +91,39 @@ interface Meta {
   coverProblem?: string;
   /** Per shot: share of the frame's edge that differs between the two poses (0–1); high means the picture shifted. */
   drift?: Record<string, number>;
+  ask?: Ask;
+  done?: Done;
+}
+
+/** One edit Muse Spark proposes from the owner's note (talk's FixAction). */
+export interface FixAction {
+  do: "line_text" | "line_time" | "add_line" | "drop_line" | "bubble" | "fix_detail" | "redraw" | "add_shot" | "redo_pose" | "one_pose" | "no_mouth";
+  shot: string;
+  line: number;
+  text: string;
+  start: number;
+  end: number;
+  what: string;
+  find: string;
+  say: string;
+}
+
+/** The owner's note and what the machine proposes for it, waiting for "Làm". */
+interface Ask {
+  note: string;
+  at?: number;
+  reply: string;
+  actions: FixAction[];
+}
+
+/** The last applied fix, kept until the owner keeps it or goes back. */
+interface Done {
+  note: string;
+  says: string[];
+  /** Pictures that changed or were added, with the share of pose A that changed (1 for a new shot). */
+  changed: Record<string, number>;
+  /** Shots whose detail fix was meant to touch one thing only. */
+  detail: string[];
 }
 
 export interface Shot {
@@ -358,16 +391,105 @@ export class Videos {
     this.save(m);
   }
 
-  /** New words for a shot (what it shows, the second pose, the bubble) and the lines heard in it. */
-  editShot(id: string, shot: string, form: { act?: string; pose?: string; bubble?: string; lines?: Record<number, string> }): void {
+  /**
+   * New words for a shot (what it shows, the second pose, the bubble), the lines heard in it with their times,
+   * a line the recogniser missed, and when the shot starts (not the first one).
+   */
+  editShot(
+    id: string,
+    shot: string,
+    form: {
+      act?: string;
+      pose?: string;
+      bubble?: string;
+      lines?: Record<number, string>;
+      starts?: Record<number, string>;
+      ends?: Record<number, string>;
+      drop?: number[];
+      add?: { text: string; start: string; end: string };
+      t?: string;
+    },
+  ): void {
     const plan = this.plan(id);
     const s = plan?.shots.find((x) => x.id === shot);
     if (!plan || !s) throw new Error(t("Không thấy cảnh này."));
+    const sec = (v: string | undefined, what: string): number | undefined => {
+      if (v === undefined || !v.trim()) return undefined;
+      const n = Number(v.trim().replace(",", "."));
+      if (!Number.isFinite(n) || n < 0 || n > plan.end) throw new Error(t("{what}: giây phải từ 0 đến {end}.", { what, end: plan.end.toFixed(1) }));
+      return Math.round(n * 100) / 100;
+    };
     if (form.act !== undefined && form.act.trim()) s.act = form.act.trim();
     if (form.pose !== undefined) s.pose = form.pose.trim();
     if (form.bubble !== undefined) s.bubble = form.bubble.trim();
     for (const [k, text] of Object.entries(form.lines ?? {})) if (plan.lines[Number(k)] && text.trim()) plan.lines[Number(k)].text = text.trim();
+    for (const [k, v] of Object.entries(form.starts ?? {})) { const l = plan.lines[Number(k)], n = sec(v, l?.text ?? ""); if (l && n !== undefined) l.start = n; }
+    for (const [k, v] of Object.entries(form.ends ?? {})) { const l = plan.lines[Number(k)], n = sec(v, l?.text ?? ""); if (l && n !== undefined) l.end = n; }
+    if (form.add?.text.trim()) {
+      const start = sec(form.add.start, t("Câu mới")), end = sec(form.add.end, t("Câu mới"));
+      if (start === undefined || end === undefined) throw new Error(t("Câu mới cần giờ bắt đầu và kết thúc."));
+      plan.lines.push({ text: form.add.text.trim(), start, end });
+    }
+    const drop = new Set(form.drop ?? []);
+    plan.lines = plan.lines.filter((_, k) => !drop.has(k));
+    for (const l of plan.lines) if (l.end <= l.start) throw new Error(t("Câu \"{text}\": giờ kết thúc phải sau giờ bắt đầu.", { text: l.text }));
+    plan.lines.sort((a, b) => a.start - b.start);
+    const start = sec(form.t, t("Giờ bắt đầu cảnh"));
+    if (start !== undefined && start !== s.t) {
+      if (plan.shots[0] === s) throw new Error(t("Cảnh đầu luôn bắt đầu từ 0 giây."));
+      const near = plan.shots.find((x) => x !== s && Math.abs(x.t - start) < 0.3);
+      if (near) throw new Error(t("Đã có cảnh {id} bắt đầu lúc {t}s.", { id: near.id, t: near.t.toFixed(1) }));
+      if (start < 0.3) throw new Error(t("Cảnh sau phải bắt đầu từ 0.3 giây trở đi."));
+      s.t = start;
+      plan.shots.sort((a, b) => a.t - b.t);
+    }
     this.savePlan(id, plan);
+  }
+
+  /** A new shot from `at` seconds (a line with no picture of its own): drawn, posed and checked like the others. */
+  addShot(id: string, form: { t: string; act: string; pose?: string; bubble?: string }): string {
+    if (this.jobs.get(id)?.running) throw new Error(t("Video này đang chạy."));
+    const shot = this.insertShot(id, form);
+    this.background(id, (log) => this.newShotWork(id, shot, log));
+    return shot.id;
+  }
+
+  private async newShotWork(id: string, shot: Shot, log: (x: string) => void): Promise<void> {
+    await this.talk(id, "draw", log, ["--only", shot.id]);
+    if (shot.pose) await this.talk(id, "poses", log, ["--only", shot.id]);
+    await this.fillGaps(id, log, [shot.id]);
+  }
+
+  private insertShot(id: string, form: { t: string; act: string; pose?: string; bubble?: string }): Shot {
+    const plan = this.plan(id);
+    if (!plan) throw new Error(t("Chưa có kế hoạch cảnh."));
+    const at = Math.round(Number((form.t ?? "").trim().replace(",", ".")) * 100) / 100;
+    if (!Number.isFinite(at) || at < 0.3 || at > plan.end - 0.3) throw new Error(t("Giây bắt đầu cảnh mới phải từ 0.3 đến {end}.", { end: (plan.end - 0.3).toFixed(1) }));
+    const near = plan.shots.find((x) => Math.abs(x.t - at) < 0.3);
+    if (near) throw new Error(t("Đã có cảnh {id} bắt đầu lúc {t}s.", { id: near.id, t: near.t.toFixed(1) }));
+    if (!form.act?.trim()) throw new Error(t("Viết cảnh mới vẽ gì."));
+    const ids = new Set(plan.shots.map((x) => x.id));
+    let n = plan.shots.length + 1;
+    while (ids.has(`s${String(n).padStart(2, "0")}`)) n++;
+    const shot: Shot = { id: `s${String(n).padStart(2, "0")}`, t: at, act: form.act.trim(), pose: (form.pose ?? "").trim(), bubble: (form.bubble ?? "").trim(), cast: [] };
+    plan.shots.push(shot);
+    plan.shots.sort((a, b) => a.t - b.t);
+    this.savePlan(id, plan);
+    return shot;
+  }
+
+  /** Takes a shot out; the one before it runs on until the next. The first shot stays. */
+  removeShot(id: string, shot: string): void {
+    const plan = this.plan(id);
+    const k = plan?.shots.findIndex((x) => x.id === shot) ?? -1;
+    if (!plan || k < 0) throw new Error(t("Không thấy cảnh này."));
+    if (k === 0) throw new Error(t("Không bỏ được cảnh đầu."));
+    if (plan.shots.some((x) => x.src === shot)) throw new Error(t("Cảnh khác đang dùng lại tranh này."));
+    plan.shots.splice(k, 1);
+    this.savePlan(id, plan);
+    const m = this.meta(id);
+    delete m.checked[shot];
+    this.save(m);
   }
 
   private dropPictures(id: string, pics: string[], kinds: string[]): void {
@@ -384,12 +506,14 @@ export class Videos {
       this.savePlan(id, plan);
     }
     this.forget(id, [s.id]);
-    this.background(id, async (log) => {
-      this.dropPictures(id, [s.id, `${s.id}-b`, `${s.id}-b2`], ["", "-s", "-m", "-s.raw", "-m.raw", "-mask", "-blink"]);
-      await this.talk(id, "draw", log, ["--only", s.id]);
-      await this.talk(id, "poses", log, ["--only", s.id]);
-      await this.fillGaps(id, log, [s.id]);
-    });
+    this.background(id, (log) => this.redrawWork(id, s, log));
+  }
+
+  private async redrawWork(id: string, s: Shot, log: (x: string) => void): Promise<void> {
+    this.dropPictures(id, [s.id, `${s.id}-b`, `${s.id}-b2`], ["", "-s", "-m", "-s.raw", "-m.raw", "-mask", "-blink", "-prev"]);
+    await this.talk(id, "draw", log, ["--only", s.id]);
+    if (s.pose) await this.talk(id, "poses", log, ["--only", s.id]);
+    await this.fillGaps(id, log, [s.id]);
   }
 
   /** Draws only the second pose again. */
@@ -397,12 +521,53 @@ export class Videos {
     const s = this.plan(id)?.shots.find((x) => x.id === shot && !x.src);
     if (!s?.pose) throw new Error(t("Cảnh này không có tư thế 2."));
     this.forget(id, [s.id]);
+    this.background(id, (log) => this.poseWork(id, s, log));
+  }
+
+  private async poseWork(id: string, s: Shot, log: (x: string) => void): Promise<void> {
+    this.dropPictures(id, [`${s.id}-b`, `${s.id}-b2`], ["", "-s", "-m", "-s.raw", "-m.raw"]);
+    rmSync(join(this.shotsDir(id), `${s.id}-mask.png`), { force: true });
+    await this.talk(id, "poses", log, ["--only", s.id]);
+    await this.fillGaps(id, log, [s.id]);
+  }
+
+  /**
+   * Changes only what the note says on pose A and keeps the rest of the picture (talk --step fix);
+   * pose B and the mouths are made again from the fixed picture.
+   */
+  fixDetail(id: string, shot: string, note: string): void {
+    const s = this.plan(id)?.shots.find((x) => x.id === shot && !x.src);
+    if (!s) throw new Error(t("Không thấy cảnh này."));
+    if (!note.trim()) throw new Error(t("Viết chỗ cần sửa, vd: bỏ ghim sao sau lưng Rico."));
+    if (!existsSync(join(this.shotsDir(id), `${s.id}.png`))) throw new Error(t("Cảnh này chưa vẽ."));
+    this.forget(id, [s.id]);
+    this.background(id, (log) => this.fixWork(id, s, note.trim(), "", log));
+  }
+
+  private async fixWork(id: string, s: Shot, note: string, find: string, log: (x: string) => void): Promise<void> {
+    await this.talk(id, "fix", log, ["--only", s.id, "--note", note, ...(find.trim() ? ["--find", find.trim()] : [])]);
+    await this.afterNewA(id, s, log);
+  }
+
+  /** Puts back the picture from before the last detail fix. */
+  undoFix(id: string, shot: string): void {
+    const s = this.plan(id)?.shots.find((x) => x.id === shot && !x.src);
+    const prev = join(this.shotsDir(id), `${shot}-prev.png`);
+    if (!s || !existsSync(prev)) throw new Error(t("Không có bản trước để quay lại."));
+    this.forget(id, [s.id]);
     this.background(id, async (log) => {
-      this.dropPictures(id, [`${s.id}-b`, `${s.id}-b2`], ["", "-s", "-m", "-s.raw", "-m.raw"]);
-      rmSync(join(this.shotsDir(id), `${s.id}-mask.png`), { force: true });
-      await this.talk(id, "poses", log, ["--only", s.id]);
-      await this.fillGaps(id, log, [s.id]);
+      copyFileSync(prev, join(this.shotsDir(id), `${s.id}.png`));
+      rmSync(prev, { force: true });
+      await this.afterNewA(id, s, log);
     });
+  }
+
+  /** Pose A changed: everything made from it goes and is made again. */
+  private async afterNewA(id: string, s: Shot, log: (x: string) => void): Promise<void> {
+    this.dropPictures(id, [s.id], ["-s", "-m", "-s.raw", "-m.raw", "-mask", "-blink"]);
+    this.dropPictures(id, [`${s.id}-b`, `${s.id}-b2`], ["", "-s", "-m", "-s.raw", "-m.raw"]);
+    if (s.pose) await this.talk(id, "poses", log, ["--only", s.id]);
+    await this.fillGaps(id, log, [s.id]);
   }
 
   /** Keeps one pose: better than a second pose that does not paste cleanly. */
@@ -452,10 +617,172 @@ export class Videos {
   render(id: string): void {
     const m = this.meta(id);
     if (!this.plan(id)) throw new Error(t("Chưa có kế hoạch cảnh."));
+    this.background(id, (log) => this.renderWork(id, m, log));
+  }
+
+  private async renderWork(id: string, m: Meta, log: (x: string) => void): Promise<void> {
+    await this.talk(id, "render", log);
+    if (m.mouth) await this.talk(id, "render", log, ["--mouth"]);
+  }
+
+  // ------------------------------------------------------------ fixing by note
+
+  undoDir = (id: string) => join(this.folder(id), "undo");
+
+  /** Spoken stretches with no subtitle, written by the last render (illustrated clips). */
+  gaps(id: string): Array<{ start: number; end: number }> {
+    const f = join(this.folder(id), "gaps.json");
+    try {
+      return existsSync(f) ? (JSON.parse(readFileSync(f, "utf8")) as Array<{ start: number; end: number }>) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  /** The owner's note, read by Muse Spark against the plan and the pictures; the proposal waits on the page. */
+  ask(id: string, note: string, at?: string): void {
+    const m = this.meta(id);
+    if (!this.plan(id)) throw new Error(t("Chưa có kế hoạch cảnh."));
+    if (!note.trim()) throw new Error(t("Viết chỗ cần sửa, như nhắn tin."));
+    const sec = at && at.trim() ? Number(at) : undefined;
     this.background(id, async (log) => {
-      await this.talk(id, "render", log);
-      if (m.mouth) await this.talk(id, "render", log, ["--mouth"]);
+      const out = join(this.folder(id), "fixes.json");
+      rmSync(out, { force: true });
+      if (m.kind !== "meme" && !existsSync(join(this.folder(id), "gaps.json"))) await this.talk(id, "gaps", log).catch(() => "");
+      log(t("Máy đang đọc lời anh và soi các cảnh…"));
+      await this.talk(id, "ask", log, ["--note", note.trim(), ...(sec !== undefined && Number.isFinite(sec) ? ["--at", String(sec)] : [])]);
+      const r = JSON.parse(readFileSync(out, "utf8")) as { reply: string; actions: FixAction[] };
+      const after = this.meta(id);
+      after.ask = { note: note.trim(), at: sec, reply: r.reply, actions: r.actions };
+      this.save(after);
     });
+  }
+
+  dropAsk(id: string): void {
+    const m = this.meta(id);
+    delete m.ask;
+    this.save(m);
+  }
+
+  /** Copies what a fix can change (plan, pictures, renders, notes) so it can be put back. */
+  private snapshot(id: string): void {
+    const u = this.undoDir(id), f = this.folder(id);
+    rmSync(u, { recursive: true, force: true });
+    mkdirSync(u, { recursive: true });
+    for (const name of readdirSync(f)) if (/^(plan|meta|meme)\.json$|\.mp4$/.test(name)) copyFileSync(join(f, name), join(u, name));
+    if (existsSync(this.shotsDir(id))) cpSync(this.shotsDir(id), join(u, "shots"), { recursive: true, filter: (src) => !/[\\/]frames([\\/]|$)/.test(src) });
+  }
+
+  /** Does the picked edits of the proposal, renders again and keeps the evidence (before, after, what changed). */
+  apply(id: string, picks: number[]): void {
+    const m = this.meta(id);
+    if (!m.ask) throw new Error(t("Chưa có gì để làm."));
+    if (this.jobs.get(id)?.running) throw new Error(t("Video này đang chạy."));
+    const acts = m.ask.actions.filter((_, i) => picks.includes(i));
+    if (!acts.length) throw new Error(t("Chọn ít nhất một việc."));
+    const note = m.ask.note;
+    this.snapshot(id);
+    const plan = this.plan(id)!;
+    const shotOf = (a: FixAction) => plan.shots.find((x) => x.id === a.shot);
+    for (const a of acts) {
+      const l = plan.lines[a.line];
+      if (a.do === "line_text" && l) l.text = a.text.trim();
+      if (a.do === "line_time" && l && a.end > a.start) [l.start, l.end] = [a.start, a.end];
+      if (a.do === "bubble" && shotOf(a)) shotOf(a)!.bubble = a.text.trim();
+      if (a.do === "redraw" && shotOf(a) && a.what.trim()) shotOf(a)!.act = `${shotOf(a)!.act.replace(/\s*Fix: .*$/, "")} Fix: ${a.what.trim()}`;
+    }
+    const drop = new Set(acts.filter((a) => a.do === "drop_line").map((a) => a.line));
+    plan.lines = plan.lines.filter((_, k) => !drop.has(k));
+    for (const a of acts) if (a.do === "add_line" && a.text.trim() && a.end > a.start) plan.lines.push({ text: a.text.trim(), start: a.start, end: a.end });
+    plan.lines.sort((a, b) => a.start - b.start);
+    this.savePlan(id, plan);
+    const added = acts.filter((a) => a.do === "add_shot").map((a) => this.insertShot(id, { t: String(a.start), act: a.what }));
+    for (const a of acts) {
+      if (a.do === "one_pose") this.onePose(id, a.shot);
+      if (a.do === "no_mouth") this.noMouth(id, a.shot);
+    }
+    const pictures = acts.filter((a) => ["fix_detail", "redraw", "redo_pose"].includes(a.do) && shotOf(a));
+    this.forget(id, pictures.map((a) => a.shot));
+    const after = this.meta(id);
+    delete after.ask;
+    after.done = { note, says: acts.map((a) => a.say), changed: {}, detail: acts.filter((a) => a.do === "fix_detail").map((a) => a.shot) };
+    this.save(after);
+    this.background(id, async (log) => {
+      const fresh = this.plan(id)!;
+      for (const a of pictures) {
+        const s = fresh.shots.find((x) => x.id === a.shot)!;
+        if (a.do === "fix_detail") await this.fixWork(id, s, a.what.trim() || note, a.find, log);
+        if (a.do === "redraw") await this.redrawWork(id, s, log);
+        if (a.do === "redo_pose" && s.pose) await this.poseWork(id, s, log);
+      }
+      for (const s of added) await this.newShotWork(id, s, log);
+      log(t("Dựng lại video…"));
+      await this.renderWork(id, this.meta(id), log);
+      await this.evidence(id, [...pictures.map((a) => a.shot), ...added.map((s) => s.id)]);
+    });
+  }
+
+  /** Before, after, a zoom on what changed and a map of the changed pixels, per changed picture. */
+  async evidence(id: string, shots: string[]): Promise<void> {
+    const m = this.meta(id);
+    if (!m.done) return;
+    for (const s of new Set(shots)) {
+      const a = join(this.undoDir(id), "shots", `${s}.png`), b = join(this.shotsDir(id), `${s}.png`);
+      if (!existsSync(b)) continue;
+      if (!existsSync(a)) {
+        m.done.changed[s] = 1;
+        continue;
+      }
+      const W = 540, H = 960;
+      const [pa, pb] = await Promise.all([a, b].map((f) => sharp(f).resize(W, H, { fit: "cover" }).removeAlpha().raw().toBuffer()));
+      const map = Buffer.alloc(W * H * 3);
+      let n = 0, x0 = W, y0 = H, x1 = -1, y1 = -1;
+      for (let i = 0; i < W * H; i++) {
+        const d = Math.abs(pa[i * 3] - pb[i * 3]) + Math.abs(pa[i * 3 + 1] - pb[i * 3 + 1]) + Math.abs(pa[i * 3 + 2] - pb[i * 3 + 2]);
+        const g = Math.round((pb[i * 3] + pb[i * 3 + 1] + pb[i * 3 + 2]) / 3 * 0.5 + 100);
+        if (d > 60) {
+          n++;
+          const x = i % W, y = (i / W) | 0;
+          [x0, y0, x1, y1] = [Math.min(x0, x), Math.min(y0, y), Math.max(x1, x), Math.max(y1, y)];
+          map.set([230, 30, 30], i * 3);
+        } else map.set([g, g, g], i * 3);
+      }
+      m.done.changed[s] = n / (W * H);
+      await sharp(map, { raw: { width: W, height: H, channels: 3 } }).jpeg({ quality: 80 }).toFile(join(this.undoDir(id), `diff-${s}.jpg`));
+      if (x1 >= 0) {
+        const pad = 40, left = Math.max(0, x0 - pad), top = Math.max(0, y0 - pad);
+        const box = { left, top, width: Math.min(W, x1 + pad) - left, height: Math.min(H, y1 + pad) - top };
+        for (const [f, tag] of [[a, "before"], [b, "after"]] as const)
+          await sharp(await sharp(f).resize(W, H, { fit: "cover" }).extract(box).png().toBuffer()).resize({ width: 360, height: 360, fit: "inside" }).jpeg({ quality: 85 }).toFile(join(this.undoDir(id), `zoom-${s}-${tag}.jpg`));
+      }
+    }
+    this.save(m);
+  }
+
+  /** Keeps the fix: the copy from before goes. */
+  keep(id: string): void {
+    const m = this.meta(id);
+    delete m.done;
+    this.save(m);
+    rmSync(this.undoDir(id), { recursive: true, force: true });
+  }
+
+  /** Puts everything back as it was before the last fix. */
+  undo(id: string): void {
+    const u = this.undoDir(id), f = this.folder(id);
+    if (!existsSync(join(u, "plan.json"))) throw new Error(t("Không có bản trước để quay lại."));
+    if (this.jobs.get(id)?.running) throw new Error(t("Video này đang chạy."));
+    for (const name of readdirSync(f)) if (/\.mp4$/.test(name)) rmSync(join(f, name), { force: true });
+    for (const name of readdirSync(u)) if (/^(plan|meta|meme)\.json$|\.mp4$/.test(name)) copyFileSync(join(u, name), join(f, name));
+    if (existsSync(join(u, "shots"))) {
+      rmSync(this.shotsDir(id), { recursive: true, force: true });
+      cpSync(join(u, "shots"), this.shotsDir(id), { recursive: true });
+    }
+    rmSync(u, { recursive: true, force: true });
+    const m = this.meta(id);
+    delete m.done;
+    delete m.ask;
+    this.save(m);
   }
 
   /** Shots not ticked yet, by id. */
@@ -691,17 +1018,120 @@ function shotCard(v: Videos, m: Meta, plan: Plan, s: Shot, busy: boolean): strin
   const actions = busy
     ? ""
     : `<div class="vactions">${checked ? `<span class="tag ok">✓ ${esc(t("Đã soát"))}</span>` : has(`${s.id}.png`) ? button(`/video/${id}/shot/${s.id}/ok`, `✓ ${esc(t("Đã soát cỡ thật, ổn"))}`, "btn on") : ""}
-<form class="inline" method="post" action="/video/${esc(id)}/shot/${esc(s.id)}/redraw"><input name="note" placeholder="${esc(t("Lỗi gì? vd: thừa một bàn tay"))}"><button class="btn">${esc(t("Vẽ lại cảnh"))}</button></form>
+<a class="btn" href="#fix" data-fill="${esc(t("Cảnh {id}: ", { id: s.id }))}" data-at="${s.t.toFixed(2)}">✎ ${esc(t("Báo lỗi cảnh này"))}</a></div>
+<details class="vmanual"><summary>${esc(t("Sửa tay"))}</summary><div class="vactions">
+<form class="inline" method="post" action="/video/${esc(id)}/shot/${esc(s.id)}/fix"><input name="note" placeholder="${esc(t("Sửa đúng chỗ nào? vd: bỏ ghim sao sau lưng Rico"))}"><button class="btn">${esc(t("Sửa chi tiết, giữ tranh"))}</button></form>
+${has(`${s.id}-prev.png`) ? button(`/video/${id}/shot/${s.id}/undo`, esc(t("Quay lại bản trước khi sửa"))) : ""}
+<form class="inline" method="post" action="/video/${esc(id)}/shot/${esc(s.id)}/redraw"><input name="note" placeholder="${esc(t("Lỗi gì? vd: thừa một bàn tay"))}"><button class="btn">${esc(t("Vẽ lại cả cảnh"))}</button></form>
 ${s.pose ? button(`/video/${id}/shot/${s.id}/repose`, esc(t("Vẽ lại tư thế 2"))) + button(`/video/${id}/shot/${s.id}/onepose`, esc(t("Giữ 1 tư thế"))) : ""}
-${m.mouth && (has(`${s.id}-m.png`) || has(`${s.id}-b2-m.png`)) ? button(`/video/${id}/shot/${s.id}/nomouth`, esc(t("Bỏ nhép"))) : ""}</div>`;
-  const edit = `<details><summary>${esc(t("Sửa lời, bong bóng, mô tả cảnh"))}</summary><form class="form" method="post" action="/video/${esc(id)}/shot/${esc(s.id)}/edit">
-${lines.map((l) => `<label>${esc(t("Lời {a}–{b}s", { a: l.start.toFixed(1), b: l.end.toFixed(1) }))}<input name="line-${l.k}" value="${esc(l.text)}"></label>`).join("")}
+${m.mouth && (has(`${s.id}-m.png`) || has(`${s.id}-b2-m.png`)) ? button(`/video/${id}/shot/${s.id}/nomouth`, esc(t("Bỏ nhép"))) : ""}
+${plan.shots[0] !== s ? button(`/video/${id}/shot/${s.id}/remove`, esc(t("Bỏ cảnh này"))) : ""}</div>`;
+  const manualEnd = busy ? "" : "</details>";
+  const edit = `<details><summary>${esc(t("Lời, giờ phụ đề, bong bóng, mô tả cảnh"))}</summary><form class="form" method="post" action="/video/${esc(id)}/shot/${esc(s.id)}/edit">
+${lines.map((l) => `<div class="row vline"><label>${esc(t("Lời"))}<input name="line-${l.k}" value="${esc(l.text)}"></label><label>${esc(t("Từ giây"))}<input name="start-${l.k}" inputmode="decimal" value="${l.start.toFixed(2)}" size="5"></label><label>${esc(t("Đến giây"))}<input name="end-${l.k}" inputmode="decimal" value="${l.end.toFixed(2)}" size="5"></label><label class="check"><input type="checkbox" name="drop" value="${l.k}"> ${esc(t("Xoá câu"))}</label></div>`).join("")}
+<div class="row vline"><label>${esc(t("Thêm câu máy nghe sót"))}<input name="add-text" placeholder="${esc(t("vd: Taeyang với cả Bigbang về Việt Nam hát concert"))}"></label><label>${esc(t("Từ giây"))}<input name="add-start" inputmode="decimal" size="5" placeholder="${s.t.toFixed(1)}"></label><label>${esc(t("Đến giây"))}<input name="add-end" inputmode="decimal" size="5" placeholder="${end.toFixed(1)}"></label></div>
+${plan.shots[0] !== s ? `<label>${esc(t("Cảnh bắt đầu từ giây"))}<input name="t" inputmode="decimal" size="5" value="${s.t.toFixed(2)}"></label>` : ""}
 <label>${esc(t("Bong bóng (ngắn, ≤12 chữ)"))}<input name="bubble" value="${esc(s.bubble)}"></label>
 <label>${esc(t("Cảnh vẽ gì (tiếng Anh cho Muse Image)"))}<textarea name="act" rows="3">${esc(s.act)}</textarea></label>
 <label>${esc(t("Tư thế 2 (để trống: chỉ 1 tư thế)"))}<input name="pose" value="${esc(s.pose)}"></label>
-<button class="btn">${esc(t("Lưu"))}</button><p class="muted small">${esc(t("Sửa mô tả cảnh xong bấm Vẽ lại cảnh. Sửa lời hay bong bóng chỉ cần Dựng lại."))}</p></form></details>`;
+<button class="btn">${esc(t("Lưu"))}</button><p class="muted small">${esc(t("Sửa mô tả cảnh xong bấm Vẽ lại cả cảnh. Sửa lời, giờ phụ đề hay bong bóng chỉ cần Dựng lại. Xem giây trong video ở trên để biết câu nói lúc nào."))}</p></form></details>`;
   return `<div class="card vshot${checked ? " checked" : ""}" id="${esc(s.id)}"><div class="vshot-head"><b>${esc(s.id)}</b> · ${s.t.toFixed(1)}–${end.toFixed(1)}s ${s.bubble ? `<span class="bubble-text">💬 ${esc(s.bubble)}</span>` : ""}</div>
-<p class="vlines">${lines.map((l) => esc(l.text)).join(" ")}</p><div class="vpics">${pics.join("")}</div>${actions}${edit}</div>`;
+<p class="vlines">${lines.map((l) => esc(l.text)).join(" ")}</p><div class="vpics">${pics.join("")}</div>${actions}${busy ? "" : edit}${manualEnd}</div>`;
+}
+
+const shotAt = (plan: Plan, at: number) => [...plan.shots].reverse().find((s) => s.t <= at + 1e-6) ?? plan.shots[0];
+const thumb = (id: string, s: Shot | undefined) => (s ? `<img class="fixthumb" src="/video-media/${esc(id)}/shots/${esc(s.src ?? s.id)}.png" alt="${esc(s.id)}" loading="lazy">` : "");
+
+/** What one proposed edit changes, shown next to the picture it is about. */
+function evidenceOf(plan: Plan, a: FixAction): string {
+  const l = plan.lines[a.line], s = plan.shots.find((x) => x.id === a.shot);
+  const q = (x: string) => `“${esc(x)}”`;
+  switch (a.do) {
+    case "line_text": return l ? `${l.start.toFixed(1)}s: <del>${q(l.text)}</del> → <ins>${q(a.text)}</ins>` : "";
+    case "line_time": return l ? `${q(l.text)}: <del>${l.start.toFixed(1)}–${l.end.toFixed(1)}s</del> → <ins>${a.start.toFixed(1)}–${a.end.toFixed(1)}s</ins>` : "";
+    case "add_line": return `<ins>+ ${q(a.text)}</ins> ${a.start.toFixed(1)}–${a.end.toFixed(1)}s`;
+    case "drop_line": return l ? `<del>${q(l.text)}</del>` : "";
+    case "bubble": return `💬 <del>${q(s?.bubble ?? "")}</del> → <ins>${q(a.text)}</ins>`;
+    case "fix_detail": return esc(t("Chỉ sửa đúng chỗ “{find}”, phần còn lại giữ nguyên.", { find: a.find || a.what }));
+    case "redraw": return esc(t("Vẽ lại cả tranh."));
+    case "add_shot": return esc(t("Cảnh mới từ {t}s đến cảnh kế tiếp.", { t: a.start.toFixed(1) }));
+    case "redo_pose": return esc(t("Vẽ lại tư thế 2."));
+    case "one_pose": return esc(t("Giữ 1 tư thế, tranh đứng yên."));
+    case "no_mouth": return esc(t("Miệng không nhép."));
+  }
+}
+
+/** The picture an edit is about: its shot, or the shot on screen at its time. */
+function shotFor(plan: Plan, a: FixAction): Shot | undefined {
+  if (a.shot) return plan.shots.find((x) => x.id === a.shot);
+  const l = plan.lines[a.line];
+  if (l) return shotAt(plan, l.start);
+  return a.start >= 0 ? shotAt(plan, a.start) : undefined;
+}
+
+/**
+ * Fixing by note: the owner pauses on the problem and writes it like a message; the machine answers with
+ * edits shown against the picture and the subtitle they touch, does them on "Làm", then shows before
+ * and after with the changed pixels marked, with "Giữ" or "Hoàn tác".
+ */
+function fixCard(v: Videos, m: Meta, plan: Plan, busy: boolean): string {
+  const id = m.id;
+  const suspects = [
+    ...v.gaps(id).map((g) => ({ at: g.start, text: t("{a}–{b}s có tiếng nói mà không có phụ đề", { a: g.start.toFixed(1), b: g.end.toFixed(1) }), fill: t("Từ {a} đến {b}s có câu nói chưa có phụ đề, câu đó là: ", { a: g.start.toFixed(1), b: g.end.toFixed(1) }) })),
+    ...plan.shots.filter((s) => (m.drift?.[s.id] ?? 0) > DRIFT_WARN).map((s) => ({ at: s.t, text: t("Cảnh {id}: nền lệch giữa 2 tư thế", { id: s.id }), fill: t("Cảnh {id} tư thế 2 bị xô nền, giữ 1 tư thế.", { id: s.id }) })),
+  ];
+  const bar = `<div class="fixbar">${plan.shots.map((s, i) => {
+    const e = plan.shots[i + 1]?.t ?? plan.end;
+    return `<button type="button" class="fixseg" style="flex:${Math.max(0.2, e - s.t).toFixed(2)}" data-seek="${s.t.toFixed(2)}" title="${esc(`${s.id} ${s.t.toFixed(1)}s`)}">${esc(s.id)}</button>`;
+  }).join("")}${suspects.map((x) => `<span class="fixdot" style="left:${((x.at / plan.end) * 100).toFixed(1)}%" title="${esc(x.text)}"></span>`).join("")}</div>`;
+  const warn = suspects.length
+    ? `<ul class="fixsus">${suspects.map((x) => `<li>⚠ ${esc(x.text)} · <a href="#fix" data-fill="${esc(x.fill)}" data-at="${x.at.toFixed(2)}">${esc(t("Sửa giúp"))}</a></li>`).join("")}</ul>`
+    : "";
+  const ask = m.ask;
+  const note = ask && !ask.actions.length ? ask.note : "";
+  const form = busy
+    ? ""
+    : `<form class="form" method="post" action="/video/${esc(id)}/ask"><input type="hidden" name="at" id="fix-at" value="${ask?.at ?? ""}">
+<p class="small"><span class="tag" id="fix-where">${esc(t("Chưa dừng video: lỗi chung cả clip"))}</span></p>
+<textarea name="note" id="fix-note" rows="3" required placeholder="${esc(t("vd: chỗ này thiếu tranh cho câu Taeyang · câu đầu là Mẹ không phải Mày · Rico quay lưng mà có ghim sao"))}">${esc(note)}</textarea>
+<button class="btn on">${esc(t("Xem máy định sửa gì"))}</button></form>`;
+  const proposal = ask && !busy
+    ? ask.actions.length
+      ? `<div class="fixplan"><p><b>${esc(t("Máy hiểu"))}:</b> ${esc(ask.reply)}</p><p class="muted small">${esc(t("Anh viết"))}: “${esc(ask.note)}”</p>
+<form method="post" action="/video/${esc(id)}/apply">${ask.actions.map((a, i) => `<label class="fixrow"><input type="checkbox" name="pick" value="${i}" checked>${thumb(id, shotFor(plan, a))}<span><b>${esc(a.say)}</b><br><span class="small">${evidenceOf(plan, a)}</span></span></label>`).join("")}
+<div class="vactions"><button class="btn on">${esc(t("Làm"))}</button></div></form>
+<form class="inline" method="post" action="/video/${esc(id)}/askdrop"><button class="btn">${esc(t("Bỏ, viết lại"))}</button></form>
+<p class="muted small">${esc(t("Chưa đúng ý thì viết lại ở ô trên cho rõ hơn. Bỏ chọn việc nào không muốn làm."))}</p></div>`
+      : `<div class="warn small">${esc(ask.reply || t("Máy chưa hiểu, anh viết rõ hơn giúp: cảnh nào, chữ nào, sai thế nào."))}</div>`
+    : "";
+  const done = m.done;
+  const result = done
+    ? `<div class="fixdone"><p><b>${esc(busy ? t("Đang sửa") : t("Đã sửa"))}:</b> “${esc(done.note)}”</p><ul>${done.says.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>
+${busy ? "" : Object.entries(done.changed).map(([s, share]) => {
+  const u = (f: string) => `/video-media/${esc(id)}/undo/${esc(f)}`;
+  const isNew = share === 1 && !existsSync(join(v.undoDir(id), "shots", `${s}.png`));
+  const before = isNew ? `<figure class="empty">${esc(t("cảnh mới"))}</figure>` : `<figure><a href="${u(`shots/${s}.png`)}" target="_blank"><img src="${u(`shots/${s}.png`)}" alt="" loading="lazy"></a><figcaption>${esc(t("Trước"))}</figcaption></figure>`;
+  const after = `<figure>${img(id, `${s}.png`)}<figcaption>${esc(t("Sau"))}</figcaption></figure>`;
+  const zoom = existsSync(join(v.undoDir(id), `zoom-${s}-after.jpg`)) ? `<figure class="fixzoom"><img src="${u(`zoom-${s}-before.jpg`)}" alt=""><img src="${u(`zoom-${s}-after.jpg`)}" alt=""><figcaption>${esc(t("Phóng to chỗ đổi"))}</figcaption></figure>` : "";
+  const diff = existsSync(join(v.undoDir(id), `diff-${s}.jpg`)) ? `<figure><img src="${u(`diff-${s}.jpg`)}" alt=""><figcaption>${esc(t("Đỏ: chỗ đã đổi ({p}%)", { p: (share * 100).toFixed(1) }))}</figcaption></figure>` : "";
+  const over = done.detail.includes(s) && share > 0.25 ? `<div class="warn small">${esc(t("Cảnh {id}: máy đổi nhiều hơn chỗ cần sửa ({p}% tranh). Xem kỹ, không ổn thì Hoàn tác.", { id: s, p: Math.round(share * 100) }))}</div>` : "";
+  return `<div class="fixshot"><b>${esc(s)}</b>${over}<div class="vpics">${before}${after}${zoom}${diff}</div></div>`;
+}).join("")}
+${busy ? "" : `<p class="muted small">${esc(t("Video ở trên đã dựng lại. Xem lại rồi chọn."))}</p><div class="vactions">${button(`/video/${id}/keep`, esc(t("Giữ")), "btn on")}${button(`/video/${id}/undo`, esc(t("Hoàn tác")))}</div>`}</div>`
+    : "";
+  const cuts = JSON.stringify(plan.shots.map((s) => [s.id, s.t]));
+  const lines = JSON.stringify(plan.lines.map((l) => [l.start, l.end, l.text]));
+  const script = `<script>(function(){var cuts=${cuts.replace(/</g, "\\u003c")},lines=${lines.replace(/</g, "\\u003c")};
+var at=document.getElementById("fix-at"),where=document.getElementById("fix-where"),note=document.getElementById("fix-note"),vids=document.querySelectorAll(".vvideos video");
+function set(x){if(!at)return;at.value=x.toFixed(2);var s=cuts[0][0];cuts.forEach(function(c){if(c[1]<=x+1e-6)s=c[0]});var l=lines.filter(function(q){return x>=q[0]-0.1&&x<=q[1]+0.1})[0];
+where.textContent=${JSON.stringify(t("Đang dừng ở"))}+" "+x.toFixed(1)+"s · "+${JSON.stringify(t("cảnh"))}+" "+s+(l?" · “"+l[2]+"”":"")}
+vids.forEach(function(v){v.addEventListener("pause",function(){set(v.currentTime)});v.addEventListener("seeked",function(){if(v.paused)set(v.currentTime)})});
+function seek(x){set(x);vids.forEach(function(v){try{v.currentTime=x}catch(e){}})}
+document.querySelectorAll("[data-seek]").forEach(function(b){b.addEventListener("click",function(){seek(+b.dataset.seek)})});
+document.querySelectorAll("[data-fill]").forEach(function(a){a.addEventListener("click",function(){if(!note)return;if(a.dataset.at)seek(+a.dataset.at);note.value=a.dataset.fill;setTimeout(function(){note.focus();note.setSelectionRange(note.value.length,note.value.length)},50)})});
+if(at&&at.value)set(+at.value)})()</script>`;
+  return `<section class="card" id="fix"><h2>${esc(t("Sửa bằng lời"))}</h2><p class="muted small">${esc(t("Xem video, dừng đúng chỗ lỗi rồi viết như nhắn tin. Máy tự lấy giây và cảnh đang dừng, cho anh xem trước sẽ sửa gì, bấm Làm mới sửa."))}</p>
+${bar}${warn}${result}${proposal}${form}</section>${script}`;
 }
 
 export function videoPage(v: Videos, id: string, err?: string, ok?: string): string | undefined {
@@ -726,7 +1156,15 @@ export function videoPage(v: Videos, id: string, err?: string, ok?: string): str
   const tools = busy
     ? ""
     : `<div class="vactions">${button(`/video/${id}/continue`, esc(t("Vẽ tiếp phần còn thiếu")))}${plan ? button(`/video/${id}/render`, esc(t("Dựng video")), left.length ? "btn" : "btn on") : ""}</div>`;
-  const shots = plan ? plan.shots.map((s) => shotCard(v, m, plan, s, busy)).join("") : "";
+  const addShot = plan && !busy && m.kind !== "meme"
+    ? `<details class="card vmanual" id="add-shot"><summary>${esc(t("Sửa tay: thêm cảnh"))}</summary><p class="muted small">${esc(t("Cho câu thoại chưa có tranh riêng. Cảnh mới chạy từ giây này đến cảnh kế tiếp. Câu bị máy nghe sót thì thêm ở ô Sửa lời của cảnh đó."))}</p>
+<form class="form" method="post" action="/video/${esc(id)}/addshot"><div class="row"><label>${esc(t("Bắt đầu từ giây"))}<input name="t" inputmode="decimal" size="5" required placeholder="12.5"></label>
+<label>${esc(t("Bong bóng (không bắt buộc)"))}<input name="bubble"></label></div>
+<label>${esc(t("Cảnh vẽ gì"))}<textarea name="act" rows="2" required placeholder="${esc(t("vd: Rico quay lưng đứng giữa khán đài concert, lightstick vương miện vàng"))}"></textarea></label>
+<label>${esc(t("Tư thế 2 (để trống: chỉ 1 tư thế)"))}<input name="pose"></label>
+<button class="btn">${esc(t("Thêm và vẽ"))}</button></form></details>`
+    : "";
+  const shots = plan ? plan.shots.map((s) => shotCard(v, m, plan, s, busy)).join("") + addShot : "";
   const stillChoices = plan
     ? plan.shots
         .filter((s) => !s.src)
@@ -753,7 +1191,7 @@ ${existsSync(join(v.folder(id), "cover.jpg")) ? `<a href="/video-media/${esc(id)
 <button class="btn on"${busy ? " disabled" : ""}>${esc(approved ? t("Duyệt lại") : t("Duyệt"))}</button>
 <p class="muted small">${esc(t("Duyệt chỉ nhận khi mọi cảnh đã soát và video mới hơn tranh. Duyệt xong máy tự làm bìa TikTok và cập nhật trang tải clip về điện thoại. Đăng Reels lên Facebook và Instagram, gửi nháp TikTok, Threads đăng ảnh hoặc video."))}</p></form>${publish}</section>`;
   const body = `<header class="head"><a class="muted" href="/video">← ${esc(t("Video"))}</a><h1>${esc(m.title)}</h1></header>${bar}${stepBar(stepsOf(v, m))}
-${videos ? `<section class="card"><div class="vvideos">${videos}</div></section>` : ""}${tools}
+${videos ? `<section class="card"><div class="vvideos">${videos}</div></section>` : ""}${plan ? fixCard(v, m, plan, busy) : ""}${tools}
 ${plan ? `<h2>${esc(t("Soát từng cảnh ở cỡ thật"))}</h2><p class="muted small">${esc(t("Bấm vào tranh để xem cỡ thật. Soi mặt, tay, đồ vật, chữ, đồng hồ, và nền giữa 2 tư thế."))}</p>${shots}` : `<p class="muted">${esc(m.kind === "meme" ? t("Đang lên cảnh…") : t("Đang nghe lời và chia cảnh…"))}</p>`}
 ${plan ? approve : ""}`;
   return layout(m.title, "/video", body);
@@ -820,6 +1258,24 @@ export function mockExec(): Exec {
     const hue = (i: number) => 30 + i * 70;
     if (step === "draw")
       for (const [i, s] of plan.shots.entries()) if (pick(s) && (only || !existsSync(join(dir, `${s.id}.png`)))) (log(`${s.id}: drawing`), await picture(join(dir, `${s.id}.png`), `${s.id} A`, hue(i)));
+    if (step === "gaps") writeFileSync(join(out, "gaps.json"), JSON.stringify([{ start: 1.85, end: 2.05 }].filter(() => plan.lines.length < 4)));
+    if (step === "ask") {
+      // Stands in for Muse Spark: a few notes it understands, anything else gets a question.
+      const note = at("--note"), acts: FixAction[] = [];
+      const base = { shot: "", line: -1, text: "", start: -1, end: -1, what: "", find: "" };
+      if (/Mẹ/.test(note)) acts.push({ ...base, do: "line_text", line: 0, text: plan.lines[0].text.replace(/^\S+/, "Mẹ"), say: "Câu 1: đổi chữ đầu thành Mẹ" });
+      if (/ghim/.test(note)) acts.push({ ...base, do: "fix_detail", shot: "s01", what: "remove the star pin on his back", find: "star pin", say: "Cảnh s01: bỏ ghim sao" });
+      if (/thiếu tranh/.test(note)) acts.push({ ...base, do: "add_shot", start: 5, what: "the lead walks home at dusk", say: "Thêm cảnh từ 5s" });
+      writeFileSync(join(out, "fixes.json"), JSON.stringify({ reply: acts.length ? "Sửa như anh nói" : "Anh muốn sửa cảnh nào?", actions: acts }));
+      return "";
+    }
+    if (step === "fix")
+      for (const [i, s] of plan.shots.entries())
+        if (only?.includes(s.id)) {
+          copyFileSync(join(dir, `${s.id}.png`), join(dir, `${s.id}-prev.png`));
+          log(`${s.id}: fixing (${at("--note")})`);
+          await picture(join(dir, `${s.id}.png`), `${s.id} A fixed`, hue(i) + 5);
+        }
     if (step === "poses")
       for (const [i, s] of plan.shots.entries()) if (s.pose && pick(s) && (only || !existsSync(join(dir, `${s.id}-b.png`)))) (log(`${s.id}: second pose`), await picture(join(dir, `${s.id}-b.png`), `${s.id} B`, hue(i) + 20));
     if (step === "stabilize") {

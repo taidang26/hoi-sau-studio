@@ -345,6 +345,57 @@ export async function drawShots(ctx: StudioContext, plan: Plan, dir: string, opt
   }
 }
 
+/**
+ * Changes one detail of a drawn shot and keeps the rest: Muse Image edits pose A with the owner's note
+ * ("the star pin is on his back, remove it"). The picture before the fix is kept as <id>-prev.png so the
+ * owner can go back. Pose B and the mouths are made again from the fixed picture by the caller.
+ */
+export async function fixShot(ctx: StudioContext, plan: Plan, dir: string, id: string, note: string, opts: { tries?: number; log?: (s: string) => void; find?: string; sam?: Sam } = {}): Promise<void> {
+  const s = plan.shots.find((x) => x.id === id && !x.src);
+  const file = join(dir, `${id}.png`);
+  if (!s || !existsSync(file)) throw new Error(`${id}: no picture to fix`);
+  if (!note.trim()) throw new Error(`${id}: say what to change`);
+  const p = ctx.profiles.get(plan.slug)!;
+  const before = readFileSync(file);
+  writeFileSync(join(dir, `${id}-prev.png`), before);
+  const prompt = `Edit the attached picture. Change only this: ${note.trim()}. Keep everything else exactly the same: framing, camera, background, colours, line style, every other prop, and ${p.name}'s design, pose and place in the frame. ${LOOK}`;
+  let fix = "";
+  for (let attempt = 0; attempt < (opts.tries ?? 2); attempt++) {
+    opts.log?.(`${id}: fixing (${note.trim()})${fix ? ` again (${fix})` : ""}`);
+    const res = await generateSoftly(ctx.image, { prompt: prompt + (fix ? ` Make sure: ${fix}` : ""), size: `${OUT.w}x${OUT.h}`, references: [dataUrl(before), ...characterRefs(ctx, plan.slug)] }, opts.log);
+    // With a thing to find, only that place changes: the edit is pasted back under its (grown, feathered) mask.
+    const image = opts.find && opts.sam ? await pasteRegion(opts.sam, before, res.image, opts.find, opts.log) : res.image;
+    writeFileSync(file, image);
+    const v = await checkPicture(ctx, plan.slug, `${s.act}; changed: ${note.trim()}`, image);
+    opts.log?.(`${id}: ${v.pass ? "check passed" : `check failed: ${v.problems.join("; ")}`}`);
+    if (v.pass) break;
+    fix = v.fix;
+  }
+}
+
+/**
+ * The edited picture pasted onto the original only where `find` is (in either picture), grown and feathered,
+ * so everything else stays pixel for pixel. Falls back to the whole edit when the thing is not found or
+ * covers most of the frame.
+ */
+export async function pasteRegion(sam: Sam, before: Buffer, edited: Buffer, find: string, log?: (s: string) => void): Promise<Buffer> {
+  const { w, h } = OUT;
+  const a = new Uint8Array(await sharp(before).resize(w, h, { fit: "cover" }).removeAlpha().raw().toBuffer());
+  const b = new Uint8Array(await sharp(edited).resize(w, h, { fit: "cover" }).removeAlpha().raw().toBuffer());
+  const m1 = await maskOf(sam, a, [find]), m2 = await maskOf(sam, b, [find]);
+  const mask = dilate(m1.map((v, i) => v | m2[i]), w, h, 24);
+  const share = mask.reduce((n, v) => n + v, 0) / mask.length;
+  if (!share || share > 0.45) {
+    log?.(`"${find}": ${share ? "covers most of the picture" : "not found"}, keeping the whole edit`);
+    return edited;
+  }
+  log?.(`"${find}": changing ${(share * 100).toFixed(1)}% of the picture, the rest stays`);
+  const alpha = await sharp(Buffer.from(mask.map((v) => v * 255)), { raw: { width: w, height: h, channels: 1 } }).blur(8).raw().toBuffer();
+  const rgba = Buffer.alloc(w * h * 4);
+  for (let i = 0; i < w * h; i++) { rgba[i * 4] = b[i * 3]; rgba[i * 4 + 1] = b[i * 3 + 1]; rgba[i * 4 + 2] = b[i * 3 + 2]; rgba[i * 4 + 3] = alpha[i]; }
+  return sharp(Buffer.from(a), { raw: { width: w, height: h, channels: 3 } }).composite([{ input: rgba, raw: { width: w, height: h, channels: 4 } }]).png().toBuffer();
+}
+
 export async function drawPoses(ctx: StudioContext, plan: Plan, dir: string, opts: { only?: string[]; log?: (s: string) => void } = {}): Promise<void> {
   const p = ctx.profiles.get(plan.slug)!;
   for (const s of plan.shots) {

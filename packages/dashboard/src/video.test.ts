@@ -395,3 +395,36 @@ test("a step that dies on the network runs once more; a real failure does not", 
   await broken.settle(id2);
   assert.match(broken.jobs.get(id2)!.error!, /refused/);
 });
+
+test("a new shot for a line starts with the line and hands back to the picture before; a failed picture fix can be undone", async () => {
+  const id = v.create({ slug: "cu-li", mouth: false, sample: v.samples()[0].path });
+  await v.settle(id);
+  v.ask(id, "chỗ này cần cảnh cho câu Taeyang", "4.5");
+  await v.settle(id);
+  v.apply(id, [0]);
+  await v.settle(id);
+  const shots = v.plan(id)!.shots;
+  assert.ok(shots.some((s) => s.t === 4.5 && !s.src), "s03 already starts with that line, so the new one starts at the pause");
+  const back = shots.find((s) => s.src === "s03");
+  assert.ok(back && back.t === 5, "s03 comes back when the new shot ends");
+  v.keep(id);
+
+  // The picture fix fails partway: the rest still runs, the page says so and Hoàn tác puts it back.
+  const failing = new Videos({ ...v.opts, exec: async (script, args, log, env) => {
+    if (args.includes("fix")) throw new Error("s02: the picture was left as it was (\"wall clock\" not found in the picture)");
+    return mock(script, args, log, env);
+  } });
+  const planBefore = readFileSync(join(v.folder(id), "plan.json"), "utf8");
+  failing.ask(id, "bỏ cái đồng hồ treo tường, câu đầu là Mẹ", "2.5");
+  await failing.settle(id);
+  assert.equal(failing.meta(id).ask!.actions.length, 2);
+  failing.apply(id, [0, 1]);
+  await failing.settle(id);
+  assert.match(failing.jobs.get(id)!.error!, /not found/);
+  assert.equal(failing.plan(id)!.lines[0].text.split(" ")[0], "Mẹ", "the text edit still went in");
+  const html = videoPage(failing, id)!;
+  assert.match(html, /Sửa chưa xong/);
+  assert.match(html, /Hoàn tác/);
+  failing.undo(id);
+  assert.equal(readFileSync(join(v.folder(id), "plan.json"), "utf8"), planBefore);
+});

@@ -66,8 +66,11 @@ export interface Plan {
 
 // ---------------------------------------------------------------- pure parts
 
-/** Words into spoken lines, split where the voice pauses at least `gap` seconds. */
-export function groupLines(words: Word[], gap = 0.45): Line[] {
+/**
+ * Words into spoken lines, split where the voice pauses at least `gap` seconds, and also before a word
+ * that would make the line longer than `max` seconds (fast talk with no pause read as one 15 s subtitle).
+ */
+export function groupLines(words: Word[], gap = 0.45, max = 3.5): Line[] {
   const out: Line[] = [];
   let cur: Word[] = [];
   const flush = () => {
@@ -75,7 +78,7 @@ export function groupLines(words: Word[], gap = 0.45): Line[] {
     cur = [];
   };
   for (const w of words) {
-    if (cur.length && w.start - cur[cur.length - 1].end >= gap) flush();
+    if (cur.length && (w.start - cur[cur.length - 1].end >= gap || w.end - cur[0].start > max)) flush();
     cur.push(w);
   }
   flush();
@@ -87,9 +90,20 @@ export function parseCuts(log: string): number[] {
   return [...log.matchAll(/pts_time:([0-9.]+)/g)].map((m) => Number(m[1])).filter((t) => t > 0.3);
 }
 
-/** One shot per stretch between cuts; each line belongs to the shot it starts in. */
-export function shotSpans(lines: Line[], cuts: number[], end: number): Array<{ t: number; end: number; lines: number[] }> {
+/**
+ * One shot per stretch between cuts; each line belongs to the shot it starts in. A stretch longer than
+ * `max` seconds (a source with few cuts) is split at line starts, so no picture stays up for 20 s of talk.
+ */
+export function shotSpans(lines: Line[], cuts: number[], end: number, max = 6): Array<{ t: number; end: number; lines: number[] }> {
   const starts = [0, ...cuts.filter((c) => c > 0 && c < end)].sort((a, b) => a - b);
+  for (let i = 0; i < starts.length; i++) {
+    const e = starts[i + 1] ?? end;
+    if (e - starts[i] <= max) continue;
+    // The line start nearest the middle of the stretch, at least 1.5 s from either end.
+    const mid = (starts[i] + e) / 2;
+    const at = lines.map((l) => l.start).filter((x) => x > starts[i] + 1.5 && x < e - 1.5).sort((a, b) => Math.abs(a - mid) - Math.abs(b - mid))[0];
+    if (at !== undefined) { starts.splice(i + 1, 0, at); i--; }
+  }
   return starts
     .map((t, i) => {
       const e = starts[i + 1] ?? end;
@@ -293,6 +307,7 @@ export const LOOK = [
   "Only draw a computer or phone when the scene needs one; a screen nobody in the scene uses never glows toward the viewer.",
   "Absolutely no text, letters, numbers, signs, speech bubbles or captions anywhere; a clock shows hands only, at the time the scene asks.",
   "A character seen from behind shows only the back: front-only details (a chest pin, a tie, a badge or lanyard on the front, the face) are not visible.",
+  "Never draw a real person or a celebrity's likeness: a singer, band, actor or idol the words name appears only as tiny dark silhouettes far away (on a stage, a screen or a poster without a face); our animal cast are the only characters drawn in full.",
 ].join(" ");
 
 const CHECK = S.obj({ pass: S.bool(), problems: S.arr(S.str("one concrete problem"), 0, 8), fix: S.str("English edit instruction naming only what to change, or empty if pass") });
@@ -309,7 +324,7 @@ export async function checkPicture(ctx: StudioContext, slug: string, act: string
       text: [
         `You check one frame of a short comic video before it is posted. The first image is the frame, the second is ${p.name}'s model sheet.`,
         `The frame should show: ${act}.`,
-        `Fail it for: ${p.name} off-model (${p.look.signature.join("; ")}); ${p.name} drawn more than once (unless the scene asks for a copy such as a ghost); any drawn text, letters, numbers or speech bubble; a human;`,
+        `Fail it for: ${p.name} off-model (${p.look.signature.join("; ")}); ${p.name} drawn more than once (unless the scene asks for a copy such as a ghost); any drawn text, letters, numbers or speech bubble; a human, or a realistic or recognisable real person (a named singer or idol may only be a tiny faceless silhouette);`,
         "extra arms or hands, a paw holding something wrongly; objects facing the wrong way (a monitor or phone screen must face the character using it, his body must face what he works on; eyes may look at the viewer); a clock with more or fewer than two hands, or a clock showing a different time from the one asked;",
         "a busy background (crowds, many props) or sparkles, sweat drops, motion lines; a glowing screen facing the viewer while the character uses it; a misshapen or broken prop (a wallet must look like a normal bifold wallet); empty colour bands across the top or bottom.",
         "If it fails, write the fix as a short edit instruction.",
@@ -359,41 +374,69 @@ export async function fixShot(ctx: StudioContext, plan: Plan, dir: string, id: s
   const before = readFileSync(file);
   writeFileSync(join(dir, `${id}-prev.png`), before);
   const prompt = `Edit the attached picture. Change only this: ${note.trim()}. Keep everything else exactly the same: framing, camera, background, colours, line style, every other prop, and ${p.name}'s design, pose and place in the frame. ${LOOK}`;
-  let fix = "";
-  for (let attempt = 0; attempt < (opts.tries ?? 2); attempt++) {
-    opts.log?.(`${id}: fixing (${note.trim()})${fix ? ` again (${fix})` : ""}`);
-    const res = await generateSoftly(ctx.image, { prompt: prompt + (fix ? ` Make sure: ${fix}` : ""), size: `${OUT.w}x${OUT.h}`, references: [dataUrl(before), ...characterRefs(ctx, plan.slug)] }, opts.log);
-    // With a thing to find, only that place changes: the edit is pasted back under its (grown, feathered) mask.
-    const image = opts.find && opts.sam ? await pasteRegion(opts.sam, before, res.image, opts.find, opts.log) : res.image;
-    writeFileSync(file, image);
-    const v = await checkPicture(ctx, plan.slug, `${s.act}; changed: ${note.trim()}`, image);
-    opts.log?.(`${id}: ${v.pass ? "check passed" : `check failed: ${v.problems.join("; ")}`}`);
-    if (v.pass) break;
-    fix = v.fix;
+  let fix = "", why = "";
+  try {
+    for (let attempt = 0; attempt < (opts.tries ?? 2); attempt++) {
+      opts.log?.(`${id}: fixing (${note.trim()})${fix ? ` again (${fix})` : ""}`);
+      const res = await generateSoftly(ctx.image, { prompt: prompt + (fix ? ` Make sure: ${fix}` : ""), size: `${OUT.w}x${OUT.h}`, references: [dataUrl(before), ...characterRefs(ctx, plan.slug)] }, opts.log);
+      // With a thing to find, only that place changes: the edit is pasted back under its (grown, feathered) mask.
+      const pasted = opts.find && opts.sam ? await pasteRegion(opts.sam, before, res.image, opts.find, opts.log) : { image: res.image, problem: "" };
+      if (pasted.problem) {
+        why = pasted.problem;
+        opts.log?.(`${id}: ${why}`);
+        continue;
+      }
+      const v = await checkPicture(ctx, plan.slug, `${s.act}; changed: ${note.trim()}`, pasted.image);
+      opts.log?.(`${id}: ${v.pass ? "check passed" : `check failed: ${v.problems.join("; ")}`}`);
+      writeFileSync(file, pasted.image);
+      why = "";
+      if (v.pass) return;
+      fix = v.fix;
+    }
+  } catch (e) {
+    writeFileSync(file, before);
+    throw e;
+  }
+  // Nothing clean came out: the picture stays as it was, and the owner hears why.
+  if (why) {
+    writeFileSync(file, before);
+    throw new Error(`${id}: the picture was left as it was (${why})`);
   }
 }
 
 /**
- * The edited picture pasted onto the original only where `find` is (in either picture), grown and feathered,
- * so everything else stays pixel for pixel. Falls back to the whole edit when the thing is not found or
- * covers most of the frame.
+ * The edited picture pasted onto the original only where `find` is, grown and feathered, so everything
+ * else stays pixel for pixel. The place comes from the original picture (what is to be changed is there);
+ * the edit's own find counts only near it. It refuses (a problem, the
+ * picture untouched) when the thing is not found, covers too much, the edit moved the picture around it
+ * (pasting would leave a ghost) or the edit did not change it at all.
  */
-export async function pasteRegion(sam: Sam, before: Buffer, edited: Buffer, find: string, log?: (s: string) => void): Promise<Buffer> {
+export async function pasteRegion(sam: Sam, before: Buffer, edited: Buffer, find: string, log?: (s: string) => void): Promise<{ image: Buffer; problem: string }> {
   const { w, h } = OUT;
   const a = new Uint8Array(await sharp(before).resize(w, h, { fit: "cover" }).removeAlpha().raw().toBuffer());
   const b = new Uint8Array(await sharp(edited).resize(w, h, { fit: "cover" }).removeAlpha().raw().toBuffer());
   const m1 = await maskOf(sam, a, [find]), m2 = await maskOf(sam, b, [find]);
-  const mask = dilate(m1.map((v, i) => v | m2[i]), w, h, 24);
-  const share = mask.reduce((n, v) => n + v, 0) / mask.length;
-  if (!share || share > 0.45) {
-    log?.(`"${find}": ${share ? "covers most of the picture" : "not found"}, keeping the whole edit`);
-    return edited;
-  }
-  log?.(`"${find}": changing ${(share * 100).toFixed(1)}% of the picture, the rest stays`);
+  // Found only in the edit, it may be anything that looks alike elsewhere (a phone for a clock): never pasted.
+  if (!m1.some((v) => v)) return { image: before, problem: `"${find}" not found in the picture` };
+  const near = dilate(m1, w, h, 60);
+  const core = m1.map((v, i) => v | (m2[i] & near[i]));
+  const share = core.reduce((n, v) => n + v, 0) / core.length;
+  if (share > 0.3) return { image: before, problem: `"${find}" covers ${Math.round(share * 100)}% of the picture, too much for a detail fix` };
+  const mask = dilate(core, w, h, 24);
+  const ring = dilate(mask, w, h, 40).map((v, i) => v & (mask[i] ^ 1));
+  const diff = (sel: Uint8Array) => {
+    let n = 0, d = 0;
+    for (let i = 0; i < sel.length; i++) if (sel[i]) { n++; d += (Math.abs(a[i * 3] - b[i * 3]) + Math.abs(a[i * 3 + 1] - b[i * 3 + 1]) + Math.abs(a[i * 3 + 2] - b[i * 3 + 2])) / 3; }
+    return n ? d / n : 0;
+  };
+  const around = diff(ring), inside = diff(core);
+  log?.(`"${find}": ${(share * 100).toFixed(1)}% of the picture, change inside ${inside.toFixed(0)}, around ${around.toFixed(0)}`);
+  if (around > 22) return { image: before, problem: `the edit moved the picture around "${find}" (would leave a ghost)` };
+  if (inside < 10 || inside < around * 2) return { image: before, problem: `the edit did not change "${find}"` };
   const alpha = await sharp(Buffer.from(mask.map((v) => v * 255)), { raw: { width: w, height: h, channels: 1 } }).blur(8).raw().toBuffer();
   const rgba = Buffer.alloc(w * h * 4);
   for (let i = 0; i < w * h; i++) { rgba[i * 4] = b[i * 3]; rgba[i * 4 + 1] = b[i * 3 + 1]; rgba[i * 4 + 2] = b[i * 3 + 2]; rgba[i * 4 + 3] = alpha[i]; }
-  return sharp(Buffer.from(a), { raw: { width: w, height: h, channels: 3 } }).composite([{ input: rgba, raw: { width: w, height: h, channels: 4 } }]).png().toBuffer();
+  return { image: await sharp(Buffer.from(a), { raw: { width: w, height: h, channels: 3 } }).composite([{ input: rgba, raw: { width: w, height: h, channels: 4 } }]).png().toBuffer(), problem: "" };
 }
 
 export async function drawPoses(ctx: StudioContext, plan: Plan, dir: string, opts: { only?: string[]; log?: (s: string) => void } = {}): Promise<void> {
@@ -698,7 +741,10 @@ export async function drawMouths(sam: Sam, ctx: StudioContext, plan: Plan, dir: 
       const made: Record<"shut" | "open", { img: Raster; size: number; box: Box; onFace: number; nearNose: number } | undefined> = { shut: undefined, open: undefined };
       for (const kind of ["shut", "open"] as const) {
         opts.log?.(`${pic}: drawing the mouth ${kind}`);
-        const res = await generateSoftly(ctx.image, { prompt: mouthPrompt(p.name, kind === "open"), size: `${w}x${h}`, references: [dataUrl(await writePng(base))] }, opts.log);
+        // A refused or failed mouth edit costs this picture its talking mouth, never the whole run.
+        const res = await generateSoftly(ctx.image, { prompt: mouthPrompt(p.name, kind === "open"), size: `${w}x${h}`, references: [dataUrl(await writePng(base))] }, opts.log)
+          .catch((e: Error) => { opts.log?.(`${pic}: mouth ${kind} not drawn (${e.message.slice(0, 120)})`); return undefined; });
+        if (!res) break;
         writeFileSync(join(dir, `${pic}-${kind === "open" ? "m" : "s"}.raw.png`), res.image);
         const editRgb = new Uint8Array(await sharp(res.image).resize(w, h, { fit: "cover" }).removeAlpha().raw().toBuffer());
         const found = await findMouth(editRgb);

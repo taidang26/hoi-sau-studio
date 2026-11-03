@@ -16,11 +16,14 @@ Every picture keeps the characters on-model (Tũn in the yellow hoodie and staff
 `npm run dashboard`, then open http://localhost:4321 → **Video**.
 
 1. Pick a sample clip (or upload one) and the lead character. The studio splits it into shots and Muse Spark plans each one; Muse Image draws one picture per shot, then a second pose; SAM 3.1 holds the room still between poses and finds the mouth.
+   Lines are cut at pauses and at 3.5 s at most, and a stretch of the sample with no cut longer than 6 s is split at a line start, so one picture is never up for 20 s of talk.
 2. Check every shot at full size. To fix something, use **Sửa bằng lời** under the video:
    - Pause on the problem and write it as you would to a person, e.g. "câu đầu là Mẹ không phải Mày" or "Rico quay lưng mà có ghim sao". The paused second, shot and subtitle are attached.
    - Muse Spark reads the note against the plan and small copies of every picture (`talk … --step ask`). It proposes edits: subtitle text or times, a missed line, a bubble, a detail fix, a redraw, a new shot, pose 2, one pose, no mouth.
    - Each edit is shown with its picture and the old → new text. Nothing changes until **Làm**.
-   - A detail fix (`--step fix --note … --find …`) edits pose A with Muse Image. SAM finds the named thing in the old and new picture, and only that region, grown and feathered, is pasted back, so the rest stays pixel for pixel. Pose 2 and the mouths are then made again from it.
+   - A detail fix (`--step fix --note … --find …`) edits pose A with Muse Image. SAM finds the named thing in the old and new picture, and only that region, grown and feathered, is pasted back, so the rest stays pixel for pixel. Pose 2 and the mouths are then made again from it. The fix is refused, and the picture left as it was, when the thing is not found in the old picture (a lookalike found only in the edit is never pasted), covers more than 30% of the frame, the edit moved the picture around it (the paste would ghost) or did not change it.
+   - A new shot for a line starts with that line, not at the paused second, and the picture before comes back when the line ends. Pictures never show a real person: a singer or band the words name is drawn as tiny faceless silhouettes.
+   - If one edit fails, the others still run and the page says what failed, with **Hoàn tác**. A mouth edit the content filter refuses only costs that picture its talking mouth.
    - After **Làm** the clip is rendered again, and the page shows before/after, a zoom on the change and a map of changed pixels, with **Giữ** or **Hoàn tác**. Undo restores the plan, pictures and renders.
    - The shot bar marks speech with no subtitle (voiced sound not covered by any line, from the last render; silent when music fills the clip) and backgrounds that shift between poses. **Sửa giúp** fills the note.
    - The older per-shot buttons sit under **Sửa tay**: redraw, fix a detail, redraw pose 2, keep one pose, no mouth, edit lines with their times, add a missed line, move or remove a shot, add a shot.

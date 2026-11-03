@@ -438,6 +438,34 @@ test("illustrate: a flat patch left by a removal takes the wall's gradient; a re
   assert.equal(flatPatchFit(wall, bottle, core, mask, ring, w), undefined, "a drawn object is not flattened");
 });
 
+test("illustrate: a detail fix is carried into pose B and the mouths, not drawn again", async () => {
+  const { carryFix } = await import("./illustrate.js");
+  const { mkdtempSync, readFileSync, writeFileSync, existsSync } = await import("node:fs");
+  const { join } = await import("node:path");
+  const { tmpdir } = await import("node:os");
+  const sharp = (await import("sharp")).default;
+  const w = 1080, h = 1920;
+  const dir = mkdtempSync(join(tmpdir(), "carry-"));
+  const pic = (bg: number, boxes: [number, number, number, number, number][]) => {
+    const px = Buffer.alloc(w * h * 3, bg);
+    for (const [x0, y0, x1, y1, v] of boxes) for (let y = y0; y < y1; y++) px.fill(v, (y * w + x0) * 3, (y * w + x1) * 3);
+    return sharp(px, { raw: { width: w, height: h, channels: 3 } }).png().toBuffer();
+  };
+  const clock: [number, number, number, number, number] = [800, 300, 1000, 500, 30];
+  const before = await pic(200, [clock]), after = await pic(200, []);
+  writeFileSync(join(dir, "s01-m.png"), await pic(200, [clock, [400, 900, 500, 950, 90]])); // the mouth is elsewhere
+  writeFileSync(join(dir, "s01-b2.png"), await pic(200, [clock, [300, 1000, 700, 1800, 120]])); // pose B moved, clock untouched
+  writeFileSync(join(dir, "s01-b.png"), await pic(200, [[780, 280, 1020, 520, 120]])); // pose B stands over the clock
+  writeFileSync(join(dir, "s01-b2-m.png"), await pic(200, [clock]));
+  const r = await carryFix(dir, "s01", before, after);
+  assert.deepEqual(r.carried.sort(), ["s01-m"]);
+  assert.ok(r.dropped.includes("s01-b") && r.dropped.includes("s01-b2") && r.dropped.includes("s01-b2-m"), "pose B over the place goes with its copies");
+  assert.ok(!existsSync(join(dir, "s01-b2.png")));
+  const m = await sharp(readFileSync(join(dir, "s01-m.png"))).raw().toBuffer();
+  assert.equal(m[(400 * w + 900) * 3], 200, "the clock is gone from the mouth picture");
+  assert.equal(m[(920 * w + 450) * 3], 90, "the mouth is kept");
+});
+
 test("illustrate: removal notes are told apart from recolours", async () => {
   const { isRemoval } = await import("./illustrate.js");
   assert.ok(isRemoval("remove the wall clock, leave plain wall"));

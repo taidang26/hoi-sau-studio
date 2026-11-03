@@ -169,7 +169,7 @@ test("a text meme is planned from two lines of text, drawn, rendered and approve
   assert.deepEqual(calls.map((c) => c[c.indexOf("--step") + 1]), ["plan", "draw", "poses", "stabilize"]);
   const plan = v.plan(id)!;
   assert.deepEqual(plan.lines.map((l) => l.text), ["Sếp bảo tăng ca là cơ hội", "Cơ hội để sếp về sớm"]);
-  assert.deepEqual(plan.shots.map((s) => s.t), [0, 6.3]);
+  assert.deepEqual(plan.shots.map((s) => s.t), [0, 2.96], "the punchline once the seven-word line is read");
   for (const s of v.unchecked(id)) v.tick(id, s);
   v.render(id);
   await v.settle(id);
@@ -197,13 +197,15 @@ test("the Video screen offers the text meme form and takes it", async () => {
   const list = await (await fetch(`${base}/video`)).text();
   assert.match(list, /Làm clip chữ/);
   const form = new FormData();
-  for (const [k, val] of Object.entries({ kind: "meme", top: "Lương về", punch: "Lương đi", slug: "cu-li", scenes: "1", seconds: "12", scene1: "", music: "" })) form.append(k, val);
+  for (const [k, val] of Object.entries({ kind: "meme", top: "Lương về", punch: "Lương đi", slug: "cu-li", scenes: "1", seconds: "", scene1: "", music: "" })) form.append(k, val);
   const res = await fetch(`${base}/video/new`, { method: "POST", body: form, redirect: "manual" });
   assert.equal(res.status, 303);
   const id = res.headers.get("location")!.split("/").pop()!;
   await v.settle(id);
   assert.equal(v.plan(id)!.shots.length, 1);
-  assert.equal(v.plan(id)!.end, 12);
+  // No length typed: the punchline comes once "Lương về" is read, and the clip is as long as the reading needs.
+  assert.equal(v.plan(id)!.lines[1].start, 2);
+  assert.equal(v.plan(id)!.end, 6.06);
 });
 
 test("a detail fix changes only pose A, makes pose B and mouths again from it, and can be undone", async () => {

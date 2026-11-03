@@ -731,4 +731,7 @@ export const EN: Record<string, string> = {
   "Đã sửa": "Fixed",
   "Đến giây": "To second",
   "Đỏ: chỗ đã đổi ({p}%)": "Red: what changed ({p}%)",
+  "Độ dài từ 6 đến 20 giây, hoặc để trống cho máy tự tính.": "Length 6 to 20 seconds, or empty to let the reading time decide.",
+  "Độ dài (giây; để trống: theo thời gian đọc)": "Length (seconds; empty: by reading time)",
+  "tự tính": "auto",
 };

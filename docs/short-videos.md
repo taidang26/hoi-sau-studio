@@ -31,7 +31,7 @@ Every picture keeps the characters on-model (Tũn in the yellow hoodie and staff
 
 **Video** → **Make a text meme**:
 
-1. Type the set-up and the punchline, pick the character, one or two scenes and the length (10–20 s, 14 by default). A note per scene is optional; the setting is the Hồi Sau office unless the note says otherwise.
+1. Type the set-up and the punchline, pick the character, one or two scenes and the length (empty by default: the punchline comes once the first line is read, at about 1 s plus 0.28 s a word, and holds about 2.5 s after it is read; or 6–20 s, which moves only the end). `talk meme <slug> --out <dir> --step retime` applies this timing to a clip already drawn, without drawing again. A note per scene is optional; the setting is the Hồi Sau office unless the note says otherwise.
 2. Muse Spark turns the words into shots, Muse Image draws each one and a second pose (a blink, a hand moving), SAM 3.1 keeps the background still between them. Every picture gets the same checks and buttons as an illustrated clip.
 3. Render: MusicGen makes the music from the prompt on the form (once per prompt), the set-up shows first and the punchline pops in red at scene 2. 1080x1920, 30 fps CFR.
 4. Approve and publish as above.

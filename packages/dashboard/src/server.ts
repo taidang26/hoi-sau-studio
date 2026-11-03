@@ -525,7 +525,7 @@ export function handler(opts: DashboardOptions) {
         const upload = file instanceof File && file.size ? { name: file.name, bytes: new Uint8Array(await file.arrayBuffer()) } : undefined;
         const field = (k: string) => String(form.get(k) ?? "");
         const meme = field("kind") === "meme"
-          ? { top: field("top"), punch: field("punch"), scenes: field("scenes") === "1" ? [field("scene1")] : [field("scene1"), field("scene2")], music: field("music"), seconds: Number(field("seconds")) || 14 }
+          ? { top: field("top"), punch: field("punch"), scenes: field("scenes") === "1" ? [field("scene1")] : [field("scene1"), field("scene2")], music: field("music"), seconds: Number(field("seconds")) || 0 }
           : undefined;
         const id = vd.create({ kind: meme ? "meme" : "illustrate", slug: field("slug"), mouth: form.get("mouth") === "1", title: field("title"), sample: field("sample") || undefined, upload, meme });
         return redirect(res, `/video/${id}`);

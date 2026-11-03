@@ -39,6 +39,9 @@ Every kind stays available; pick per clip, none replaces another.
 | Lip-sync to a sound | `talk sync <slug> <sound>` | The same character mouthing a sound you give it |
 | Illustrated voice-over | `talk illustrate <slug> <clip>` | The clip's voice, one full-frame picture per shot, two poses, bubble and captions |
 | Illustrated, talking | `talk illustrate <slug> <clip> --mouth` | As above, and the lead's mouth opens and shuts with the voice |
+| Text meme | `talk meme <slug> --out <dir>` | Silent: two beats of big text (set-up, then the punchline in red) over one or two pictures, a blink or small move between two poses, MusicGen music. Words in `<dir>/meme.json` |
+
+The dashboard's **Video** screen runs the illustrated kinds and text memes with buttons, including fixing a clip by a plain-language note (`--step ask`, then `--step fix --note … --find …`); see [docs/short-videos.md](../../docs/short-videos.md).
 
 ## Depth and grounding
 

@@ -2,14 +2,14 @@
 
 > *"Muốn biết sự thể ra sao, xem hồi sau sẽ rõ."* (Want to know what happens? See the next chapter.) Here, the audience writes that next chapter.
 
-**Hồi Sau** runs original AI characters as a daily office-comedy comic for young Vietnamese office workers. Meta's Muse models write, draw and check every episode. The episode goes out on Facebook, Instagram and Threads, and the comments under it decide what happens next.
+**Hồi Sau** runs original AI characters as a daily office-comedy comic for young Vietnamese office workers. Meta's Muse models write, draw and check every episode, and the same characters star in two short 9:16 clips a day. Episodes and clips go out on Facebook, Instagram, Threads and TikTok, and the comments under them decide what happens next.
 
 Meta Global AI Developer Hackathon 2026 · Indie Developer track · *Build for Your World*.
 
 | | |
 | --- | --- |
 | Demo video | *link added on 4 Nov* |
-| Live series | [Facebook](https://www.facebook.com/profile.php?id=61595845893958) · [Instagram @hoisau.comic](https://www.instagram.com/hoisau.comic/) · [Threads @hoisau.comic](https://www.threads.net/@hoisau.comic) · episodes at [hoisau.dangtrantai.com](https://hoisau.dangtrantai.com) |
+| Live series | [Facebook](https://www.facebook.com/profile.php?id=61595845893958) · [Instagram @hoisau.comic](https://www.instagram.com/hoisau.comic/) · [Threads @hoisau.comic](https://www.threads.net/@hoisau.comic) · [TikTok @hoisau.comic](https://www.tiktok.com/@hoisau.comic) · [X @hoisaucomic](https://x.com/hoisaucomic) · episodes at [hoisau.dangtrantai.com](https://hoisau.dangtrantai.com) |
 | How it is built | [docs/architecture.md](docs/architecture.md) · [docs/studio-pipeline.md](docs/studio-pipeline.md) |
 | Where each Meta tool is used | [docs/meta-tools.md](docs/meta-tools.md) |
 | Results | [docs/metrics.md](docs/metrics.md) |
@@ -52,11 +52,13 @@ flowchart LR
   K --> L[Listen: screen, score, group, credit]
   L -->|next direction| S
   C --> Q[Coach: what worked] --> S
+  B --> V[Short videos: voice-over clips and text memes]
+  V -->|approved, posted on a schedule| C
 ```
 
 ### Channels: one series, a brand per character
 
-Hồi Sau is the main channel and posts every episode. Each character is also a brand of its own, with its own Facebook Page, Instagram and Threads, and posts the episodes it leads. [channels.yaml](channels.yaml) lists the brands, the status of each channel (`live`, `paused`, `planned`) and the **names** of the `.env` variables that hold its ids and tokens. During the contest only Hồi Sau and Lolo are live; the other three are set up and paused.
+Hồi Sau is the main channel and posts every episode. Each character is also a brand of its own, with its own Facebook Page, Instagram and Threads, and posts the episodes it leads. [channels.yaml](channels.yaml) lists the brands, the status of each channel (`live`, `paused`, `planned`) and the **names** of the `.env` variables that hold its ids and tokens. During the contest only Hồi Sau and Lolo are live; the other five are set up and paused.
 
 ```bash
 npm run channel -- brands                               # every brand and channel, and which .env names are empty
@@ -115,16 +117,18 @@ Image models distort Vietnamese diacritics, so Muse Image draws panels **with no
 | `channels.yaml` | Brands (Hồi Sau plus one per character) and their accounts |
 | `docs/` | Architecture, pipeline plan, Meta tools, metrics, demo script, submission draft, integration notes, build log |
 
-## Test characters
+## The cast
 
-Four lesser-known Vietnamese animals work in the same team. Each has a want, a fear, a contradiction, a life outside the joke and a comic engine tied to the animal's body; names are rarely said in dialogue, so the situation and the drawing carry the joke. They compete on the same script; the winner is chosen by share, save and comment rate, not taste.
+Six lesser-known Vietnamese animals share one office. Each has a want, a fear, a contradiction, a life outside the joke, a comic engine tied to the animal's body and an `edge`, a rebellious or weird side kept for the twist. Names are rarely said in dialogue, so the situation and the drawing carry the joke. The four teammates compete on the same script; the winner is chosen by share, save and comment rate, not taste. Each has an English name and a Vietnamese one (`name_vi`).
 
 | Character | Office type |
 | --- | --- |
-| [Lolo](characters/cu-li/profile.yaml) (slow loris) | Slow hands, fast-spiralling mind; wants the boss to say her name right once |
-| [Poppy](characters/ca-noc/profile.yaml) (pufferfish) | The gentlest accountant, who grows a size with every swallowed complaint; leaves at 17:00 to pick up her four-year-old |
-| [Pango](characters/te-te/profile.yaml) (pangolin) | Team lead whom criticism slides off; curls into a ball to shield his team |
-| [Uni](characters/sao-la/profile.yaml) (saola, the "Asian unicorn") | The hyped "unicorn" hire who vanishes whenever she's praised |
+| [Lolo / Tũn](characters/cu-li/profile.yaml) (slow loris) | Slow hands, fast-spiralling mind; wants the boss to say her name right once |
+| [Poppy / Bống](characters/ca-noc/profile.yaml) (pufferfish) | The gentlest accountant, who grows a size with every swallowed complaint; leaves at 17:00 to pick up her four-year-old |
+| [Pango / Tê](characters/te-te/profile.yaml) (pangolin) | Team lead whom criticism slides off; curls into a ball to shield his team |
+| [Uni / Sa](characters/sao-la/profile.yaml) (saola, the "Asian unicorn") | The hyped "unicorn" hire who vanishes whenever she's praised |
+| [Bino / Mực](characters/cay-muc/profile.yaml) (binturong) | The director on the 8th floor, with a walrus moustache, a suit and a white cat, Tuyết, who may really run the company |
+| [Rico / Lẻo](characters/chon-bac-ma/profile.yaml) (ferret-badger) | The rival team lead who flatters and steals credit; never insults anyone, and every scheme backfires |
 
 Each character also has a placeholder portrait (`characters/<slug>/portrait.svg`, flat 2D drawn by hand for this repo). Offline runs draw their panels and sheets from these portraits, and the dashboard shows them until a Muse Image model sheet is locked. Real runs never use them.
 
@@ -168,7 +172,14 @@ paths are read under `MEDIA_BASE_URL`.
 
 ## Status
 
-In place: character creation, series bible, the full Muse episode pipeline (with an offline mock), Vietnamese lettering, listening and story memory, the dashboard, and publishing, comments and inbox for every brand. Day-by-day progress is in [docs/build-log.md](docs/build-log.md).
+Running for real since 27 Oct:
+
+- **Daily comic** on the Hồi Sau Facebook Page, Instagram and Threads, made with the full Muse episode pipeline (offline mock included), Vietnamese lettering, story memory and canon from the published episodes, and the safety gate. Nothing is posted until the owner approves the exact files.
+- **Short videos** from the dashboard's **Video** screen: illustrated voice-over clips and text memes, checked shot by shot, fixed by a plain-language note with before/after evidence (**Sửa bằng lời**), with MusicGen music, TikTok covers and the [/tai](https://hoisau.web.app/tai) download page. Approved clips post on a schedule (12:00 and 20:00 Hanoi) through Windows scheduled tasks, so nobody has to be at the keyboard. See [docs/short-videos.md](docs/short-videos.md).
+- **TikTok**: videos and photo episodes go to the app's drafts (Sandbox; Production in review), or are posted by hand from /tai.
+- **Listening**: comments are screened, scored and grouped; replies and the coach's lessons wait for approval.
+
+Not done yet: direct posting to TikTok until the app passes its audit, and a character voice good enough to ship (the Hà Nội MMS-TTS fine-tune is close but not there, so clips use original sound or music). Day-by-day progress is in [docs/build-log.md](docs/build-log.md).
 
 ## License
 

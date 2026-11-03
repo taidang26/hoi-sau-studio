@@ -1,6 +1,6 @@
 # @hoi-sau/dashboard
 
-One screen for the whole loop: episodes published, comments pulled back, the direction picked for the next episode, and how the four test characters compare.
+One screen for the whole loop: episodes published, comments pulled back, the direction picked for the next episode, and how the characters compare.
 
 ![Dashboard overview with sample data](../../docs/images/dashboard-overview.png)
 
@@ -38,3 +38,7 @@ Known gap: behind Firebase Hosting only the `__session` cookie is forwarded, so 
 - **Studio**: creates an episode from the picked comments (direction plus credits), runs the steps in the background, and shows each step's output (premise, beats, script, storyboard, panels, review with before/after, lettered pages, canon), with "Chạy lại từ đây" (rerun from here) on every step.
 
 In `--demo`, Studio works on copies in `data-demo/studio/`, uses the offline Muse mock, and starts with one finished sample episode.
+
+## Video
+
+- **Video**: make a short 9:16 clip from a sample clip (illustrated voice-over) or from two lines of text (text meme), check every shot at full size, fix a shot by writing what is wrong (**Sửa bằng lời**, with before/after, a zoom and a changed-pixel map, then keep or undo), render, approve (TikTok cover and the /tai download page are made then) and publish now or at a set time. See [docs/short-videos.md](../../docs/short-videos.md).

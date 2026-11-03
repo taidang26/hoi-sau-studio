@@ -376,20 +376,23 @@ export async function fixShot(ctx: StudioContext, plan: Plan, dir: string, id: s
   // the whole look attached, Muse Image draws the frame anew instead of editing it.
   const prompt = `Change only this in the picture: ${note.trim()}. Do not move or redraw anything else: the same characters, poses, props, background, framing, colours and line style. No text.`;
   let fix = "", why = "";
+  const box = opts.find ? await locateThing(ctx, before, opts.find).catch(() => undefined) : undefined;
+  opts.log?.(`${id}: "${opts.find ?? note}" ${box ? `seen at x ${box.x0.toFixed(2)}–${box.x1.toFixed(2)}, y ${box.y0.toFixed(2)}–${box.y1.toFixed(2)}` : "not located by Muse Spark, SAM alone"}`);
   try {
     for (let attempt = 0; attempt < (opts.tries ?? 2); attempt++) {
       opts.log?.(`${id}: fixing (${note.trim()})${fix ? ` again (${fix})` : ""}`);
       const res = await generateSoftly(ctx.image, { prompt: prompt + (fix ? ` Make sure: ${fix}` : ""), size: `${OUT.w}x${OUT.h}`, references: [dataUrl(before)] }, opts.log);
       writeFileSync(join(dir, `${id}-fix${attempt + 1}.raw.png`), res.image);
       // With a thing to find, only that place changes: the edit is pasted back under its (grown, feathered) mask.
-      const pasted = opts.find && opts.sam ? await pasteRegion(opts.sam, before, res.image, opts.find, opts.log) : { image: res.image, problem: "" };
+      const pasted = opts.find && opts.sam ? await pasteRegion(opts.sam, before, res.image, opts.find, opts.log, box) : { image: res.image, problem: "" };
       if (pasted.problem) {
         why = pasted.problem;
         opts.log?.(`${id}: ${why}`);
         continue;
       }
       // The edit has to have done what was asked, and only that: Muse Spark compares the two pictures.
-      const same = await compareFix(ctx, before, pasted.image, note.trim());
+      writeFileSync(join(dir, `${id}-fix${attempt + 1}.pasted.png`), pasted.image);
+      const same = await compareFix(ctx, before, pasted.image, note.trim(), box);
       opts.log?.(`${id}: compare ${same.ok ? "ok" : `refused: ${same.problem}`}`);
       if (!same.ok) {
         why = same.problem || "the change asked for is not in the new picture";
@@ -414,6 +417,29 @@ export async function fixShot(ctx: StudioContext, plan: Plan, dir: string, id: s
   }
 }
 
+/** A box as shares of the frame, x0 < x1 and y0 < y1, each 0 to 1. */
+export interface Box01 { x0: number; y0: number; x1: number; y1: number }
+
+/** The box, grown by `pad` (share of the frame), as a 0/1 mask. */
+export function boxMask(b: Box01, w: number, h: number, pad: number): Uint8Array {
+  const m = new Uint8Array(w * h);
+  const x0 = Math.max(0, Math.floor((b.x0 - pad) * w)), x1 = Math.min(w, Math.ceil((b.x1 + pad) * w));
+  const y0 = Math.max(0, Math.floor((b.y0 - pad) * h)), y1 = Math.min(h, Math.ceil((b.y1 + pad) * h));
+  for (let y = y0; y < y1; y++) m.fill(1, y * w + x0, y * w + x1);
+  return m;
+}
+
+const LOCATE = S.obj({ found: S.bool(), x0: S.num("left edge, share of width 0-1"), y0: S.num("top edge, share of height 0-1"), x1: S.num("right edge, share of width 0-1"), y1: S.num("bottom edge, share of height 0-1") });
+
+/** Muse Spark points at the thing to change in the picture, as a box; undefined when it does not see it. */
+export async function locateThing(ctx: StudioContext, png: Buffer, find: string): Promise<Box01 | undefined> {
+  const url = `data:image/jpeg;base64,${(await sharp(png).resize(540, 960, { fit: "cover" }).jpeg({ quality: 80 }).toBuffer()).toString("base64")}`;
+  const r = await ctx.spark.json<{ found: boolean } & Box01>("fix_locate", LOCATE, [{ role: "user", content: [{ type: "text", text: `In this cartoon frame, where is: "${find}"? Give a tight box around it as shares of the frame width and height (0 = left/top, 1 = right/bottom). found=false if it is not in the picture.` }, { type: "image_url", image_url: { url } }] }]);
+  const c = (n: number) => Math.min(1, Math.max(0, n));
+  const b = { x0: c(r.x0), y0: c(r.y0), x1: c(r.x1), y1: c(r.y1) };
+  return r.found && b.x1 - b.x0 > 0.01 && b.y1 - b.y0 > 0.005 && (b.x1 - b.x0) * (b.y1 - b.y0) < 0.4 ? b : undefined;
+}
+
 const COMPARE = S.obj({
   done: S.bool(),
   clean: S.bool(),
@@ -421,14 +447,24 @@ const COMPARE = S.obj({
 });
 
 /** Muse Spark looks at the picture before and after a detail fix: is the asked change there, and nothing else touched? */
-export async function compareFix(ctx: StudioContext, before: Buffer, after: Buffer, note: string): Promise<{ ok: boolean; problem: string }> {
+export async function compareFix(ctx: StudioContext, before: Buffer, after: Buffer, note: string, box?: Box01): Promise<{ ok: boolean; problem: string }> {
   const small = async (b: Buffer) => `data:image/jpeg;base64,${(await sharp(b).resize(540, 960, { fit: "cover" }).jpeg({ quality: 80 }).toBuffer()).toString("base64")}`;
+  // A small thing is hard to judge at 540 px: a close-up of the place, before and after, goes along.
+  const zoom = async (b: Buffer) => {
+    const { w, h } = OUT;
+    const img = await sharp(b).resize(w, h, { fit: "cover" }).png().toBuffer();
+    const g = 0.08, left = Math.max(0, Math.floor((box!.x0 - g) * w)), top = Math.max(0, Math.floor((box!.y0 - g) * h));
+    const width = Math.min(w, Math.ceil((box!.x1 + g) * w)) - left, height = Math.min(h, Math.ceil((box!.y1 + g) * h)) - top;
+    return `data:image/jpeg;base64,${(await sharp(await sharp(img).extract({ left, top, width, height }).png().toBuffer()).resize(512, 512, { fit: "inside" }).jpeg({ quality: 85 }).toBuffer()).toString("base64")}`;
+  };
+  const close = box ? [{ type: "text" as const, text: "Close-ups of the place, before then after:" }, { type: "image_url" as const, image_url: { url: await zoom(before) } }, { type: "image_url" as const, image_url: { url: await zoom(after) } }] : [];
   const r = await ctx.spark.json<{ done: boolean; clean: boolean; problem: string }>("fix_compare", COMPARE, [{
     role: "user",
     content: [
       { type: "text", text: `Two versions of one cartoon frame: the first before a fix, the second after. The fix asked for: "${note}". Answer done=true only if that change is clearly visible in the second (a thing to remove is fully gone). Answer clean=true only if everything else is the same: look hard for ghosted or doubled outlines, smears or stripes, and characters or props that moved or changed.` },
       { type: "image_url", image_url: { url: await small(before) } },
       { type: "image_url", image_url: { url: await small(after) } },
+      ...close,
     ],
   }]);
   return r.done && r.clean ? { ok: true, problem: "" } : { ok: false, problem: r.problem || (!r.done ? "the change asked for is not in the new picture" : "other parts of the picture changed") };
@@ -441,15 +477,23 @@ export async function compareFix(ctx: StudioContext, before: Buffer, after: Buff
  * picture untouched) when the thing is not found, covers too much, the edit moved the picture around it
  * (pasting would leave a ghost) or the edit did not change it at all.
  */
-export async function pasteRegion(sam: Sam, before: Buffer, edited: Buffer, find: string, log?: (s: string) => void): Promise<{ image: Buffer; problem: string }> {
+export async function pasteRegion(sam: Sam, before: Buffer, edited: Buffer, find: string, log?: (s: string) => void, box?: Box01): Promise<{ image: Buffer; problem: string }> {
   const { w, h } = OUT;
   const a = new Uint8Array(await sharp(before).resize(w, h, { fit: "cover" }).removeAlpha().raw().toBuffer());
   const b = new Uint8Array(await sharp(edited).resize(w, h, { fit: "cover" }).removeAlpha().raw().toBuffer());
-  const m1 = await maskOf(sam, a, [find]), m2 = await maskOf(sam, b, [find]);
+  let m1 = await maskOf(sam, a, [find]);
+  const m2 = await maskOf(sam, b, [find]);
+  // Where Muse Spark sees the thing: SAM's finds count only there (SAM matched Rico for "wall clock"),
+  // and when SAM finds nothing there, the box itself is the place.
+  const inBox = box ? boxMask(box, w, h, 0.03) : undefined;
+  if (inBox) {
+    m1 = m1.map((v, i) => v & inBox[i]);
+    if (!m1.some((v) => v)) m1 = boxMask(box!, w, h, 0);
+  }
   // Found only in the edit, it may be anything that looks alike elsewhere (a phone for a clock): never pasted.
   if (!m1.some((v) => v)) return { image: before, problem: `"${find}" not found in the picture` };
   const near = dilate(m1, w, h, 60);
-  const core = m1.map((v, i) => v | (m2[i] & near[i]));
+  const core = m1.map((v, i) => v | (m2[i] & near[i] & (inBox ? inBox[i] : 1)));
   const share = core.reduce((n, v) => n + v, 0) / core.length;
   if (share > 0.3) return { image: before, problem: `"${find}" covers ${Math.round(share * 100)}% of the picture, too much for a detail fix` };
   const mask = dilate(core, w, h, 24);
@@ -461,9 +505,10 @@ export async function pasteRegion(sam: Sam, before: Buffer, edited: Buffer, find
   };
   const around = diff(ring), inside = diff(core);
   log?.(`"${find}": ${(share * 100).toFixed(1)}% of the picture, change inside ${inside.toFixed(0)}, around ${around.toFixed(0)}`);
-  if (around > 22) return { image: before, problem: `the edit moved the picture around "${find}" (would leave a ghost)` };
+  // A redraw drifts a little everywhere; only a clear shift around the thing would ghost once pasted.
+  if (around > 40) return { image: before, problem: `the edit moved the picture around "${find}" (would leave a ghost)` };
   if (inside < 10 || inside < around * 2) return { image: before, problem: `the edit did not change "${find}"` };
-  const alpha = await sharp(Buffer.from(mask.map((v) => v * 255)), { raw: { width: w, height: h, channels: 1 } }).blur(8).raw().toBuffer();
+  const alpha = await sharp(Buffer.from(mask.map((v) => v * 255)), { raw: { width: w, height: h, channels: 1 } }).blur(8).extractChannel(0).raw().toBuffer();
   const rgba = Buffer.alloc(w * h * 4);
   for (let i = 0; i < w * h; i++) { rgba[i * 4] = b[i * 3]; rgba[i * 4 + 1] = b[i * 3 + 1]; rgba[i * 4 + 2] = b[i * 3 + 2]; rgba[i * 4 + 3] = alpha[i]; }
   return { image: await sharp(Buffer.from(a), { raw: { width: w, height: h, channels: 3 } }).composite([{ input: rgba, raw: { width: w, height: h, channels: 4 } }]).png().toBuffer(), problem: "" };

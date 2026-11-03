@@ -406,3 +406,17 @@ test("illustrate: a detail fix is refused when Muse Spark sees the change missin
   assert.match((await compareFix(ctx({ done: false, clean: true, problem: "" }), png, png, "remove the clock")).problem, /not in the new picture/);
   assert.match((await compareFix(ctx({ done: true, clean: false, problem: "Rico is doubled" }), png, png, "remove the clock")).problem, /doubled/);
 });
+
+test("illustrate: where Muse Spark points, a SAM find elsewhere is ignored and the box itself is pasted", async () => {
+  const { w, h } = { w: 1080, h: 1920 };
+  const before = await sharp({ create: { width: w, height: h, channels: 3, background: "#ddd" } }).png().toBuffer();
+  const edited = await sharp(before).composite([{ input: await sharp({ create: { width: 200, height: 200, channels: 3, background: "#222" } }).png().toBuffer(), left: 400, top: 400 }]).png().toBuffer();
+  const box = (x0: number, y0: number, x1: number, y1: number) => { const m = new Uint8Array(w * h); for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) m[y * w + x] = 1; return m; };
+  // SAM "finds" the thing far away (on the character); Spark's box is where it really is.
+  const wrong = { segment: async () => [{ objectId: "1", width: w, height: h, mask: box(100, 1500, 300, 1800), area: 1 }] } as never;
+  const r = await pasteRegion(wrong, before, edited, "wall clock", undefined, { x0: 400 / w, y0: 400 / h, x1: 600 / w, y1: 600 / h });
+  assert.equal(r.problem, "");
+  const px = await sharp(r.image).removeAlpha().raw().toBuffer();
+  assert.equal(px[(500 * w + 500) * 3], 0x22, "the box was pasted");
+  assert.equal(px[(1600 * w + 200) * 3], 0xdd, "the wrong find was not");
+});

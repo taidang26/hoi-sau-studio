@@ -93,12 +93,12 @@ export async function askFixes(ctx: StudioContext, plan: Plan, dir: string, note
     "- add_line(text, start, end): a spoken line has no subtitle. Use the uncovered stretches above for its time when they match.",
     "- drop_line(line): a subtitle that should not be there.",
     "- bubble(shot, text): the speech bubble text; empty text removes it.",
-    "- fix_detail(shot, what, find): one thing in a picture is wrong and the rest is good (a pin on the wrong side, a wrong object, wrong colour). `what` is a short English edit instruction, `find` names the thing so it can be located, e.g. 'star pin on his back', 'the lightsticks'. Prefer this over redraw.",
+    "- fix_detail(shot, what, find): one thing in a picture is wrong and the rest is good (a pin on the wrong side, a wrong object, wrong colour). `what` is a short English edit instruction, `find` names something visible in the picture NOW so it can be located, e.g. 'star pin on his back', 'the lightsticks'; to add a thing, `find` is where it goes, e.g. 'Rico's right paw'. Prefer this over redraw.",
     "- redraw(shot, what): the whole picture is wrong (wrong place, wrong character, wrong time of day). `what` says in English what it must show.",
-    "- add_shot(start, what): a line has no picture of its own; a new shot starts at `start` and shows `what` (English, name the characters as in the shots above) until the next shot.",
+    "- add_shot(start, end, what): a line has no picture of its own; a new shot shows `what` (English, name the characters as in the shots above) from `start` to `end`. Use that line's own start and end times from the list above (not the paused second), and the picture before comes back after `end`. Never a real person or celebrity: a singer or band the words name is only tiny faceless silhouettes on a stage or screen, with our character in front. When that line's subtitle is garbled too, also add line_text for it.",
     "- redo_pose(shot): the second pose jumps or looks broken. one_pose(shot): keep the picture still. no_mouth(shot): the mouth should not move (back view, nobody talks).",
     "Fill every field: shot id or empty, line index or -1, seconds or -1. Write `say` as one short Vietnamese sentence the owner reads, e.g. 'Câu 1: đổi \"Mày\" thành \"Mẹ\"'.",
-    "If the note is unclear, return no edits and ask one short question in `reply`. Otherwise `reply` sums up in one short Vietnamese sentence.",
+    "If the note is unclear, return no edits and ask one short question in `reply`. Otherwise `reply` says in one short Vietnamese sentence what WILL be done (nothing is done until he presses the button), e.g. 'Sẽ đổi chữ câu đầu và vẽ thêm một cảnh.'",
   ].filter(Boolean).join("\n\n");
   const r = await ctx.spark.json<FixPlan>("clip_fixes", FIX_PLAN, [{ role: "user", content: [{ type: "text", text }, ...thumbs] }]);
   return { reply: r.reply, actions: r.actions.filter((a) => validAction(plan, a)) };
@@ -117,7 +117,7 @@ export function validAction(plan: Plan, a: FixAction): boolean {
     case "bubble": return !!shot;
     case "fix_detail": return !!shot && !shot.src && !!a.what.trim();
     case "redraw": return !!shot && !shot.src;
-    case "add_shot": return a.start >= 0.3 && a.start <= plan.end - 0.3 && !!a.what.trim();
+    case "add_shot": return a.start >= 0.3 && a.start <= plan.end - 0.3 && !!a.what.trim() && (a.end < 0 || a.end > a.start + 0.3);
     default: return !!shot && !shot.src;
   }
 }

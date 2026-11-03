@@ -6,7 +6,7 @@ import { mockScript, PACE, scriptProblems, syllables } from "./script.js";
 import { blinkTrack, chunkWords, wordTimes } from "./timeline.js";
 import { hummedLine, joinLines, mouthTrack, RATE, ttsArg, ttsEnv, voiceShape, wavBytes } from "./voice.js";
 import { setPrompt, SETS } from "./sets.js";
-import { alignBackground, dilate, flatBands, frameProblem, gateToWords, ghostShare, groupLines, leadFeatures, leadMouth, leadOr, mouthIn, overlapShare, parseCuts, pasteMouth, poseBProblem, popScale, poseAt, shotSpans, timeWords } from "./illustrate.js";
+import { alignBackground, dilate, flatBands, frameProblem, gateToWords, ghostShare, groupLines, leadFeatures, leadMouth, leadOr, mouthIn, overlapShare, parseCuts, pasteMouth, pasteRegion, poseBProblem, popScale, poseAt, shotSpans, timeWords } from "./illustrate.js";
 
 test("words share the line's time, with a pause after punctuation", () => {
   const w = wordTimes("Dạ, em đang làm", 1, 3);
@@ -365,4 +365,35 @@ test("illustrate: a grin's corner beyond the new mouth is painted over", () => {
   const curl = (46 * w + 50) * 3;
   assert.equal(pasteMouth(base, edit, grin, small, 0, 0, 3).data[curl], 200);
   assert.ok(pasteMouth(base, edit, grin, small, 0, 0, 3, undefined, 8).data[curl] < 200);
+});
+
+test("illustrate: fast talk is cut into lines of at most 3.5 s, and a long stretch with no cut is split at a line", () => {
+  const words = Array.from({ length: 30 }, (_, i) => ({ text: `w${i}`, start: i * 0.5, end: i * 0.5 + 0.4 }));
+  const lines = groupLines(words);
+  assert.ok(lines.length >= 4 && lines.every((l) => l.end - l.start <= 3.5));
+  const spans = shotSpans(lines, [], 15);
+  assert.ok(spans.length >= 3 && spans.every((s) => s.end - s.t <= 6.01), JSON.stringify(spans.map((s) => [s.t, s.end])));
+  assert.ok(spans.slice(1).every((s) => lines.some((l) => l.start === s.t)), "splits fall on line starts");
+});
+
+test("illustrate: a detail fix is never pasted where the thing was not in the picture, or when nothing changed", async () => {
+  const { w, h } = { w: 1080, h: 1920 };
+  const png = (c: string) => sharp({ create: { width: w, height: h, channels: 3, background: c } }).png().toBuffer();
+  const box = (x0: number, y0: number, x1: number, y1: number) => { const m = new Uint8Array(w * h); for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) m[y * w + x] = 1; return m; };
+  const before = await png("#ddd");
+  const edited = await sharp(before).composite([{ input: await sharp({ create: { width: 200, height: 200, channels: 3, background: "#222" } }).png().toBuffer(), left: 400, top: 400 }]).png().toBuffer();
+  let call = 0;
+  // The clock is found only in the edit (the model drew a lookalike elsewhere): refused.
+  const onlyInEdit = { segment: async () => (call++ % 2 ? [{ objectId: "1", width: w, height: h, mask: box(400, 400, 600, 600), area: 1 }] : []) } as never;
+  const r1 = await pasteRegion(onlyInEdit, before, edited, "wall clock");
+  assert.match(r1.problem, /not found/);
+  // Found in the picture but the edit left it as it was: refused.
+  const there = { segment: async () => [{ objectId: "1", width: w, height: h, mask: box(100, 100, 300, 300), area: 1 }] } as never;
+  assert.match((await pasteRegion(there, before, edited, "wall clock")).problem, /did not change/);
+  // Found and changed there: pasted, and the rest is untouched.
+  const changed = { segment: async () => [{ objectId: "1", width: w, height: h, mask: box(420, 420, 580, 580), area: 1 }] } as never;
+  const ok = await pasteRegion(changed, before, edited, "wall clock");
+  assert.equal(ok.problem, "");
+  const px = await sharp(ok.image).raw().toBuffer();
+  assert.equal(px[(1500 * w + 100) * 3], 0xdd);
 });

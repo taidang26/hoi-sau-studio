@@ -427,7 +427,7 @@ test("illustrate: a flat patch left by a removal takes the wall's gradient; a re
   // The wall gets lighter from top (180) to bottom (218); the patch Muse left is flat 170.
   const wall = new Uint8Array(n * 3).map((_, j) => 180 + 2 * Math.floor(Math.floor(j / 3) / w));
   const core = new Uint8Array(n).map((_, i) => { const x = i % w, y = Math.floor(i / w); return x >= 6 && x < 14 && y >= 6 && y < 14 ? 1 : 0; });
-  const ring = core.map((v) => v ^ 1), mask = core;
+  const ring = core.map((v) => v ^ 1), mask = core.map((v) => v * 255);
   const patch = wall.slice();
   for (let i = 0; i < n; i++) if (core[i]) patch.fill(170, i * 3, i * 3 + 3);
   const r = flatPatchFit(wall, patch, core, mask, ring, w);

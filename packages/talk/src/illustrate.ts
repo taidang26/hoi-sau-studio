@@ -422,18 +422,57 @@ export async function fixShot(ctx: StudioContext, plan: Plan, dir: string, id: s
  * original's mean tone in the ring around it, or undefined when the patch is not flat (a recoloured
  * object keeps its new colour) or already matches.
  */
-export function flatPatchShift(a: Uint8Array, b: Uint8Array, core: Uint8Array, ring: Uint8Array, maxStd = 14): [number, number, number] | undefined {
-  const stats = (img: Uint8Array, sel: Uint8Array) => {
-    const sum = [0, 0, 0], sq = [0, 0, 0];
-    let n = 0;
-    for (let i = 0; i < sel.length; i++) if (sel[i]) { n++; for (let c = 0; c < 3; c++) { const v = img[i * 3 + c]; sum[c] += v; sq[c] += v * v; } }
-    const mean = sum.map((x) => (n ? x / n : 0));
-    return { n, mean, std: Math.sqrt(Math.max(...sq.map((x, c) => (n ? x / n - mean[c] * mean[c] : 0)))) };
-  };
-  const inside = stats(b, core), around = stats(a, ring);
-  if (!inside.n || !around.n || inside.std > maxStd || around.std > maxStd * 1.5) return undefined;
-  const shift = around.mean.map((m, c) => m - inside.mean[c]) as [number, number, number];
-  return Math.max(...shift.map(Math.abs)) < 3 ? undefined : shift;
+/** Least squares plane v = k0 + k1·x + k2·y per channel over the selected pixels (x, y as shares of the frame). */
+function planeFit(img: Uint8Array, sel: Uint8Array, w: number): { k: number[][]; resid: number; n: number } {
+  const h = sel.length / w;
+  const M = [[0, 0, 0], [0, 0, 0], [0, 0, 0]], R = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+  let n = 0;
+  for (let i = 0; i < sel.length; i++) {
+    if (!sel[i]) continue;
+    n++;
+    const f = [1, (i % w) / w, Math.floor(i / w) / h];
+    for (let r = 0; r < 3; r++) { for (let c = 0; c < 3; c++) M[r][c] += f[r] * f[c]; for (let ch = 0; ch < 3; ch++) R[ch][r] += f[r] * img[i * 3 + ch]; }
+  }
+  const det = (m: number[][]) => m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1]) - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0]) + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0]);
+  const d = det(M);
+  const k = R.map((rhs) => {
+    if (Math.abs(d) < 1e-9) return [n ? rhs[0] / n : 0, 0, 0];
+    return [0, 1, 2].map((col) => det(M.map((row, r) => row.map((v, c) => (c === col ? rhs[r] : v)))) / d);
+  });
+  let sq = 0;
+  for (let i = 0; i < sel.length; i++) if (sel[i]) { const x = (i % w) / w, y = Math.floor(i / w) / h; for (let ch = 0; ch < 3; ch++) { const e = img[i * 3 + ch] - (k[ch][0] + k[ch][1] * x + k[ch][2] * y); sq += e * e; } }
+  return { k, resid: n ? Math.sqrt(sq / (n * 3)) : 0, n };
+}
+
+/**
+ * A removed thing leaves a plain patch that Muse draws a shade off the wall around it, and flat where the
+ * wall has a light gradient and grain. When the patch is plain, its own gradient is swapped for the
+ * original wall's gradient just around it (fitted as a plane), and grain is added to match the wall's.
+ * Returns the edit with that done inside `mask`, or undefined when the patch is a drawn thing (not plain).
+ */
+export function flatPatchFit(a: Uint8Array, b: Uint8Array, core: Uint8Array, mask: Uint8Array, ring: Uint8Array, w: number, maxStd = 14): { image: Uint8Array; shift: number[] } | undefined {
+  const inside = planeFit(b, core, w), around = planeFit(a, ring, w);
+  if (!inside.n || !around.n || inside.resid > maxStd || around.resid > maxStd * 1.5) return undefined;
+  const h = mask.length / w;
+  const grain = Math.sqrt(Math.max(0, around.resid ** 2 - inside.resid ** 2));
+  let seed = 12345;
+  const rnd = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+  const out = b.slice();
+  const shift = [0, 0, 0];
+  let n = 0;
+  for (let i = 0; i < mask.length; i++) {
+    if (!mask[i]) continue;
+    const x = (i % w) / w, y = Math.floor(i / w) / h;
+    const g = grain ? (rnd() + rnd() + rnd() - 1.5) * 2 * grain : 0;
+    n++;
+    for (let c = 0; c < 3; c++) {
+      const d = around.k[c][0] + around.k[c][1] * x + around.k[c][2] * y - (inside.k[c][0] + inside.k[c][1] * x + inside.k[c][2] * y);
+      shift[c] += d;
+      out[i * 3 + c] = Math.max(0, Math.min(255, Math.round(b[i * 3 + c] + d + g)));
+    }
+  }
+  const mean = shift.map((s) => (n ? s / n : 0));
+  return { image: out, shift: mean };
 }
 
 /** The note takes something away (then the place left behind should look like what is around it). */
@@ -532,12 +571,12 @@ export async function pasteRegion(sam: Sam, before: Buffer, edited: Buffer, find
   if (inside < 10 || inside < around * 2) return { image: before, problem: `the edit did not change "${find}"` };
   // A removed thing leaves a plain patch that Muse often draws a shade off the wall around it (a dark oval
   // where the clock was): when the patch is flat, its tone is moved to the original's tone just around it.
-  const tone = removal ? flatPatchShift(a, b, core, ring) : undefined;
-  if (tone) {
-    log?.(`"${find}": plain patch, tone moved by ${tone.map((x) => x.toFixed(0)).join(",")}`);
-    for (let i = 0; i < w * h; i++) if (mask[i]) for (let c = 0; c < 3; c++) b[i * 3 + c] = Math.max(0, Math.min(255, b[i * 3 + c] + tone[c]));
+  const fit = removal ? flatPatchFit(a, b, core, mask, ring, w) : undefined;
+  if (fit) {
+    log?.(`"${find}": plain patch, matched to the wall's gradient and grain (tone moved by ${fit.shift.map((x) => x.toFixed(0)).join(",")} on average)`);
+    b.set(fit.image);
   }
-  const alpha = await sharp(Buffer.from(mask.map((v) => v * 255)), { raw: { width: w, height: h, channels: 1 } }).blur(8).extractChannel(0).raw().toBuffer();
+  const alpha = await sharp(Buffer.from(mask.map((v) => v * 255)), { raw: { width: w, height: h, channels: 1 } }).blur(fit ? 16 : 8).extractChannel(0).raw().toBuffer();
   const rgba = Buffer.alloc(w * h * 4);
   for (let i = 0; i < w * h; i++) { rgba[i * 4] = b[i * 3]; rgba[i * 4 + 1] = b[i * 3 + 1]; rgba[i * 4 + 2] = b[i * 3 + 2]; rgba[i * 4 + 3] = alpha[i]; }
   return { image: await sharp(Buffer.from(a), { raw: { width: w, height: h, channels: 3 } }).composite([{ input: rgba, raw: { width: w, height: h, channels: 4 } }]).png().toBuffer(), problem: "" };

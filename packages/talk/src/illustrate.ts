@@ -448,27 +448,29 @@ function planeFit(img: Uint8Array, sel: Uint8Array, w: number): { k: number[][];
  * A removed thing leaves a plain patch that Muse draws a shade off the wall around it, and flat where the
  * wall has a light gradient and grain. When the patch is plain, its own gradient is swapped for the
  * original wall's gradient just around it (fitted as a plane), and grain is added to match the wall's.
- * Returns the edit with that done inside `mask`, or undefined when the patch is a drawn thing (not plain).
+ * `weight` (0-255) is how much of that each pixel takes: full on the thing, fading to none at the paste's
+ * edge, where the edit already matches the wall (a full shift there would draw the paste's outline).
+ * Returns the edit with that done, or undefined when the patch is a drawn thing (not plain).
  */
-export function flatPatchFit(a: Uint8Array, b: Uint8Array, core: Uint8Array, mask: Uint8Array, ring: Uint8Array, w: number, maxStd = 14): { image: Uint8Array; shift: number[] } | undefined {
+export function flatPatchFit(a: Uint8Array, b: Uint8Array, core: Uint8Array, weight: Uint8Array, ring: Uint8Array, w: number, maxStd = 14): { image: Uint8Array; shift: number[] } | undefined {
   const inside = planeFit(b, core, w), around = planeFit(a, ring, w);
   if (!inside.n || !around.n || inside.resid > maxStd || around.resid > maxStd * 1.5) return undefined;
-  const h = mask.length / w;
+  const h = weight.length / w;
   const grain = Math.sqrt(Math.max(0, around.resid ** 2 - inside.resid ** 2));
   let seed = 12345;
   const rnd = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
   const out = b.slice();
   const shift = [0, 0, 0];
   let n = 0;
-  for (let i = 0; i < mask.length; i++) {
-    if (!mask[i]) continue;
-    const x = (i % w) / w, y = Math.floor(i / w) / h;
+  for (let i = 0; i < weight.length; i++) {
+    if (!weight[i]) continue;
+    const x = (i % w) / w, y = Math.floor(i / w) / h, k = weight[i] / 255;
     const g = grain ? (rnd() + rnd() + rnd() - 1.5) * 2 * grain : 0;
-    n++;
+    if (core[i]) n++;
     for (let c = 0; c < 3; c++) {
       const d = around.k[c][0] + around.k[c][1] * x + around.k[c][2] * y - (inside.k[c][0] + inside.k[c][1] * x + inside.k[c][2] * y);
-      shift[c] += d;
-      out[i * 3 + c] = Math.max(0, Math.min(255, Math.round(b[i * 3 + c] + d + g)));
+      if (core[i]) shift[c] += d;
+      out[i * 3 + c] = Math.max(0, Math.min(255, Math.round(b[i * 3 + c] + k * (d + g))));
     }
   }
   const mean = shift.map((s) => (n ? s / n : 0));
@@ -572,7 +574,9 @@ export async function pasteRegion(sam: Sam, before: Buffer, edited: Buffer, find
   if (inside < 10 || inside < around * 2) return { image: before, problem: `the edit did not change "${find}"` };
   // A removed thing leaves a plain patch that Muse often draws a shade off the wall around it (a dark oval
   // where the clock was): when the patch is flat, its tone is moved to the original's tone just around it.
-  const fit = removal ? flatPatchFit(a, b, core, mask, ring, w) : undefined;
+  // Full correction on the thing and a little past it, fading out well inside the paste's edge.
+  const weight = removal ? new Uint8Array(await sharp(Buffer.from(dilate(core, w, h, 20).map((v) => v * 255)), { raw: { width: w, height: h, channels: 1 } }).blur(12).extractChannel(0).raw().toBuffer()) : undefined;
+  const fit = weight ? flatPatchFit(a, b, core, weight, ring, w) : undefined;
   if (fit) {
     log?.(`"${find}": plain patch, matched to the wall's gradient and grain (tone moved by ${fit.shift.map((x) => x.toFixed(0)).join(",")} on average)`);
     b.set(fit.image);

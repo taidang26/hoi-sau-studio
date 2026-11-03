@@ -102,7 +102,7 @@ export interface IdeaPlan {
   read: string;
   lead: string;
   meme: { top: string; punch: string; scenes: string[] };
-  comic: { direction: string; with: string[] };
+  comic: { direction: string; with: string[]; headline?: string };
   title: string;
   caption?: string;
 }
@@ -1132,6 +1132,7 @@ ${p.meme.scenes.length > 1 ? `<label>${esc(t("Cảnh 2 vẽ gì"))}<input name="
     ? `<form class="form" method="post" action="/studio/new"><input type="hidden" name="format" value="single"><input type="hidden" name="run" value="1">
 <div class="row"><label>${esc(t("Nhân vật chính"))}${pick("lead", p.lead)}</label></div>
 ${cast.filter((c) => c.slug !== p.lead).length ? `<fieldset><legend>${esc(t("Cùng xuất hiện"))}</legend>${cast.filter((c) => c.slug !== p.lead).map((c) => `<label class="check"><input type="checkbox" name="with" value="${esc(c.slug)}"${p.comic.with.includes(c.slug) ? " checked" : ""}> ${esc(c.name)}</label>`).join("")}</fieldset>` : ""}
+<label>${esc(t("Câu in trên đầu tranh (nguyên văn)"))}<textarea name="headline" rows="2">${esc(p.comic.headline ?? "")}</textarea></label>
 <label>${esc(t("Tranh vẽ gì, ai nói gì"))}<textarea name="direction" rows="3" required>${esc(p.comic.direction)}</textarea></label>
 <button class="btn on">▶ ${esc(t("Làm tranh 1 khung"))}</button></form>`
     : `<p class="muted small">${esc(t("Phần làm tranh chưa bật trên máy này."))}</p>`;
@@ -1421,7 +1422,7 @@ export function mockExec(): Exec {
         read: pics.length ? words : "",
         lead: "cu-li",
         meme: { top: cut > 0 ? words.slice(0, cut + 1) : words, punch: cut > 0 ? words.slice(cut + 2) : "", scenes: ["Tũn vỗ vai đồng nghiệp", "Tũn ôm vé số mơ màng"] },
-        comic: { direction: `Tũn ở văn phòng: ${words}`, with: [] },
+        comic: { direction: `Tũn ở văn phòng: ${words}`, with: [], headline: words },
         title: "Trúng số nghỉ việc",
         caption: "Ổn định là cho người khác #danvanphong #HoiSau",
       };

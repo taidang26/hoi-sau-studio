@@ -368,6 +368,10 @@ test("studio: pick a series style, draw and lock a sheet with poses, make a thre
     assert.doesNotMatch(html, /Trang đăng/);
     assert.match(html, /\/studio-media\/ep-010\/final\/03\.png/);
     assert.ok(!existsSync(join(dirs.episodesDir, "ep-010", "final", "page.png")));
+
+    // From a quote: the exact words go on the panel as its headline band.
+    await post("/studio/new", { id: "ep-011", lead: "cu-li", direction: "Tũn đổ lỗi cho đồng nghiệp", format: "single", headline: "Kiểm điểm bản thân ít thôi, trách đồng nghiệp nhiều vào" });
+    assert.equal(JSON.parse(readFileSync(join(dirs.episodesDir, "ep-011", "episode.json"), "utf8")).headline, "Kiểm điểm bản thân ít thôi, trách đồng nghiệp nhiều vào");
   } finally {
     server.close();
   }

@@ -420,3 +420,24 @@ test("illustrate: where Muse Spark points, a SAM find elsewhere is ignored and t
   assert.equal(px[(500 * w + 500) * 3], 0x22, "the box was pasted");
   assert.equal(px[(1600 * w + 200) * 3], 0xdd, "the wrong find was not");
 });
+
+test("illustrate: a flat patch left by a removal takes the wall's tone; a recoloured object keeps its colour", async () => {
+  const { flatPatchShift } = await import("./illustrate.js");
+  const n = 100;
+  const fill = (v: number) => new Uint8Array(n * 3).fill(v);
+  const core = new Uint8Array(n).map((_, i) => (i < 50 ? 1 : 0)), ring = new Uint8Array(n).map((_, i) => (i >= 50 ? 1 : 0));
+  const wall = fill(200), patch = fill(200);
+  for (let i = 0; i < 50 * 3; i++) patch[i] = 180;
+  assert.deepEqual(flatPatchShift(wall, patch, core, ring), [20, 20, 20], "the darker oval is lifted to the wall");
+  const bottle = fill(200);
+  for (let i = 0; i < 50; i++) [bottle[i * 3], bottle[i * 3 + 1], bottle[i * 3 + 2]] = i % 2 ? [40, 200, 60] : [20, 150, 40];
+  assert.equal(flatPatchShift(wall, bottle, core, ring), undefined, "a drawn object is not flattened");
+  assert.equal(flatPatchShift(wall, wall, core, ring), undefined);
+});
+
+test("illustrate: removal notes are told apart from recolours", async () => {
+  const { isRemoval } = await import("./illustrate.js");
+  assert.ok(isRemoval("remove the wall clock, leave plain wall"));
+  assert.ok(isRemoval("bỏ cái đồng hồ treo tường"));
+  assert.ok(!isRemoval("change the water bottle to light green"));
+});

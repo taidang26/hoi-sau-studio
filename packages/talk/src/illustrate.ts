@@ -384,7 +384,7 @@ export async function fixShot(ctx: StudioContext, plan: Plan, dir: string, id: s
       const res = await generateSoftly(ctx.image, { prompt: prompt + (fix ? ` Make sure: ${fix}` : ""), size: `${OUT.w}x${OUT.h}`, references: [dataUrl(before)] }, opts.log);
       writeFileSync(join(dir, `${id}-fix${attempt + 1}.raw.png`), res.image);
       // With a thing to find, only that place changes: the edit is pasted back under its (grown, feathered) mask.
-      const pasted = opts.find && opts.sam ? await pasteRegion(opts.sam, before, res.image, opts.find, opts.log, box) : { image: res.image, problem: "" };
+      const pasted = opts.find && opts.sam ? await pasteRegion(opts.sam, before, res.image, opts.find, opts.log, box, isRemoval(note)) : { image: res.image, problem: "" };
       if (pasted.problem) {
         why = pasted.problem;
         opts.log?.(`${id}: ${why}`);
@@ -416,6 +416,28 @@ export async function fixShot(ctx: StudioContext, plan: Plan, dir: string, id: s
     throw new Error(`the picture was left as it was (${why})`);
   }
 }
+
+/**
+ * The per-channel shift that brings a flat patch of the edit (`core` in `b`, little variation) to the
+ * original's mean tone in the ring around it, or undefined when the patch is not flat (a recoloured
+ * object keeps its new colour) or already matches.
+ */
+export function flatPatchShift(a: Uint8Array, b: Uint8Array, core: Uint8Array, ring: Uint8Array, maxStd = 14): [number, number, number] | undefined {
+  const stats = (img: Uint8Array, sel: Uint8Array) => {
+    const sum = [0, 0, 0], sq = [0, 0, 0];
+    let n = 0;
+    for (let i = 0; i < sel.length; i++) if (sel[i]) { n++; for (let c = 0; c < 3; c++) { const v = img[i * 3 + c]; sum[c] += v; sq[c] += v * v; } }
+    const mean = sum.map((x) => (n ? x / n : 0));
+    return { n, mean, std: Math.sqrt(Math.max(...sq.map((x, c) => (n ? x / n - mean[c] * mean[c] : 0)))) };
+  };
+  const inside = stats(b, core), around = stats(a, ring);
+  if (!inside.n || !around.n || inside.std > maxStd || around.std > maxStd * 1.5) return undefined;
+  const shift = around.mean.map((m, c) => m - inside.mean[c]) as [number, number, number];
+  return Math.max(...shift.map(Math.abs)) < 3 ? undefined : shift;
+}
+
+/** The note takes something away (then the place left behind should look like what is around it). */
+export const isRemoval = (note: string) => /\b(remove|delete|erase|take (it )?(out|off|away)|get rid|without)\b|(^|\s)(bỏ|xoá|xóa|gỡ|cất)(?=\s|$|[,.])/i.test(note);
 
 /** A box as shares of the frame, x0 < x1 and y0 < y1, each 0 to 1. */
 export interface Box01 { x0: number; y0: number; x1: number; y1: number }
@@ -477,7 +499,7 @@ export async function compareFix(ctx: StudioContext, before: Buffer, after: Buff
  * picture untouched) when the thing is not found, covers too much, the edit moved the picture around it
  * (pasting would leave a ghost) or the edit did not change it at all.
  */
-export async function pasteRegion(sam: Sam, before: Buffer, edited: Buffer, find: string, log?: (s: string) => void, box?: Box01): Promise<{ image: Buffer; problem: string }> {
+export async function pasteRegion(sam: Sam, before: Buffer, edited: Buffer, find: string, log?: (s: string) => void, box?: Box01, removal = false): Promise<{ image: Buffer; problem: string }> {
   const { w, h } = OUT;
   const a = new Uint8Array(await sharp(before).resize(w, h, { fit: "cover" }).removeAlpha().raw().toBuffer());
   const b = new Uint8Array(await sharp(edited).resize(w, h, { fit: "cover" }).removeAlpha().raw().toBuffer());
@@ -508,6 +530,13 @@ export async function pasteRegion(sam: Sam, before: Buffer, edited: Buffer, find
   // A redraw drifts a little everywhere; only a clear shift around the thing would ghost once pasted.
   if (around > 40) return { image: before, problem: `the edit moved the picture around "${find}" (would leave a ghost)` };
   if (inside < 10 || inside < around * 2) return { image: before, problem: `the edit did not change "${find}"` };
+  // A removed thing leaves a plain patch that Muse often draws a shade off the wall around it (a dark oval
+  // where the clock was): when the patch is flat, its tone is moved to the original's tone just around it.
+  const tone = removal ? flatPatchShift(a, b, core, ring) : undefined;
+  if (tone) {
+    log?.(`"${find}": plain patch, tone moved by ${tone.map((x) => x.toFixed(0)).join(",")}`);
+    for (let i = 0; i < w * h; i++) if (mask[i]) for (let c = 0; c < 3; c++) b[i * 3 + c] = Math.max(0, Math.min(255, b[i * 3 + c] + tone[c]));
+  }
   const alpha = await sharp(Buffer.from(mask.map((v) => v * 255)), { raw: { width: w, height: h, channels: 1 } }).blur(8).extractChannel(0).raw().toBuffer();
   const rgba = Buffer.alloc(w * h * 4);
   for (let i = 0; i < w * h; i++) { rgba[i * 4] = b[i * 3]; rgba[i * 4 + 1] = b[i * 3 + 1]; rgba[i * 4 + 2] = b[i * 3 + 2]; rgba[i * 4 + 3] = alpha[i]; }

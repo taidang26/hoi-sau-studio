@@ -26,7 +26,8 @@ export interface IdeaPlan {
   read: string;
   lead: string;
   meme: { top: string; punch: string; scenes: string[] };
-  comic: { direction: string; with: string[] };
+  /** headline: the words printed in a band above the panel, exactly as given (a quote keeps its words); empty when the joke is only in the drawing. */
+  comic: { direction: string; with: string[]; headline: string };
   title: string;
   /** Short caption: #danvanphong first, at most 5 hashtags without accents, no source credit. */
   caption: string;
@@ -45,6 +46,7 @@ const PLAN = S.obj({
   comic: S.obj({
     direction: S.str("Vietnamese: what happens in the one panel, in our office with our cast, with the line said if any"),
     with: S.arr(S.str("slug of another cast member"), 0, 2),
+    headline: S.str("the quote or joke words printed in a band above the panel, EXACTLY as written by the owner or in the picture; empty only when the joke has no words"),
   }),
   title: S.str("short Vietnamese title, 2-5 words"),
   caption: S.str("short Vietnamese post caption, one line, then #danvanphong first and at most 5 hashtags in total, hashtags without accents; never name or credit a source page"),
@@ -84,6 +86,7 @@ export async function readIdea(ctx: StudioContext, text: string, images: string[
     "- Read every word in the pictures exactly as written, with Vietnamese accents. Ignore page names, avatars, verified ticks, likes and watermarks: they are not part of the joke.",
     "- A quote or a joke in words (a screenshot of a post, a two-line joke) becomes kind=meme. Keep the words EXACTLY, split into two beats: the set-up, then the punchline that lands. Never reword, shorten or add words.",
     `- Each beat at most ${MEME_TEXT_MAX} characters.`,
+    "- For the comic, comic.headline holds the quote's exact words (printed in a band above the panel, like a quote card); the panel illustrates them and its bubbles add to them, never replace them.",
     "- A situation that is funny to look at (a meme picture, a described scene) becomes kind=comic, one panel. Take only the idea; never copy the picture's drawing, layout, clothes or props. Set it in the Hồi Sau office with our cast unless the joke needs home.",
     "- Scene notes are short Vietnamese: what our character does, one clear action and expression, nothing with lettering, no clocks. Two scenes for a meme: the set-up, then the reaction for the punchline.",
     "- Never credit or name the page the picture came from.",
@@ -94,6 +97,8 @@ export async function readIdea(ctx: StudioContext, text: string, images: string[
   if (want) r.kind = want;
   if (!ctx.profiles.has(r.lead)) r.lead = lead;
   r.comic.with = r.comic.with.filter((s) => ctx.profiles.has(s) && s !== r.lead);
+  // The words are the joke: a panel made from a quote always carries them, never only a paraphrase.
+  if (!r.comic.headline?.trim() && r.meme.top.trim()) r.comic.headline = `${r.meme.top.trim()} ${r.meme.punch.trim()}`.trim();
   // Text typed with no picture: the words are his, so the split must not lose any of them.
   if (r.kind === "meme" && !images.length && text.trim() && `${r.meme.top} ${r.meme.punch}`.replace(/\s+/g, " ").trim() !== text.replace(/\s+/g, " ").trim()) {
     const s = splitBeats(text);

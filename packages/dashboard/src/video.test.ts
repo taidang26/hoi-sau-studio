@@ -374,6 +374,7 @@ test("text or pictures in, a proposal with what was read, then the clip is made 
   const h2 = await (await fetch(`${base}/video/idea/${id2}`)).text();
   assert.ok(h2.indexOf("<h2>Tranh 1 khung</h2>") > 0 && h2.indexOf("<h2>Tranh 1 khung</h2>") < h2.indexOf("Hoặc làm clip chữ"));
   assert.equal(v.idea(id2)!.plan!.kind, "comic");
+  assert.equal(v.idea(id2)!.plan!.comic.headline, "Sếp gọi lên phòng lúc 5 giờ chiều thứ Sáu", "the words go on the panel as they are");
 });
 
 test("a step that dies on the network runs once more; a real failure does not", async () => {

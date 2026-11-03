@@ -22,7 +22,7 @@
  */
 
 import { spawn, spawnSync } from "node:child_process";
-import { copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { basename, extname, join } from "node:path";
 import sharp from "sharp";
 import { readApproval, type EpisodePost } from "@hoi-sau/channel";
@@ -775,7 +775,7 @@ export class Videos {
   /** Copies what a fix can change (plan, pictures, renders, notes) so it can be put back. */
   private snapshot(id: string): void {
     const u = this.undoDir(id), f = this.folder(id);
-    rmSync(u, { recursive: true, force: true });
+    clearDir(u);
     mkdirSync(u, { recursive: true });
     for (const name of readdirSync(f)) if (/^(plan|meta|meme)\.json$|\.mp4$/.test(name)) copyFileSync(join(f, name), join(u, name));
     if (existsSync(this.shotsDir(id))) cpSync(this.shotsDir(id), join(u, "shots"), { recursive: true, filter: (src) => !/[\\/]frames([\\/]|$)/.test(src) });
@@ -888,7 +888,7 @@ export class Videos {
     const m = this.meta(id);
     delete m.done;
     this.save(m);
-    rmSync(this.undoDir(id), { recursive: true, force: true });
+    clearDir(this.undoDir(id));
   }
 
   /** Puts everything back as it was before the last fix. */
@@ -906,7 +906,7 @@ export class Videos {
       mkdirSync(sd, { recursive: true });
       cpSync(us, sd, { recursive: true, force: true });
     }
-    rmSync(u, { recursive: true, force: true });
+    clearDir(u);
     const m = this.meta(id);
     delete m.done;
     delete m.ask;
@@ -1394,6 +1394,18 @@ ${plan ? approve : ""}`;
  * plan, plain placeholder pictures, a second pose that does not paste on
  * s02 and a mouth that is not found on s02, a short render, fake post links.
  */
+/**
+ * Removes a folder, waiting out Windows' short locks (a picture being served, a shell standing in it);
+ * when it stays locked it is moved aside, so the next fix still starts from an empty folder.
+ */
+function clearDir(dir: string): void {
+  try {
+    rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+  } catch {
+    renameSync(dir, `${dir}-old-${Date.now()}`);
+  }
+}
+
 export function mockExec(): Exec {
   const picture = (file: string, label: string, hue: number) =>
     sharp({ create: { width: 1080, height: 1920, channels: 3, background: `hsl(${hue}, 45%, 82%)` } })

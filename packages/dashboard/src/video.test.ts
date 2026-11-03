@@ -429,3 +429,9 @@ test("a new shot for a line starts with the line and hands back to the picture b
   failing.undo(id);
   assert.equal(readFileSync(join(v.folder(id), "plan.json"), "utf8"), planBefore);
 });
+
+test("an error note goes before the #part of the link, where the page can read it", async () => {
+  const { withNote } = await import("./server.js");
+  assert.equal(withNote("/video/a#fix", "err", "x y"), "/video/a?err=x%20y#fix");
+  assert.equal(withNote("/video/a?v=1", "ok", "z"), "/video/a?v=1&ok=z");
+});

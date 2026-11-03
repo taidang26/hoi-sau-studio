@@ -450,9 +450,11 @@ export async function carryFix(dir: string, id: string, before: Buffer, after: B
   const alpha = await sharp(Buffer.from(region.map((v) => v * 255)), { raw: { width: w, height: h, channels: 1 } }).blur(4).extractChannel(0).raw().toBuffer();
   const rgba = Buffer.alloc(w * h * 4);
   for (let i = 0; i < w * h; i++) { rgba[i * 4] = b[i * 3]; rgba[i * 4 + 1] = b[i * 3 + 1]; rgba[i * 4 + 2] = b[i * 3 + 2]; rgba[i * 4 + 3] = alpha[i]; }
-  for (const p of derivedOf(id)) {
+  // Raw pose B is only where its character comes from (stabilize puts it on pose A's background), so it
+  // is left as it is: dropping it had pose B drawn anew, a different pose.
+  for (const p of derivedOf(id).filter((x) => x !== `${id}-b`)) {
     const f = join(dir, `${p}.png`);
-    if (!existsSync(f)) continue;
+    if (!existsSync(f) || out.dropped.includes(p)) continue;
     const q = await raw(readFileSync(f));
     let n = 0, d = 0;
     for (let i = 0; i < region.length; i++) if (region[i]) { n++; d += (Math.abs(q[i * 3] - a[i * 3]) + Math.abs(q[i * 3 + 1] - a[i * 3 + 1]) + Math.abs(q[i * 3 + 2] - a[i * 3 + 2])) / 3; }
@@ -460,10 +462,13 @@ export async function carryFix(dir: string, id: string, before: Buffer, after: B
       writeFileSync(f, await sharp(Buffer.from(q), { raw: { width: w, height: h, channels: 3 } }).composite([{ input: rgba, raw: { width: w, height: h, channels: 4 } }]).removeAlpha().png().toBuffer());
       out.carried.push(p);
     } else {
-      // Pose B gone takes its stabilized copy and mouths with it.
-      const gone = p === `${id}-b` ? [p, `${id}-b2`, `${id}-b2-s`, `${id}-b2-m`] : p === `${id}-b2` ? [p, `${id}-b2-s`, `${id}-b2-m`] : [p];
-      for (const g of gone) { rmSync(join(dir, `${g}.png`), { force: true }); rmSync(join(dir, `${g}.raw.png`), { force: true }); }
-      out.dropped.push(...gone.filter((g) => !out.dropped.includes(g)));
+      // Stabilized pose B gone takes its mouths with it; it is made again from raw pose B on the new pose A.
+      const gone = p === `${id}-b2` ? [p, `${id}-b2-s`, `${id}-b2-m`] : [p];
+      for (const g of gone) {
+        if (existsSync(join(dir, `${g}.png`)) && !out.dropped.includes(g)) out.dropped.push(g);
+        rmSync(join(dir, `${g}.png`), { force: true });
+        rmSync(join(dir, `${g}.raw.png`), { force: true });
+      }
     }
   }
   log?.(`${id}: fix carried into ${out.carried.join(", ") || "nothing"}${out.dropped.length ? `; made again: ${out.dropped.join(", ")}` : ""}`);

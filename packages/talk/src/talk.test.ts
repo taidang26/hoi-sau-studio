@@ -454,13 +454,13 @@ test("illustrate: a detail fix is carried into pose B and the mouths, not drawn 
   const clock: [number, number, number, number, number] = [800, 300, 1000, 500, 30];
   const before = await pic(200, [clock]), after = await pic(200, []);
   writeFileSync(join(dir, "s01-m.png"), await pic(200, [clock, [400, 900, 500, 950, 90]])); // the mouth is elsewhere
-  writeFileSync(join(dir, "s01-b2.png"), await pic(200, [clock, [300, 1000, 700, 1800, 120]])); // pose B moved, clock untouched
-  writeFileSync(join(dir, "s01-b.png"), await pic(200, [[780, 280, 1020, 520, 120]])); // pose B stands over the clock
+  writeFileSync(join(dir, "s01-b.png"), await pic(180, [[300, 1000, 700, 1800, 120]])); // raw pose B: its own background
+  writeFileSync(join(dir, "s01-b2.png"), await pic(200, [[780, 280, 1020, 520, 120]])); // pose B stands over the clock
   writeFileSync(join(dir, "s01-b2-m.png"), await pic(200, [clock]));
   const r = await carryFix(dir, "s01", before, after);
   assert.deepEqual(r.carried.sort(), ["s01-m"]);
-  assert.ok(r.dropped.includes("s01-b") && r.dropped.includes("s01-b2") && r.dropped.includes("s01-b2-m"), "pose B over the place goes with its copies");
-  assert.ok(!existsSync(join(dir, "s01-b2.png")));
+  assert.deepEqual(r.dropped.sort(), ["s01-b2", "s01-b2-m"], "stabilized pose B over the place goes with its mouths");
+  assert.ok(existsSync(join(dir, "s01-b.png")), "raw pose B stays: pose B is made again from it, not drawn anew");
   const m = await sharp(readFileSync(join(dir, "s01-m.png"))).raw().toBuffer();
   assert.equal(m[(400 * w + 900) * 3], 200, "the clock is gone from the mouth picture");
   assert.equal(m[(920 * w + 450) * 3], 90, "the mouth is kept");

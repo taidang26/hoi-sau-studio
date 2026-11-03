@@ -9,11 +9,11 @@
  *   npm run talk -- cut <slug> [--phrase "cartoon character"] [--keep desk|none] [--force]  SAM 3.1 cuts the character (and desk) out
  *   npm run talk -- sets [--only office,cafe] [--force]                    Muse Image draws empty background sets in series/sets/
  *                    make/sync take --bg plain[:#hex], office|pantry|phong-tro|cafe, or photo.jpg: the cut-out character stands in front of it
- *   npm run talk -- illustrate <slug> <clip.mp4> [--vocals stem.wav] [--lines lines.json] [--end s] [--step plan|draw|poses|stabilize|mouths|render|all] [--mouth] [--only s01,s02] [--out dir]
+ *   npm run talk -- illustrate <slug> <clip.mp4> [--vocals stem.wav] [--lines lines.json] [--end s] [--step plan|draw|fix|ask|gaps|poses|stabilize|mouths|render|all] [--find <thing>] [--at <s>] [--only s01] [--note <what to change>] [--mouth] [--only s01,s02] [--out dir]
  *                    the clip's voice and cuts, one picture per shot of <slug> acting it out (Muse Image, checked by Muse Spark), two poses on one background (SAM 3.1)
  *   npm run talk -- cover <slug> --out <illustrate dir> --quote "“line|line *key*.”" [--shot s08] [--episode <id>]
  *                    TikTok cover: the line on a white badge (key words red) + "Hồi Sau" tag over a shot, inside the grid's safe zone and off the faces (SAM 3.1)
- *   npm run talk -- meme <slug> --out <dir with meme.json> [--step plan|draw|poses|stabilize|music|blink|render|all] [--only s01]
+ *   npm run talk -- meme <slug> --out <dir with meme.json> [--step plan|draw|fix|ask|poses|stabilize|music|blink|render|all] [--find <thing>] [--at <s>] [--only s01] [--note <what to change>]
  *                    silent text meme: two beats of big text over one or two pictures (two poses, still background), MusicGen music
  *   npm run talk -- demo                                                   offline: mock pictures, hummed voice
  */
@@ -36,7 +36,8 @@ import { mouthTrack, RATE, ttsArg, voiceFor, type Tts } from "./voice.js";
 import { facesBox, makeCover } from "./cover.js";
 import sharp from "sharp";
 import { makeBlink, makeMusic, planMeme, readMeme, renderMeme } from "./meme.js";
-import { drawMouths, drawPoses, drawShots, gateToWords, groupLines, hearWords, planShots, renderIllustrated, sceneCuts, shotSpans, stabilizePoses, timeWords, type Line, type Plan } from "./illustrate.js";
+import { askFixes, speechGaps } from "./fixes.js";
+import { drawMouths, drawPoses, drawShots, fixShot, gateToWords, groupLines, hearWords, planShots, renderIllustrated, sceneCuts, shotSpans, stabilizePoses, timeWords, type Line, type Plan } from "./illustrate.js";
 
 const ROOT = fileURLToPath(new URL("../../..", import.meta.url));
 const CHARACTERS = join(ROOT, "characters");
@@ -252,7 +253,7 @@ async function main() {
     }
     case "illustrate": {
       const [slug, clip] = pos;
-      if (!slug || !clip) throw new Error("Usage: talk illustrate <slug> <clip.mp4> [--vocals stem.wav] [--lines lines.json] [--step plan|draw|poses|stabilize|mouths|render|all] [--mouth]");
+      if (!slug || !clip) throw new Error("Usage: talk illustrate <slug> <clip.mp4> [--vocals stem.wav] [--lines lines.json] [--step plan|draw|fix|ask|gaps|poses|stabilize|mouths|render|all] [--find <thing>] [--at <s>] [--only s01] [--note <what to change>] [--mouth]");
       const out = opt.out ? fromCwd(opt.out as string) : join(ROOT, "data", "talk", `${slug}-illustrate-${stamp()}`);
       mkdirSync(out, { recursive: true });
       const step = String(opt.step ?? "all");
@@ -270,12 +271,24 @@ async function main() {
         log(`${planFile}: ${lines.length} lines, ${shotsPlan.length} shots (edit it before drawing if needed)`);
       }
       const plan: Plan = JSON.parse(readFileSync(planFile, "utf8"));
+      if (step === "fix") for (const id of only ?? []) await fixShot(ctx, plan, shots, id, String(opt.note ?? ""), { log, find: opt.find ? String(opt.find) : undefined, sam: opt.find ? Sam.fromEnv() : undefined });
+      if (step === "ask") {
+        const gaps = existsSync(join(out, "gaps.json")) ? JSON.parse(readFileSync(join(out, "gaps.json"), "utf8")) : [];
+        const at = opt.at !== undefined && opt.at !== "" ? Number(opt.at) : undefined;
+        writeFileSync(join(out, "fixes.json"), JSON.stringify(await askFixes(ctx, plan, shots, String(opt.note ?? ""), at, gaps), null, 1));
+        log(`${join(out, "fixes.json")}: written`);
+        return;
+      }
       if (run("draw")) await drawShots(ctx, plan, shots, { only, log });
       if (run("poses")) await drawPoses(ctx, plan, shots, { only, log });
       if (run("stabilize")) writeFileSync(join(out, "stabilize.json"), JSON.stringify(await stabilizePoses(Sam.fromEnv(), ctx, plan, shots, { only, log }), null, 1));
       // --mouth: the lead talks; without it the clip renders as before.
       const mouth = !!opt.mouth || step === "mouths";
       if (mouth && run("mouths")) writeFileSync(join(out, "mouths.json"), JSON.stringify(await drawMouths(Sam.fromEnv(), ctx, plan, shots, { only, log }), null, 1));
+      if (run("render") || step === "gaps") {
+        const pcm = await readSound(opt.vocals ? fromCwd(opt.vocals as string) : plan.clip, join(out, "voice.m4a"));
+        writeFileSync(join(out, "gaps.json"), JSON.stringify(speechGaps(pcm, plan.lines)));
+      }
       if (run("render")) {
         const heard = JSON.parse(readFileSync(wordsFile, "utf8"));
         const words = timeWords(plan.lines, heard);
@@ -295,7 +308,7 @@ async function main() {
     }
     case "meme": {
       const [slug] = pos;
-      if (!slug || !opt.out) throw new Error("Usage: talk meme <slug> --out <dir with meme.json> [--step plan|draw|poses|stabilize|music|blink|render|all] [--only s01]");
+      if (!slug || !opt.out) throw new Error("Usage: talk meme <slug> --out <dir with meme.json> [--step plan|draw|fix|ask|poses|stabilize|music|blink|render|all] [--find <thing>] [--at <s>] [--only s01] [--note <what to change>]");
       const out = fromCwd(opt.out as string);
       const step = String(opt.step ?? "all");
       const only = opt.only ? String(opt.only).split(",") : undefined;
@@ -308,6 +321,14 @@ async function main() {
         log(`${planFile}: ${spec.scenes.length} scene(s)`);
       }
       const plan: Plan = JSON.parse(readFileSync(planFile, "utf8"));
+      if (step === "fix") for (const id of only ?? []) await fixShot(ctx, plan, shots, id, String(opt.note ?? ""), { log, find: opt.find ? String(opt.find) : undefined, sam: opt.find ? Sam.fromEnv() : undefined });
+      if (step === "ask") {
+        const gaps = existsSync(join(out, "gaps.json")) ? JSON.parse(readFileSync(join(out, "gaps.json"), "utf8")) : [];
+        const at = opt.at !== undefined && opt.at !== "" ? Number(opt.at) : undefined;
+        writeFileSync(join(out, "fixes.json"), JSON.stringify(await askFixes(ctx, plan, shots, String(opt.note ?? ""), at, gaps), null, 1));
+        log(`${join(out, "fixes.json")}: written`);
+        return;
+      }
       if (run("draw")) await drawShots(ctx, plan, shots, { only, log });
       if (run("poses")) await drawPoses(ctx, plan, shots, { only, log });
       if (run("stabilize")) writeFileSync(join(out, "stabilize.json"), JSON.stringify(await stabilizePoses(Sam.fromEnv(), ctx, plan, shots, { only, log }), null, 1));

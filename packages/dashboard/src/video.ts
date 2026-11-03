@@ -22,7 +22,7 @@
  */
 
 import { spawn, spawnSync } from "node:child_process";
-import { copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { appendFileSync, copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { basename, extname, join } from "node:path";
 import sharp from "sharp";
 import { readApproval, type EpisodePost } from "@hoi-sau/channel";
@@ -93,6 +93,7 @@ interface Meta {
   drift?: Record<string, number>;
   ask?: Ask;
   done?: Done;
+  refused?: Refused;
 }
 
 /** What Muse Spark proposes to make from text or pictures (talk's IdeaPlan). */
@@ -138,6 +139,12 @@ interface Done {
   detail: string[];
   /** Why the run stopped partway, when it did: the owner can still go back. */
   failed?: string;
+}
+
+/** A fix where nothing could be done: the video is as it was, the owner reads why and writes again. */
+interface Refused {
+  note: string;
+  why: string;
 }
 
 export interface Shot {
@@ -316,8 +323,18 @@ export class Videos {
     }
   }
 
-  private talkOnce(id: string, step: string, log: (s: string) => void, extra: string[] = []): Promise<string> {
+  private talkOnce(id: string, step: string, show: (s: string) => void, extra: string[] = []): Promise<string> {
     const m = this.meta(id);
+    // Every step's lines also go to log.txt in the video's folder, so a run can be read back afterwards.
+    const file = join(this.folder(id), "log.txt");
+    const log = (s: string) => {
+      show(s);
+      try {
+        appendFileSync(file, `${new Date().toISOString()} ${step}: ${s}\n`);
+      } catch {
+        /* the log is a help, never a reason to stop */
+      }
+    };
     if (m.kind === "meme") return this.opts.exec(TALK, ["meme", m.slug, "--out", this.folder(id), "--step", step, ...extra], log);
     return this.opts.exec(TALK, ["illustrate", m.slug, join(this.folder(id), m.clip), "--out", this.folder(id), "--step", step, ...extra], log);
   }
@@ -762,6 +779,7 @@ export class Videos {
       const r = JSON.parse(readFileSync(out, "utf8")) as { reply: string; actions: FixAction[] };
       const after = this.meta(id);
       after.ask = { note: note.trim(), at: sec, reply: r.reply, actions: r.actions };
+      delete after.refused;
       this.save(after);
     });
   }
@@ -820,11 +838,14 @@ export class Videos {
       const fresh = this.plan(id)!;
       // One edit failing does not stop the others; whatever failed is said, and Hoàn tác puts everything back.
       const failed: string[] = [];
+      let done = 0;
       const step = async (what: string, work: () => Promise<unknown>) => {
         try {
           await work();
+          done++;
         } catch (e) {
-          failed.push(`${what}: ${(e instanceof Error ? e.message : String(e)).split("\n").pop()!.slice(0, 200)}`);
+          const msg = (e instanceof Error ? e.message : String(e)).split("\n").filter(Boolean).pop() ?? "";
+          failed.push(`${what}: ${msg.replace(/^(Error: )?s\d+: /, "").slice(0, 200)}`);
         }
       };
       for (const a of pictures) {
@@ -834,6 +855,15 @@ export class Videos {
         if (a.do === "redo_pose" && s.pose) await step(s.id, () => this.poseWork(id, s, log));
       }
       for (const s of added) await step(s.id, () => this.newShotWork(id, s, log));
+      // Nothing came out (every picture edit refused, no text edit): no render, the copy from before goes back.
+      if (!done && !acts.some((a) => !["fix_detail", "redraw", "redo_pose", "add_shot"].includes(a.do))) {
+        copyFileSync(join(this.undoDir(id), "meta.json"), join(this.folder(id), "meta.json"));
+        clearDir(this.undoDir(id));
+        const m = this.meta(id);
+        m.refused = { note, why: failed.join(" · ") };
+        this.save(m);
+        throw new Error(failed.join(" · "));
+      }
       log(t("Dựng lại video…"));
       await step(t("dựng video"), () => this.renderWork(id, this.meta(id), log));
       await this.evidence(id, changed).catch(() => undefined);
@@ -1294,6 +1324,9 @@ function fixCard(v: Videos, m: Meta, plan: Plan, busy: boolean): string {
 <p class="muted small">${esc(t("Chưa đúng ý thì viết lại ở ô trên cho rõ hơn. Bỏ chọn việc nào không muốn làm."))}</p></div>`
       : `<div class="warn small">${esc(ask.reply || t("Máy chưa hiểu, anh viết rõ hơn giúp: cảnh nào, chữ nào, sai thế nào."))}</div>`
     : "";
+  const refused = !busy && !m.done && m.refused
+    ? `<div class="warn small"><b>${esc(t("Không sửa được, tranh và video vẫn như cũ"))}:</b> “${esc(m.refused.note)}”<br>${esc(m.refused.why)}<br>${esc(t("Viết lại cho cụ thể hơn, hoặc dùng Vẽ lại cảnh trong Sửa tay."))}</div>`
+    : "";
   const done = m.done;
   const result = done
     ? `<div class="fixdone"><p><b>${esc(busy ? t("Đang sửa") : done.failed ? t("Sửa chưa xong") : t("Đã sửa"))}:</b> “${esc(done.note)}”</p>${!busy && done.failed ? `<div class="warn small">${esc(t("Có việc không làm được, tranh đó giữ như cũ: {why}. Bấm Hoàn tác để về đúng bản trước khi sửa.", { why: done.failed }))}</div>` : ""}<ul>${done.says.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>
@@ -1321,7 +1354,7 @@ document.querySelectorAll("[data-seek]").forEach(function(b){b.addEventListener(
 document.querySelectorAll("[data-fill]").forEach(function(a){a.addEventListener("click",function(){if(!note)return;if(a.dataset.at)seek(+a.dataset.at);note.value=a.dataset.fill;setTimeout(function(){note.focus();note.setSelectionRange(note.value.length,note.value.length)},50)})});
 if(at&&at.value)set(+at.value)})()</script>`;
   return `<section class="card" id="fix"><h2>${esc(t("Sửa bằng lời"))}</h2><p class="muted small">${esc(t("Xem video, dừng đúng chỗ lỗi rồi viết như nhắn tin. Máy tự lấy giây và cảnh đang dừng, cho anh xem trước sẽ sửa gì, bấm Làm mới sửa."))}</p>
-${bar}${warn}${result}${proposal}${form}</section>${script}`;
+${bar}${warn}${refused}${result}${proposal}${form}</section>${script}`;
 }
 
 export function videoPage(v: Videos, id: string, err?: string, ok?: string): string | undefined {

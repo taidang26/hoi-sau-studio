@@ -370,15 +370,17 @@ export async function fixShot(ctx: StudioContext, plan: Plan, dir: string, id: s
   const file = join(dir, `${id}.png`);
   if (!s || !existsSync(file)) throw new Error(`${id}: no picture to fix`);
   if (!note.trim()) throw new Error(`${id}: say what to change`);
-  const p = ctx.profiles.get(plan.slug)!;
   const before = readFileSync(file);
   writeFileSync(join(dir, `${id}-prev.png`), before);
-  const prompt = `Edit the attached picture. Change only this: ${note.trim()}. Keep everything else exactly the same: framing, camera, background, colours, line style, every other prop, and ${p.name}'s design, pose and place in the frame. ${LOOK}`;
+  // Short and with the picture as the only reference, like the mouth edits that work: with the model sheet and
+  // the whole look attached, Muse Image draws the frame anew instead of editing it.
+  const prompt = `Change only this in the picture: ${note.trim()}. Do not move or redraw anything else: the same characters, poses, props, background, framing, colours and line style. No text.`;
   let fix = "", why = "";
   try {
     for (let attempt = 0; attempt < (opts.tries ?? 2); attempt++) {
       opts.log?.(`${id}: fixing (${note.trim()})${fix ? ` again (${fix})` : ""}`);
-      const res = await generateSoftly(ctx.image, { prompt: prompt + (fix ? ` Make sure: ${fix}` : ""), size: `${OUT.w}x${OUT.h}`, references: [dataUrl(before), ...characterRefs(ctx, plan.slug)] }, opts.log);
+      const res = await generateSoftly(ctx.image, { prompt: prompt + (fix ? ` Make sure: ${fix}` : ""), size: `${OUT.w}x${OUT.h}`, references: [dataUrl(before)] }, opts.log);
+      writeFileSync(join(dir, `${id}-fix${attempt + 1}.raw.png`), res.image);
       // With a thing to find, only that place changes: the edit is pasted back under its (grown, feathered) mask.
       const pasted = opts.find && opts.sam ? await pasteRegion(opts.sam, before, res.image, opts.find, opts.log) : { image: res.image, problem: "" };
       if (pasted.problem) {
@@ -388,6 +390,7 @@ export async function fixShot(ctx: StudioContext, plan: Plan, dir: string, id: s
       }
       // The edit has to have done what was asked, and only that: Muse Spark compares the two pictures.
       const same = await compareFix(ctx, before, pasted.image, note.trim());
+      opts.log?.(`${id}: compare ${same.ok ? "ok" : `refused: ${same.problem}`}`);
       if (!same.ok) {
         why = same.problem || "the change asked for is not in the new picture";
         opts.log?.(`${id}: ${why}`);
@@ -407,7 +410,7 @@ export async function fixShot(ctx: StudioContext, plan: Plan, dir: string, id: s
   // Nothing clean came out: the picture stays as it was, and the owner hears why.
   if (why) {
     writeFileSync(file, before);
-    throw new Error(`${id}: the picture was left as it was (${why})`);
+    throw new Error(`the picture was left as it was (${why})`);
   }
 }
 

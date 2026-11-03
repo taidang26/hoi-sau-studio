@@ -693,6 +693,8 @@ export const EN: Record<string, string> = {
   "Máy chưa hiểu, anh viết rõ hơn giúp: cảnh nào, chữ nào, sai thế nào.": "Not understood. Please say which shot, which words, and what is wrong.",
   "Máy hiểu": "Understood",
   "Máy định làm": "Plan",
+  "Không sửa được, tranh và video vẫn như cũ": "Could not fix it; the picture and the video are as they were",
+  "Viết lại cho cụ thể hơn, hoặc dùng Vẽ lại cảnh trong Sửa tay.": "Write it again more precisely, or use Redraw the shot under Fix by hand.",
   "Câu in trên đầu tranh (nguyên văn)": "Words printed above the panel (exact)",
   "Cảnh mới từ {t}s đến {e}s, sau đó về lại tranh trước.": "New shot from {t}s to {e}s, then back to the picture before.",
   "Sửa chưa xong": "Not all done",

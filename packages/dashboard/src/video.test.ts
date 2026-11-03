@@ -435,3 +435,28 @@ test("an error note goes before the #part of the link, where the page can read i
   assert.equal(withNote("/video/a#fix", "err", "x y"), "/video/a?err=x%20y#fix");
   assert.equal(withNote("/video/a?v=1", "ok", "z"), "/video/a?v=1&ok=z");
 });
+
+test("when the only edit is refused, nothing is rendered and the page says why", async () => {
+  const id = v.create({ slug: "cu-li", mouth: false, sample: v.samples()[0].path });
+  await v.settle(id);
+  const calls: string[][] = [];
+  const refusing = new Videos({ ...v.opts, exec: async (script, args, log, env) => {
+    calls.push(args);
+    if (args.includes("fix")) throw new Error("Error: s02: the picture was left as it was (wall clock still present)");
+    return mock(script, args, log, env);
+  } });
+  refusing.ask(id, "bỏ cái đồng hồ", "2.5");
+  await refusing.settle(id);
+  calls.length = 0;
+  refusing.apply(id, [0]);
+  await refusing.settle(id);
+  assert.ok(!calls.some((c) => c.includes("render")), "no render when nothing changed");
+  const m = refusing.meta(id);
+  assert.equal(m.done, undefined);
+  assert.match(m.refused!.why, /^s02: the picture was left as it was/);
+  assert.ok(!existsSync(refusing.undoDir(id)));
+  const html = videoPage(refusing, id)!;
+  assert.match(html, /Không sửa được, tranh và video vẫn như cũ/);
+  assert.doesNotMatch(html, /Hoàn tác/);
+  assert.ok(existsSync(join(refusing.folder(id), "log.txt")), "the steps are logged");
+});

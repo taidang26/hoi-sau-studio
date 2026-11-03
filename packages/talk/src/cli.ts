@@ -37,6 +37,7 @@ import { facesBox, makeCover } from "./cover.js";
 import sharp from "sharp";
 import { makeBlink, makeMusic, planMeme, readMeme, renderMeme, retimeMeme } from "./meme.js";
 import { askFixes, speechGaps } from "./fixes.js";
+import { ideaImages, readIdea } from "./idea.js";
 import { drawMouths, drawPoses, drawShots, fixShot, gateToWords, groupLines, hearWords, planShots, renderIllustrated, sceneCuts, shotSpans, stabilizePoses, timeWords, type Line, type Plan } from "./illustrate.js";
 
 const ROOT = fileURLToPath(new URL("../../..", import.meta.url));
@@ -378,6 +379,17 @@ async function main() {
         log(problems.length ? `Reels check: ${problems.join("; ")}` : "Reels check: ok for Facebook/Instagram Reels and TikTok");
         console.log(video);
       }
+      return;
+    }
+    case "idea": {
+      // What to make from what the owner dropped in <dir>: input.txt and any pictures. Writes idea.json.
+      if (!opt.out) throw new Error("Usage: talk idea --out <dir with input.txt and pictures> [--kind meme|comic]");
+      const out = fromCwd(opt.out as string);
+      const text = existsSync(join(out, "input.txt")) ? readFileSync(join(out, "input.txt"), "utf8") : "";
+      const kind = opt.kind === "meme" || opt.kind === "comic" ? opt.kind : "";
+      const plan = await readIdea(openStudio({ log }), text, ideaImages(out), kind);
+      writeFileSync(join(out, "idea.json"), JSON.stringify(plan, null, 2) + "\n");
+      log(`${join(out, "idea.json")}: ${plan.kind}`);
       return;
     }
     case "cover": {

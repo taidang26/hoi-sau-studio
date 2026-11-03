@@ -8,6 +8,7 @@ export * from "./art.js";
 export * from "./captions.js";
 export * from "./fixes.js";
 export * from "./gestures.js";
+export * from "./idea.js";
 export * from "./patch.js";
 export * from "./render.js";
 export * from "./script.js";

@@ -147,7 +147,7 @@ after(() => close());
 test("the dashboard lists videos, serves their pictures and takes the shot buttons", async () => {
   const id = v.list()[0].id;
   const list = await (await fetch(`${base}/video`)).text();
-  assert.match(list, /Làm video mới/);
+  assert.match(list, /Làm video có lời từ clip mẫu/);
   assert.match(list, new RegExp(`/video/${id}`));
   assert.equal((await fetch(`${base}/video-media/${id}/shots/s01.png`)).headers.get("content-type"), "image/png");
   assert.equal((await fetch(`${base}/video-media/${id}/meta.json`)).status, 404);
@@ -195,7 +195,7 @@ test("a second pose that moves the room is measured and flagged", async () => {
 
 test("the Video screen offers the text meme form and takes it", async () => {
   const list = await (await fetch(`${base}/video`)).text();
-  assert.match(list, /Làm clip chữ/);
+  assert.match(list, /Tự gõ clip chữ/);
   const form = new FormData();
   for (const [k, val] of Object.entries({ kind: "meme", top: "Lương về", punch: "Lương đi", slug: "cu-li", scenes: "1", seconds: "", scene1: "", music: "" })) form.append(k, val);
   const res = await fetch(`${base}/video/new`, { method: "POST", body: form, redirect: "manual" });
@@ -338,4 +338,60 @@ test("fixing by note: the proposal shows evidence first, Làm does it and render
   assert.ok(!existsSync(v.undoDir(id)));
   assert.ok(v.plan(id)!.shots.some((s) => s.t === 5), "kept");
   assert.throws(() => v.apply(id, [0]), /Chưa có gì/);
+});
+
+test("text or pictures in, a proposal with what was read, then the clip is made from the checked form", async () => {
+  const list = await (await fetch(`${base}/video`)).text();
+  assert.match(list, /Làm từ chữ hoặc ảnh/);
+  const empty = await fetch(`${base}/video/idea`, { method: "POST", body: new FormData(), redirect: "manual" });
+  assert.match(decodeURIComponent(empty.headers.get("location")!), /Dán chữ hoặc thêm/);
+
+  // A screenshot of a quote, no text: the words are read off it and split into two beats.
+  const png = await sharp({ create: { width: 400, height: 300, channels: 3, background: "#eee" } }).png().toBuffer();
+  const form = new FormData();
+  form.append("text", "");
+  form.append("images", new Blob([new Uint8Array(png)], { type: "image/png" }), "IMG_0895.png");
+  const res = await fetch(`${base}/video/idea`, { method: "POST", body: form, redirect: "manual" });
+  assert.equal(res.status, 303);
+  const id = res.headers.get("location")!.split("/").pop()!;
+  await v.settle(`idea:${id}`);
+  const html = await (await fetch(`${base}/video/idea/${id}`)).text();
+  assert.match(html, /Chữ đọc được trong ảnh/);
+  assert.match(html, /\/video-media\/_ideas\/y-[^/]+\/img-1\.png/);
+  assert.match(html, /name="top"[^>]*value="Ai cũng xứng đáng có một công việc ổn định\."/);
+  assert.match(html, /name="punch"[^>]*value="Trừ tôi, tôi xứng đáng trúng số rồi nghỉ việc"/);
+  assert.match(html, /Hoặc làm tranh 1 khung/, "the comic is offered too");
+  assert.equal((await fetch(`${base}/video-media/_ideas/${id}/img-1.png`)).status, 200);
+  assert.ok(!v.list().some((m) => m.id.startsWith("y-")), "a drop-in is not a video");
+
+  // Asked for a comic: the comic form comes first.
+  const f2 = new FormData();
+  f2.append("text", "Sếp gọi lên phòng lúc 5 giờ chiều thứ Sáu");
+  f2.append("want", "comic");
+  const r2 = await fetch(`${base}/video/idea`, { method: "POST", body: f2, redirect: "manual" });
+  const id2 = r2.headers.get("location")!.split("/").pop()!;
+  await v.settle(`idea:${id2}`);
+  const h2 = await (await fetch(`${base}/video/idea/${id2}`)).text();
+  assert.ok(h2.indexOf("<h2>Tranh 1 khung</h2>") > 0 && h2.indexOf("<h2>Tranh 1 khung</h2>") < h2.indexOf("Hoặc làm clip chữ"));
+  assert.equal(v.idea(id2)!.plan!.kind, "comic");
+});
+
+test("a step that dies on the network runs once more; a real failure does not", async () => {
+  let n = 0;
+  const flaky = new Videos({ ...v.opts, dir: join(root, "flaky"), exec: async (script, args, log, env) => {
+    if (args.includes("draw") && n++ === 0) throw new Error("TypeError: fetch failed");
+    return mock(script, args, log, env);
+  } });
+  const id = flaky.create({ kind: "meme", slug: "cu-li", mouth: false, meme: { top: "Lương về", punch: "Lương đi", scenes: [""], music: "", seconds: 0 }, caption: "Lương đi #danvanphong" });
+  await flaky.settle(id);
+  assert.equal(flaky.jobs.get(id)?.error, undefined);
+  assert.equal(n, 2);
+  assert.equal(flaky.meta(id).caption, "Lương đi #danvanphong", "the caption from the proposal is kept");
+  const broken = new Videos({ ...v.opts, dir: join(root, "broken"), exec: async (script, args, log, env) => {
+    if (args.includes("draw")) throw new Error("Muse Image refused the prompt");
+    return mock(script, args, log, env);
+  } });
+  const id2 = broken.create({ kind: "meme", slug: "cu-li", mouth: false, meme: { top: "a", punch: "b", scenes: [""], music: "", seconds: 0 } });
+  await broken.settle(id2);
+  assert.match(broken.jobs.get(id2)!.error!, /refused/);
 });

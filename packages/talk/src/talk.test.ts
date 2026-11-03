@@ -421,18 +421,21 @@ test("illustrate: where Muse Spark points, a SAM find elsewhere is ignored and t
   assert.equal(px[(1600 * w + 200) * 3], 0xdd, "the wrong find was not");
 });
 
-test("illustrate: a flat patch left by a removal takes the wall's tone; a recoloured object keeps its colour", async () => {
-  const { flatPatchShift } = await import("./illustrate.js");
-  const n = 100;
-  const fill = (v: number) => new Uint8Array(n * 3).fill(v);
-  const core = new Uint8Array(n).map((_, i) => (i < 50 ? 1 : 0)), ring = new Uint8Array(n).map((_, i) => (i >= 50 ? 1 : 0));
-  const wall = fill(200), patch = fill(200);
-  for (let i = 0; i < 50 * 3; i++) patch[i] = 180;
-  assert.deepEqual(flatPatchShift(wall, patch, core, ring), [20, 20, 20], "the darker oval is lifted to the wall");
-  const bottle = fill(200);
-  for (let i = 0; i < 50; i++) [bottle[i * 3], bottle[i * 3 + 1], bottle[i * 3 + 2]] = i % 2 ? [40, 200, 60] : [20, 150, 40];
-  assert.equal(flatPatchShift(wall, bottle, core, ring), undefined, "a drawn object is not flattened");
-  assert.equal(flatPatchShift(wall, wall, core, ring), undefined);
+test("illustrate: a flat patch left by a removal takes the wall's gradient; a recoloured object keeps its colour", async () => {
+  const { flatPatchFit } = await import("./illustrate.js");
+  const w = 20, hh = 20, n = w * hh;
+  // The wall gets lighter from top (180) to bottom (218); the patch Muse left is flat 170.
+  const wall = new Uint8Array(n * 3).map((_, j) => 180 + 2 * Math.floor(Math.floor(j / 3) / w));
+  const core = new Uint8Array(n).map((_, i) => { const x = i % w, y = Math.floor(i / w); return x >= 6 && x < 14 && y >= 6 && y < 14 ? 1 : 0; });
+  const ring = core.map((v) => v ^ 1), mask = core;
+  const patch = wall.slice();
+  for (let i = 0; i < n; i++) if (core[i]) patch.fill(170, i * 3, i * 3 + 3);
+  const r = flatPatchFit(wall, patch, core, mask, ring, w);
+  assert.ok(r);
+  for (const i of [6 * w + 8, 13 * w + 8]) assert.ok(Math.abs(r!.image[i * 3] - wall[i * 3]) <= 3, `row ${Math.floor(i / w)} follows the wall's gradient`);
+  const bottle = wall.slice();
+  for (let i = 0; i < n; i++) if (core[i]) bottle.set(i % 2 ? [40, 200, 60] : [20, 150, 40], i * 3);
+  assert.equal(flatPatchFit(wall, bottle, core, mask, ring, w), undefined, "a drawn object is not flattened");
 });
 
 test("illustrate: removal notes are told apart from recolours", async () => {

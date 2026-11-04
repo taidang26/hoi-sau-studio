@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /tai
+Disallow: /callback
+Disallow: /tiktok-callback
+
+Sitemap: https://hoisau.dangtrantai.com/sitemap.xml

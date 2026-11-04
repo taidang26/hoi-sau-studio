@@ -47,6 +47,7 @@ import { loadBrandList, makeBrandArt } from "./brand-art.js";
 import { makeEdgeArt } from "./edge-art.js";
 import { SERIES_DIR } from "./bible.js";
 import { buildTai } from "./tai.js";
+import { writeHomeFeed } from "./home-feed.js";
 import { ALL_FONT_PATHS, svgToPng } from "@hoi-sau/svg-text";
 
 const ROOT = fileURLToPath(new URL("../../..", import.meta.url));
@@ -221,6 +222,10 @@ async function main(argv: string[]): Promise<void> {
     const { file, items, skipped } = buildTai({ episodes: EPISODES_DIR, posts: join(ROOT, "data", "posts"), site: join(ROOT, "site", "public") });
     for (const s of skipped) console.log(`left out ${s}`);
     console.log(`${file}: ${items.length} posts. Deploy with: npm run site -- deploy`);
+    // The home page's "latest" strip: the same files, only what is already live.
+    const extra = (process.env.CHANNEL_EXTRA_DATA_DIRS ?? "").split(";").map((d) => d.trim()).filter(Boolean);
+    const home = await writeHomeFeed(join(ROOT, "site", "public"), items, [process.env.CHANNEL_DATA_DIR || join(ROOT, "data"), ...extra]);
+    console.log(`${home.file}: ${home.feed.length} published posts for the home page.`);
     return;
   }
 

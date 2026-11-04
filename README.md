@@ -56,6 +56,10 @@ flowchart LR
   V -->|approved, posted on a schedule| C
 ```
 
+The dashboard's **Hôm nay** screen shows the latest post and its views, what needs the owner today, and what is scheduled next.
+
+![Hôm nay: latest post, things to do, upcoming posts](docs/images/dashboard-today.jpg)
+
 ### Channels: one series, a brand per character
 
 Hồi Sau is the main channel and posts every episode. Each character is also a brand of its own, with its own Facebook Page, Instagram and Threads, and posts the episodes it leads. [channels.yaml](channels.yaml) lists the brands, the status of each channel (`live`, `paused`, `planned`) and the **names** of the `.env` variables that hold its ids and tokens. During the contest only Hồi Sau and Lolo are live; the other five are set up and paused.
@@ -69,7 +73,7 @@ npm run channel -- publish post.json --brand poppy instagram   # one brand and p
 
 `post.json` carries `lead` (and optionally `characters`); without them the post goes to Hồi Sau only. Each brand has its own journal entries, so one episode can be on several Pages without being posted twice to any of them. The dashboard's **Cài đặt → Kênh** tab lists the brands, then each brand's accounts, posts and comments.
 
-![Channels page](docs/images/channels.png)
+![Cài đặt → Kênh: the Hồi Sau brand, its accounts and the character channels](docs/images/dashboard-channels.jpg)
 
 ### Meta models
 
@@ -101,7 +105,7 @@ Every call by step, with its command and file: [docs/meta-tools.md](docs/meta-to
 
 Image models distort Vietnamese diacritics, so Muse Image draws panels **with no text** and the dialogue (and, if needed, the bubble itself) is composited on top as an SVG layer with an open-licensed font, Be Vietnam Pro. Lines break only between syllables and are fitted to the bubble shape with the font's real metrics. Editing a line never requires redrawing a panel, and an English edition is a text swap. See [packages/svg-text](packages/svg-text).
 
-![Sample panel lettered by svg-text](docs/images/svg-text-demo.png)
+![The same Muse Image panel: left, text drawn by the image model; right, the svg-text layer](docs/images/lettering-before-after.png)
 
 ## Repository layout
 
@@ -136,7 +140,7 @@ Six lesser-known Vietnamese animals share one office. Each has a want, a fear, a
 
 Each character also has a placeholder portrait (`characters/<slug>/portrait.svg`, flat 2D drawn by hand for this repo). Offline runs draw their panels and sheets from these portraits, and the dashboard shows them until a Muse Image model sheet is locked. Real runs never use them.
 
-![Dashboard overview](docs/images/overview.png)
+![The cast as locked by Muse Image model sheets](docs/images/cast.jpg)
 
 ## Getting started
 
@@ -176,6 +180,10 @@ npm run site -- deploy        # firebase deploy --only hosting
 
 An episode post can then list `"mediaUrls": ["ep-001/01.jpg", …]`; relative
 paths are read under `MEDIA_BASE_URL`.
+
+The same hosting serves the series' home page, [hoisau.web.app](https://hoisau.web.app/?lang=en), in Vietnamese and English.
+
+![Home page of Hồi Sau Comics](docs/images/home-page.jpg)
 
 ## Status
 

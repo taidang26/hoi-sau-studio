@@ -7,6 +7,7 @@
  * Interface text goes through t() (Vietnamese and English).
  */
 
+import { phoneBox } from "./phone.js";
 import { createHash } from "node:crypto";
 import { readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -431,7 +432,7 @@ ${brands.length > 1 ? `<p class="muted small">${brands.map((b) => esc(brandName(
 <p class="muted small">${n ? `<a href="/comments?episode=${esc(id)}">💬 ${n}</a> · ` : ""}${time(posts[posts.length - 1].at)}</p></div></article>`;
     })
     .join("");
-  const body = `<header class="page-head"><div><h1>${esc(t("Bài đã đăng"))}</h1><p class="muted">${esc(t("Mỗi thẻ là một bài, gộp mọi nền tảng. Số là tổng lượt xem."))}</p></div><a class="btn" href="/schedule">${esc(t("Lịch đăng"))} →</a></header>
+  const body = `<header class="page-head"><div><h1>${esc(t("Bài đã đăng"))}</h1><p class="muted">${esc(t("Mỗi thẻ là một bài, gộp mọi nền tảng. Số là tổng lượt xem."))}</p></div><div class="vactions">${phoneBox(undefined, t("Trang tải trên điện thoại"))}<a class="btn" href="/schedule">${esc(t("Lịch đăng"))} →</a></div></header>
 ${s.episodes.length ? `<div class="ep-grid">${cards}</div>
 <details class="card"><summary>${esc(t("Chi tiết từng bài"))}</summary><div class="scroll"><table><thead><tr><th>${esc(t("Tập"))}</th><th>${esc(t("Nhân vật"))}</th><th>${esc(t("Kênh"))}</th><th>${esc(t("Nền tảng"))}</th><th>${esc(t("Kiểu bài"))}</th><th>${esc(t("Trạng thái"))}</th><th>${esc(t("Thời gian"))}</th><th>${esc(t("Bình luận"))}</th><th title="${esc(t("Điểm tương tác của tập, sau 24 giờ"))}">${esc(t("Điểm"))}</th><th></th></tr></thead><tbody>${rows}</tbody></table></div></details>` : empty("Chưa đăng tập nào. Làm tập trong Studio, hệ thống tự động sẽ đăng lên các kênh đang bật.", `<a class="btn on" href="/studio">${esc(t("Mở Studio"))}</a>`)}`;
   return layout(t("Bài đã đăng"), "/episodes", body);

@@ -8,6 +8,7 @@
  * dashboard can post to the Pages and spend API credits.
  */
 
+import { mediaBaseUrl } from "./phone.js";
 import { cpSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -140,7 +141,7 @@ const videos = new Videos({
   dir: join(paths.dataDir, "video"),
   episodesDir: studioDirs.episodesDir,
   siteMediaDir: join(ROOT, "site", "public", "media"),
-  mediaBase: (process.env.MEDIA_BASE_URL || "https://hoisau.dangtrantai.com/media/").replace(/\/?$/, "/"),
+  mediaBase: mediaBaseUrl(),
   samplesDirs: process.env.VIDEO_SAMPLES_DIRS ? process.env.VIDEO_SAMPLES_DIRS.split(";") : [join(ROOT, "..", "Video satank"), join(ROOT, "..", "Video chimnhonho"), join(paths.dataDir, "video-samples")],
   cast: () => cast().map((c) => ({ slug: c.slug, name: c.name })),
   exec: demo ? mockExec() : nodeExec(ROOT),

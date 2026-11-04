@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { addHouseRule, houseRulesPrompt, loadHouseRules, removeHouseRule } from "@hoi-sau/studio";
-import { fromPlanTime, parsePlan, planFromForm, planText, planTime, randomTimes, Schedule, taskClip } from "./schedule.js";
+import { fromPlanTime, parsePlan, planFromForm, planText, planTime, randomTimes, Schedule, schedulePage, taskClip } from "./schedule.js";
 
 const HN = 7 * 3_600_000;
 const hnMinutes = (iso: string) => Math.round(((Date.parse(iso) + HN) % 86_400_000) / 60_000);
@@ -84,4 +84,26 @@ test("house rules: add, dedupe, prompt block, remove", () => {
   assert.doesNotMatch(houseRulesPrompt(["caption"], file), /Văn phòng/);
   removeHouseRule(r.id, file);
   assert.deepEqual(loadHouseRules(file).map((x) => x.area), ["art"]);
+});
+
+test("one site address: /tai links follow MEDIA_BASE_URL, and the QR code is plain SVG", async () => {
+  const { siteUrl, taiUrl, qrSvg, mediaBaseUrl, SITE_DEFAULT } = await import("./phone.js");
+  assert.equal(siteUrl({}), SITE_DEFAULT);
+  assert.equal(mediaBaseUrl({}), `${SITE_DEFAULT}/media/`);
+  assert.equal(siteUrl({ MEDIA_BASE_URL: "https://x.example/media" }), "https://x.example");
+  assert.equal(taiUrl("v-abc", {}), `${SITE_DEFAULT}/tai#v-abc`);
+  const svg = qrSvg(taiUrl("v-abc", {}));
+  assert.match(svg, /^<svg class="qr"[^>]+viewBox="0 0 \d+ \d+"/);
+  assert.doesNotMatch(svg, /<script/);
+});
+
+test("each post on the schedule opens to its video, whole caption, cover and download buttons", () => {
+  const clipFiles = new Map([["pilot-sepvohan-12", { caption: "Mình biết giới hạn của mình\n#danvanphong", video: "https://hoisau.dangtrantai.com/media/pilot/sepvohan-12.mp4" }]]);
+  const html = schedulePage({ episodes: [], clipFiles } as never, { slots: [{ id: "pilot-sepvohan-12", at: "2026-11-04T05:53:00.000Z" }], unknown: [], source: "plan" }, undefined, undefined, [], (id) => ({ video: `/studio-media/${id}/video.mp4`, cover: `/studio-media/${id}/cover.jpg` }));
+  assert.match(html, /<details class="slot-more"><summary>Xem bài<\/summary>/);
+  assert.match(html, /<video controls[^>]*src="\/studio-media\/pilot-sepvohan-12\/video\.mp4"/);
+  assert.match(html, /Mình biết giới hạn của mình\n#danvanphong<\/textarea>/, "the whole caption, not one line");
+  assert.match(html, /href="\/studio-media\/pilot-sepvohan-12\/video\.mp4\?dl=1"/);
+  assert.match(html, /href="\/studio-media\/pilot-sepvohan-12\/cover\.jpg\?dl=1"/);
+  assert.match(html, /tai#pilot-sepvohan-12/, "and the phone QR for that clip");
 });

@@ -148,7 +148,21 @@ test("studio: create a character, lock its sheet, build an episode end to end", 
     assert.match(html, /\/studio-media\/ep-009\/final\/01\.png/);
     assert.equal((await fetch(at + "/studio-media/ep-009/final/01.png")).status, 200);
     assert.equal((await fetch(at + "/studio-media/..%2F..%2Fcharacters%2Fcu-li%2Fprofile.yaml")).status, 404);
-    assert.equal((await fetch(at + "/studio")).status, 200);
+    const list = await (await fetch(at + "/studio")).text();
+    assert.match(list, /Muốn truyện gì, cứ viết như nhắn tin/);
+    assert.match(list, /tag due">Xong, chờ anh duyệt/, "one status per episode");
+    assert.doesNotMatch(list, /<ol class="steps">/, "no step chips on the list");
+    assert.match(html, /<details class="card process"><summary><b>Máy đã làm gì/, "the steps are folded");
+
+    // One line, no picks: the characters come from the names written, and it runs by itself.
+    const one = await post("/studio/new", { id: "ep-010", direction: "Bống và Tê cãi nhau về cái điều hoà", run: "1" });
+    assert.equal(one.headers.get("location"), "/studio/ep-010");
+    const spec = JSON.parse(readFileSync(join(dirs.episodesDir, "ep-010", "episode.json"), "utf8"));
+    assert.equal(spec.lead, "ca-noc");
+    assert.deepEqual(spec.characters, ["ca-noc", "te-te"]);
+    await studio.settle("ep-010");
+    assert.equal(studio.jobs.get("ep-010")!.error, undefined);
+    assert.ok(existsSync(join(dirs.episodesDir, "ep-010", "final", "01.png")));
 
     // Review: the gate ran in the pipeline; approve, then an edit after approval shows.
     assert.match(html, /Kiểm duyệt/);

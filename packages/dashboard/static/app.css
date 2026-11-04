@@ -803,3 +803,13 @@ table.perf th.num, table.perf td.num { text-align: right; }
 .slot-detail textarea { width: 100%; font: inherit; }
 .slot-bia { width: 120px; border-radius: 10px; }
 @media (max-width: 640px) { .slot-detail { grid-template-columns: 1fr; } .slot-detail video { width: 100%; max-width: 280px; } }
+
+.ep-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px; align-content: start; }
+.ep-tile { display: flex; flex-direction: column; gap: 10px; padding: 10px; text-decoration: none; color: inherit; }
+.ep-cover { width: 100%; aspect-ratio: 4 / 5; object-fit: cover; border-radius: 12px; background: var(--accent-soft); display: grid; place-items: center; font-size: 28px; color: var(--muted); }
+.ep-tile-body { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.ep-tile-body .tag { align-self: flex-start; }
+.auto-face { width: 56px; height: 56px; border-radius: 50%; display: grid; place-items: center; background: var(--accent-soft); font-size: 24px; }
+details.process > summary { cursor: pointer; }
+details.process[open] > summary { margin-bottom: 12px; }
+details.process > .card, details.process > section { box-shadow: none; border: 1px solid var(--hairline); }

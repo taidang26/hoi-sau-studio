@@ -20,7 +20,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import sharp from "sharp";
 import { DELIVERY } from "@hoi-sau/motion";
-import { characterRefs, generateSoftly, S, styleReference, styleText, type ChatMessage, type StudioContext } from "@hoi-sau/studio";
+import { characterRefs, generateSoftly, houseRulesPrompt, S, styleReference, styleText, type ChatMessage, type StudioContext } from "@hoi-sau/studio";
 import type { Sam } from "@hoi-sau/dance";
 import { COMIC_FONT_PATH, escapeXml, loadFont, measure, svgToPng } from "@hoi-sau/svg-text";
 import { captionSvg } from "./captions.js";
@@ -290,7 +290,8 @@ export async function planShots(ctx: StudioContext, slug: string, lines: Line[],
         "Keep each picture simple: one clear action, a strong expression, two or three props. Screens face whoever uses them.",
         "No clocks: only when the words name a time (4 giờ chiều, 8 giờ sáng) may that one shot show a clock at that time; otherwise never mention a clock in act or pose.",
         beats,
-      ].join("\n\n"),
+        houseRulesPrompt(["art", "video", "dialogue"]),
+      ].filter(Boolean).join("\n\n"),
     },
   ];
   const r = await ctx.spark.json<{ shots: Array<Omit<Shot, "id" | "t">> }>("illustrate_plan", PLAN, messages);

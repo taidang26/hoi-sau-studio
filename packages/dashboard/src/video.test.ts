@@ -111,6 +111,14 @@ test("an approved video posts once: Reels and TikTok with the video, Threads wit
   assert.ok(existsSync(v.coverFile(id)), "the TikTok cover is made on approval");
   assert.equal(v.meta(id).cover, "Làm tốt|thì *thêm việc*");
   assert.deepEqual(v.due(), [], "not yet");
+  // Lịch đăng lists it and can move or clear its time.
+  assert.deepEqual(v.scheduled().map((m) => m.id), [id]);
+  const first = v.meta(id).when!;
+  v.setWhen(id, new Date(Date.now() + 5400_000).toISOString());
+  assert.notEqual(v.meta(id).when, first);
+  v.setWhen(id);
+  assert.deepEqual(v.scheduled(), []);
+  v.setWhen(id, first);
   calls.length = 0;
   assert.deepEqual(v.due(new Date(Date.now() + 2 * 3600_000)), [id]);
   await v.settle(id);

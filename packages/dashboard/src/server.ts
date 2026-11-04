@@ -39,6 +39,9 @@ import {
   type ChannelStatus,
 } from "./views.js";
 import { Insights, performancePage } from "./performance.js";
+import { fromLocalField, planFromForm, postedClips, schedulePage, type Schedule } from "./schedule.js";
+import { addHouseRule, isArea, removeHouseRule, rulesPage } from "./rules.js";
+import { statfsSync } from "node:fs";
 
 const STATIC_DIR = fileURLToPath(new URL("../static", import.meta.url));
 const FONTS: Record<string, string> = { "BeVietnamPro-SemiBold.ttf": DEFAULT_FONT_PATH, "BeVietnamPro-Bold.ttf": BOLD_FONT_PATH };
@@ -82,6 +85,8 @@ export interface DashboardOptions extends Paths {
   demo?: boolean;
   /** Pulls fresh numbers for the Hiệu suất page. Omitted: the page shows what was pulled before. */
   insights?: Insights;
+  /** Lịch đăng: the clips' posting times (Windows tasks, or the plan file). */
+  schedule?: Schedule;
 }
 
 async function readForm(req: IncomingMessage): Promise<URLSearchParams> {
@@ -318,6 +323,45 @@ export function handler(opts: DashboardOptions) {
     if (path === "/performance/refresh" && req.method === "POST") {
       opts.insights?.refresh();
       return redirect(res, "/performance");
+    }
+
+    // Lịch đăng and Luật nhà.
+    if (path === "/schedule" && req.method === "POST" && opts.schedule) {
+      const form = await readForm(req);
+      const listing = opts.schedule.list();
+      // Clips made in the Video screen keep their own time, posted by the dashboard.
+      let moved = 0;
+      const videos = opts.videos;
+      for (const m of videos?.scheduled() ?? []) {
+        if (form.getAll("vdrop").includes(m.id)) (videos!.setWhen(m.id), moved++);
+        else {
+          const at = fromLocalField(form.get(`vat:${m.id}`) ?? "");
+          if (at && at !== m.when) (videos!.setWhen(m.id, at), moved++);
+        }
+      }
+      if (listing.unknown.length && moved) return redirect(res, withNote("/schedule", "ok", t("Đã đổi giờ {n} clip làm trong dashboard.", { n: moved })));
+      if (listing.unknown.length) return redirect(res, withNote("/schedule", "err", t("Có lịch không đọc được trên máy, nên chưa sửa được từ đây.")));
+      const posted = postedClips(loadState(opts));
+      const plan = planFromForm(form, listing.slots.filter((x) => !posted.has(x.id)));
+      const r = opts.schedule.save(plan);
+      if (r.message) return redirect(res, withNote("/schedule", "err", t("Đã lưu lịch nhưng chưa cài được vào máy: {m}. Mở dashboard bằng quyền quản trị (Run as administrator) rồi bấm Lưu lịch lần nữa.", { m: r.message })));
+      return redirect(res, withNote("/schedule", "ok", r.installed ? t("Đã lưu và cài {n} bài vào lịch của máy.", { n: plan.length }) : t("Đã lưu lịch {n} bài.", { n: plan.length })));
+    }
+    if (path === "/rules" && req.method === "POST") {
+      const form = await readForm(req);
+      const area = form.get("area");
+      try {
+        if (!isArea(area)) throw new Error(t("Chọn loại luật."));
+        addHouseRule(area, form.get("text") ?? "", "dashboard");
+        return redirect(res, withNote("/rules", "ok", t("Đã thêm luật. Từ giờ máy sẽ làm theo.")));
+      } catch (e) {
+        return fail("/rules", e);
+      }
+    }
+    const rd = req.method === "POST" ? path.match(/^\/rules\/([A-Za-z0-9]+)\/delete$/) : null;
+    if (rd) {
+      removeHouseRule(rd[1]);
+      return redirect(res, withNote("/rules", "ok", t("Đã bỏ luật.")));
     }
 
     // Settings and accounts.
@@ -579,6 +623,7 @@ export function handler(opts: DashboardOptions) {
         if (act === "ask") {
           const form = await readForm(req);
           vd.ask(id, form.get("note") ?? "", form.get("at") ?? "");
+          if (form.get("rule") === "1" && (form.get("note") ?? "").trim()) addHouseRule("video", form.get("note")!, `video ${id}`);
           return redirect(res, `/video/${id}#fix`);
         }
         if (act === "apply") {
@@ -720,6 +765,21 @@ export function handler(opts: DashboardOptions) {
           return fail("/studio", e);
         }
       }
+      const fx = path.match(/^\/studio\/([a-z0-9-]+)\/fix\/(ask|apply|drop|keep|undo)$/);
+      if (fx) {
+        const [, id, act] = fx;
+        try {
+          const form = await readForm(req);
+          if (act === "ask") st.askFix(id, form.get("note") ?? "", form.get("rule") === "1");
+          if (act === "apply") st.applyFix(id, form.getAll("pick").map(Number));
+          if (act === "drop") st.dropFix(id);
+          if (act === "keep") st.keepFix(id);
+          if (act === "undo") st.undoFix(id);
+          return redirect(res, `/studio/${id}#fix`);
+        } catch (e) {
+          return fail(`/studio/${id}#fix`, e);
+        }
+      }
       const sf = path.match(/^\/studio\/([a-z0-9-]+)\/safety$/);
       if (sf) {
         try {
@@ -838,7 +898,22 @@ export function handler(opts: DashboardOptions) {
       const html = episodeStudioPage(state, st, sp[1], err, ok, rs ? compareSection(rs, sp[1], finishedPages(st, sp[1]).length > 0) : "");
       return html ? page(res, 200, html) : page(res, 404, notFoundPage());
     }
-    if (path === "/") return page(res, 200, overviewPage(state, opts.channel(), abilities(), ok, err));
+    if (path === "/") {
+      const posted = postedClips(state);
+      const upcoming = opts.schedule?.list().slots.filter((x) => !posted.has(x.id));
+      let diskFreeGb: number | undefined;
+      try {
+        const f = statfsSync(opts.dataDir);
+        diskFreeGb = (f.bavail * f.bsize) / 1024 ** 3;
+      } catch {
+        diskFreeGb = undefined;
+      }
+      const toReview = vd?.list().filter((m) => !m.posted && !vd.approved(m.id) && vd.plan(m.id) && !vd.jobs.get(m.id)?.running).length;
+      return page(res, 200, overviewPage(state, opts.channel(), abilities(), ok, err, { upcoming, diskFreeGb, toReview }));
+    }
+    if (path === "/schedule" && opts.schedule)
+      return page(res, 200, schedulePage(state, opts.schedule.list(), ok, err, (vd?.scheduled() ?? []).map((m) => ({ id: m.id, title: m.title, at: m.when!, caption: m.caption, cover: vd!.coverFile && existsSync(vd!.coverFile(m.id)) ? `/studio-media/${vd!.epId(m.id)}/cover.jpg` : undefined }))));
+    if (path === "/rules") return page(res, 200, rulesPage(undefined, ok, err));
     if (path === "/channels") return page(res, 200, channelsPage(state));
     const br = path.match(/^\/channels\/([a-z0-9-]+)$/);
     if (br) {

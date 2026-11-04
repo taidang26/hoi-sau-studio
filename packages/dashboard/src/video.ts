@@ -1040,6 +1040,20 @@ export class Videos {
     });
   }
 
+  /** Moves or clears the set time of an approved clip not posted yet (Lịch đăng). */
+  setWhen(id: string, when?: string): void {
+    const m = this.meta(id);
+    if (m.posted || !this.approved(id)) return;
+    if (when) m.when = when;
+    else delete m.when;
+    this.save(m);
+  }
+
+  /** Approved clips with a set time that have not gone out yet, soonest first. */
+  scheduled(): Meta[] {
+    return this.list().filter((m) => m.when && !m.posted && this.approved(m.id)).sort((a, b) => a.when!.localeCompare(b.when!));
+  }
+
   /** Publishes what is approved and due; the dashboard calls this every half minute. */
   due(now = new Date()): string[] {
     const started: string[] = [];
@@ -1191,7 +1205,7 @@ export function videosPage(v: Videos, err?: string, ok?: string): string {
       return `<a class="card vcard" href="/video/${esc(m.id)}">${cover}<div><b>${esc(m.title)}</b><p class="muted small">${esc(cast.find((c) => c.slug === m.slug)?.name ?? m.slug)} · ${esc(when(m.createdAt))}</p>${job?.running ? `<span class="tag due"><span class="spinner"></span>${esc(t("đang chạy…"))}</span>` : `<span class="tag">${esc(next ? t("Tiếp: {s}", { s: next }) : t("Đã đăng"))}</span>`}</div></a>`;
     })
     .join("");
-  const form = `<section class="card"><h2>${esc(t("Làm video có lời từ clip mẫu"))}</h2>
+  const form = `<details class="card"><summary>${esc(t("Làm video có lời từ clip mẫu"))}</summary>
 <form class="form" method="post" action="/video/new" enctype="multipart/form-data">
 <input type="hidden" name="kind" value="illustrate">
 <div class="row"><label>${esc(t("Clip mẫu"))}<select name="sample"><option value="">${esc(t("— tải clip lên ở dưới —"))}</option>${samples.map((s) => `<option value="${esc(s.path)}">${esc(s.label)}</option>`).join("")}</select></label>
@@ -1200,7 +1214,7 @@ export function videosPage(v: Videos, err?: string, ok?: string): string {
 <label>${esc(t("Tên video"))}<input name="title" placeholder="${esc(t("vd: Lương và deadline"))}"></label></div>
 <label class="check"><input type="checkbox" name="mouth" value="1" checked> ${esc(t("Nhép miệng theo lời"))}</label>
 <p class="muted small">${esc(t("Giữ tiếng và nhịp cắt của clip mẫu. Máy tự chia cảnh, vẽ, vẽ tư thế 2 và miệng. Anh soát từng cảnh rồi mới dựng và đăng."))}</p>
-<button class="btn on">${esc(t("Bắt đầu"))}</button></form></section>`;
+<button class="btn on">${esc(t("Bắt đầu"))}</button></form></details>`;
   const meme = `<details class="card"><summary>${esc(t("Tự gõ clip chữ (không lời)"))}</summary>
 <form class="form" method="post" action="/video/new" enctype="multipart/form-data">
 <input type="hidden" name="kind" value="meme">
@@ -1215,7 +1229,9 @@ export function videosPage(v: Videos, err?: string, ok?: string): string {
 <label>${esc(t("Tên video"))}<input name="title"></label>
 <p class="muted small">${esc(t("Bối cảnh mặc định là văn phòng Hồi Sau, nhân vật đúng trang phục. Máy vẽ từng cảnh và tư thế 2 trên nền đứng yên, làm nhạc, rồi anh soát từng cảnh trước khi dựng."))}</p>
 <button class="btn on">${esc(t("Bắt đầu"))}</button></form></details>`;
-  return layout(t("Video"), "/video", `<header class="head"><h1>${esc(t("Video"))}</h1></header>${flash(ok, err)}${ideaBox(v)}${meme}${form}${cards ? `<div class="vgrid">${cards}</div>` : `<p class="muted">${esc(t("Chưa có video nào."))}</p>`}`);
+  return layout(t("Video"), "/video", `<header class="head"><h1>${esc(t("Làm bài mới"))}</h1></header>${flash(ok, err)}${ideaBox(v)}
+<h2 class="section-title">${esc(t("Video đã làm"))}</h2>${cards ? `<div class="vgrid">${cards}</div>` : `<p class="muted">${esc(t("Chưa có video nào."))}</p>`}
+<h2 class="section-title muted">${esc(t("Cách làm khác"))}</h2>${meme}${form}`);
 }
 
 function shotCard(v: Videos, m: Meta, plan: Plan, s: Shot, busy: boolean): string {
@@ -1316,6 +1332,7 @@ function fixCard(v: Videos, m: Meta, plan: Plan, busy: boolean): string {
     : `<form class="form" method="post" action="/video/${esc(id)}/ask"><input type="hidden" name="at" id="fix-at" value="${ask?.at ?? ""}">
 <p class="small"><span class="tag" id="fix-where">${esc(t("Chưa dừng video: lỗi chung cả clip"))}</span></p>
 <textarea name="note" id="fix-note" rows="3" required placeholder="${esc(t("vd: chỗ này thiếu tranh cho câu Taeyang · câu đầu là Mẹ không phải Mày · Rico quay lưng mà có ghim sao"))}">${esc(note)}</textarea>
+<label class="small rule-pick"><input type="checkbox" name="rule" value="1"> ${esc(t("Áp dụng cho mọi bài từ giờ (lưu vào Luật nhà)"))}</label>
 <button class="btn on">${esc(t("Xem máy định sửa gì"))}</button></form>`;
   const proposal = ask && !busy
     ? ask.actions.length

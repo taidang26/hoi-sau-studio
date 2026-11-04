@@ -1,0 +1,109 @@
+{
+  "rules": [
+    {
+      "id": "seed1",
+      "area": "caption",
+      "text": "Caption ngắn gọn, súc tích, không lan man.",
+      "at": "2026-11-04T03:30:00.000Z",
+      "from": "chat"
+    },
+    {
+      "id": "seed2",
+      "area": "caption",
+      "text": "Tối đa 5 hashtag, viết không dấu.",
+      "at": "2026-11-04T03:30:00.000Z",
+      "from": "chat"
+    },
+    {
+      "id": "seed3",
+      "area": "caption",
+      "text": "Không ghi \"cre: Satank\" hay \"Ý: <tên trang>\". Nội dung viral không ai độc quyền thì không ghi nguồn.",
+      "at": "2026-11-04T03:30:00.000Z",
+      "from": "chat"
+    },
+    {
+      "id": "seed4",
+      "area": "caption",
+      "text": "Chỉ ghi cre khi dựng lại clip của một người cụ thể.",
+      "at": "2026-11-04T03:30:00.000Z",
+      "from": "chat"
+    },
+    {
+      "id": "seed5",
+      "area": "art",
+      "text": "Tũn (Lolo) luôn đúng model và đúng trang phục chuẩn; chỉ lấy ý của mẫu, không chép trang phục, bố cục hay đồ vật của họ.",
+      "at": "2026-11-04T03:30:00.000Z",
+      "from": "chat"
+    },
+    {
+      "id": "seed6",
+      "area": "art",
+      "text": "Bối cảnh mặc định là văn phòng Hồi Sau, trừ khi nội dung bắt buộc ở nhà.",
+      "at": "2026-11-04T03:30:00.000Z",
+      "from": "chat"
+    },
+    {
+      "id": "seed7",
+      "area": "art",
+      "text": "Không để AI vẽ chữ trên áo hay đồ vật (hay bị méo).",
+      "at": "2026-11-04T03:30:00.000Z",
+      "from": "chat"
+    },
+    {
+      "id": "seed8",
+      "area": "art",
+      "text": "Không vẽ người thật.",
+      "at": "2026-11-04T03:30:00.000Z",
+      "from": "chat"
+    },
+    {
+      "id": "seed9",
+      "area": "dialogue",
+      "text": "Thoại tiếng Bắc, đanh, có punchline, không giảng giải.",
+      "at": "2026-11-04T03:30:00.000Z",
+      "from": "chat"
+    },
+    {
+      "id": "seed10",
+      "area": "dialogue",
+      "text": "Mỗi bong bóng tối đa 12 chữ; hạn chế gọi tên nhân vật trong thoại.",
+      "at": "2026-11-04T03:30:00.000Z",
+      "from": "chat"
+    },
+    {
+      "id": "seed11",
+      "area": "dialogue",
+      "text": "Đọc lần đầu là hiểu; bối cảnh phải đúng đời thật.",
+      "at": "2026-11-04T03:30:00.000Z",
+      "from": "chat"
+    },
+    {
+      "id": "seed12",
+      "area": "video",
+      "text": "Mặc định 2 cảnh đơn giản, dài 13–15 giây, khổ dọc 1080x1920 kín khung.",
+      "at": "2026-11-04T03:30:00.000Z",
+      "from": "chat"
+    },
+    {
+      "id": "seed13",
+      "area": "video",
+      "text": "Phụ đề nhỏ; không fade hay zoom cơ học.",
+      "at": "2026-11-04T03:30:00.000Z",
+      "from": "chat"
+    },
+    {
+      "id": "seed14",
+      "area": "post",
+      "text": "Bài nào cũng phải được duyệt trước khi đăng.",
+      "at": "2026-11-04T03:30:00.000Z",
+      "from": "chat"
+    },
+    {
+      "id": "seed15",
+      "area": "post",
+      "text": "Đăng 3–5 bài mỗi ngày, giờ ngẫu nhiên từ 7:00 đến 23:00, cách nhau ít nhất 2 tiếng.",
+      "at": "2026-11-04T03:30:00.000Z",
+      "from": "chat"
+    }
+  ]
+}

@@ -96,7 +96,7 @@ npm run studio -- episode list
 # Add --mock to any of these to run offline with placeholder answers and images.
 ```
 
-The same actions are in the dashboard (`npm run dashboard`). **Phong cách** draws the four style variants and locks the one you pick. **Nhân vật → Tạo nhân vật** makes a character, **Vẽ sheet** draws its model sheet, pose sheet and test panels in the series style, **Khoá model sheet** locks both sheets, and **Studio** creates an episode from the picked comments (the three-panel strip is the default format; its episode page shows the one-image post). The Studio episode page runs it and shows every step's output, with a "Chạy lại từ đây" (rerun from here) button on each step. `npm run dashboard -- --demo` does all of this on copies in `data-demo/`, with a finished sample episode.
+The same actions are in the dashboard (`npm run dashboard`). **Nhân vật → Nét vẽ** draws the four style variants and locks the one you pick. **Nhân vật → Tạo nhân vật** makes a character, **Vẽ sheet** draws its model sheet, pose sheet and test panels in the series style, **Khoá model sheet** locks both sheets, and **Studio** creates an episode from the picked comments (the three-panel strip is the default format; its episode page shows the one-image post). The Studio episode page runs it and shows every step's output, with a "Chạy lại từ đây" (rerun from here) button on each step. `npm run dashboard -- --demo` does all of this on copies in `data-demo/`, with a finished sample episode.
 
 ## Cost and limits
 

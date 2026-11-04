@@ -535,7 +535,7 @@ img.sheet { max-width: 100%; }
   .side-foot { align-items: center; padding: 0; }
   .lang { flex-direction: column; border-radius: 14px; }
   .overview { grid-template-columns: 1fr; }
-  .ov-side { position: static; }
+  .ov-side { position: static; order: -1; }
   .settings-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 1000px) {
@@ -558,7 +558,7 @@ img.sheet { max-width: 100%; }
   main { padding: 0 2px 40px; }
   .page-head { align-items: flex-start; }
   .overview, .settings-grid { grid-template-columns: 1fr; }
-  .ov-side { position: static; }
+  .ov-side { position: static; order: -1; }
   .grid2 { grid-template-columns: 1fr; }
   .card { padding: 16px; border-radius: 20px; }
   .comment { grid-template-columns: 36px minmax(0, 1fr) auto; }

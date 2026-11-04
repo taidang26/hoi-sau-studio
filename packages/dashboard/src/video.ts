@@ -1040,6 +1040,20 @@ export class Videos {
     });
   }
 
+  /** Moves or clears the set time of an approved clip not posted yet (Lịch đăng). */
+  setWhen(id: string, when?: string): void {
+    const m = this.meta(id);
+    if (m.posted || !this.approved(id)) return;
+    if (when) m.when = when;
+    else delete m.when;
+    this.save(m);
+  }
+
+  /** Approved clips with a set time that have not gone out yet, soonest first. */
+  scheduled(): Meta[] {
+    return this.list().filter((m) => m.when && !m.posted && this.approved(m.id)).sort((a, b) => a.when!.localeCompare(b.when!));
+  }
+
   /** Publishes what is approved and due; the dashboard calls this every half minute. */
   due(now = new Date()): string[] {
     const started: string[] = [];

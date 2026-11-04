@@ -5,10 +5,19 @@
  * while a run is going.
  */
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { postHash, readApproval, sha256, type Approval, type EpisodePost } from "@hoi-sau/channel";
 import {
+  addHouseRule,
+  applyComicFixes,
+  askComicFixes,
+  comicFixDone,
+  comicUndoDir,
+  keepComicFix,
+  SafetyError,
+  undoComicFix,
+  type ComicFix,
   approveEpisode,
   checkForApproval,
   type ApprovalIssue,
@@ -255,6 +264,67 @@ export class Studio {
     return approveEpisode(id, { dir: this.opts.episodesDir, despiteWarnings });
   }
 
+  /** Sửa bằng lời: the note, read by Muse Spark against the script and the finished panels; the proposal waits on the page. */
+  askFix(id: string, note: string, rule = false): void {
+    const dir = this.opts.episodesDir;
+    if (!note.trim()) throw new Error(t("Viết chỗ cần sửa, như nhắn tin."));
+    if (!readStep(id, "letter", dir)) throw new Error(t("Tập chưa có bản hoàn chỉnh để sửa."));
+    this.background(id, async (log) => {
+      const ctx = this.opts.open(log);
+      ctx.dir = dir;
+      rmSync(join(dir, id, "fix-ask.json"), { force: true });
+      log(t("Máy đang đọc lời anh và soi từng khung…"));
+      const r = await askComicFixes(ctx, id, note.trim());
+      writeFileSync(join(dir, id, "fix-ask.json"), JSON.stringify({ note: note.trim(), ...r }, null, 2));
+      if (rule) addHouseRule(r.actions.length && r.actions.every((a) => !["fix_picture", "redraw"].includes(a.do)) ? "dialogue" : "art", note, `truyện ${id}`);
+    });
+  }
+
+  fixAsk(id: string): { note: string; reply: string; actions: ComicFix[] } | undefined {
+    const f = join(this.opts.episodesDir, id, "fix-ask.json");
+    try {
+      return existsSync(f) ? JSON.parse(readFileSync(f, "utf8")) : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  dropFix(id: string): void {
+    rmSync(join(this.opts.episodesDir, id, "fix-ask.json"), { force: true });
+  }
+
+  /** Applies the ticked edits in the background; on a refusal everything stays as it was. */
+  applyFix(id: string, picks: number[]): void {
+    const ask = this.fixAsk(id);
+    const chosen = ask?.actions.filter((_, i) => picks.includes(i)) ?? [];
+    if (!chosen.length) throw new Error(t("Chọn ít nhất một chỗ cần sửa."));
+    const dir = this.opts.episodesDir;
+    this.background(id, async (log) => {
+      const ctx = this.opts.open(log);
+      ctx.dir = dir;
+      try {
+        await applyComicFixes(ctx, id, chosen);
+      } catch (e) {
+        if (e instanceof SafetyError) throw new Error(t("Lời mới không qua soát an toàn ({why}). Tập vẫn như cũ.", { why: e.verdict.issues.map((i) => i.detail).join("; ") }));
+        throw e;
+      }
+      writeFileSync(join(dir, id, "fix-said.json"), JSON.stringify({ note: ask!.note, says: chosen.map((a) => a.say) }));
+      this.dropFix(id);
+    });
+  }
+
+  undoFix(id: string): void {
+    if (this.jobs.get(id)?.running) throw new Error(t("Tập này đang chạy."));
+    if (!comicFixDone(id, this.opts.episodesDir)) throw new Error(t("Không có bản trước để quay lại."));
+    undoComicFix(id, this.opts.episodesDir);
+    rmSync(join(this.opts.episodesDir, id, "fix-said.json"), { force: true });
+  }
+
+  keepFix(id: string): void {
+    keepComicFix(id, this.opts.episodesDir);
+    rmSync(join(this.opts.episodesDir, id, "fix-said.json"), { force: true });
+  }
+
   /** Waits for a background run; for tests. */
   async settle(key: string): Promise<void> {
     while (this.jobs.get(key)?.running) await new Promise((r) => setTimeout(r, 20));
@@ -408,6 +478,40 @@ function motionSection(st: Studio, id: string): string {
   return `<section class="card"><h2>${esc(t("Video và bài đăng"))}</h2><div class="motion">${video}<div>${tiktok}${motion?.duration ? `<p class="muted small">${esc(t("Video dọc · {s} giây", { s: motion.duration.toFixed(1) }))}${has("motion/subs.srt") ? ` · <a href="${media(id, "motion/subs.srt")}">${esc(t("phụ đề"))}</a>` : ""}</p>` : ""}${caps || `<p class="muted">${esc(t("Chưa có nội dung bài đăng."))}</p>`}</div></div></section>`;
 }
 
+/** Sửa bằng lời on a finished comic: write, see what will change, apply, then keep or undo. */
+function comicFixCard(st: Studio, id: string, busy: boolean): string {
+  const dir = st.opts.episodesDir;
+  const done = comicFixDone(id, dir);
+  const ask = st.fixAsk(id);
+  let said: { note: string; says: string[] } | undefined;
+  try {
+    said = existsSync(join(dir, id, "fix-said.json")) ? JSON.parse(readFileSync(join(dir, id, "fix-said.json"), "utf8")) : undefined;
+  } catch {
+    said = undefined;
+  }
+  const page = (n: number) => `final/${String(n).padStart(2, "0")}.png`;
+  const result = done && !busy
+    ? `<div class="fixdone"><p><b>${esc(t("Đã sửa"))}</b>${said ? `: “${esc(said.note)}”` : ""}</p>${said ? `<ul>${said.says.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}
+${done.panels.map((n) => `<div class="fixshot"><b>${esc(t("Khung {n}", { n }))}</b><div class="vpics">${existsSync(join(comicUndoDir(id, dir), page(n))) ? `<figure><img src="${media(id, `fix-undo/${page(n)}`)}?v=${encodeURIComponent(done.at)}" alt="" loading="lazy"><figcaption>${esc(t("Trước"))}</figcaption></figure>` : ""}<figure><img src="${media(id, page(n))}?v=${encodeURIComponent(done.at)}" alt="" loading="lazy"><figcaption>${esc(t("Sau"))}</figcaption></figure></div></div>`).join("")}
+<div class="vactions">${button(`/studio/${id}/fix/keep`, esc(t("Giữ")), "btn on")}${button(`/studio/${id}/fix/undo`, esc(t("Hoàn tác")))}</div><p class="muted small">${esc(t("Tập đã sửa phải duyệt lại trước khi đăng."))}</p></div>`
+    : "";
+  const proposal = ask && !busy
+    ? ask.actions.length
+      ? `<div class="fixplan"><p><b>${esc(t("Máy định làm"))}:</b> ${esc(ask.reply)}</p><p class="muted small">${esc(t("Anh viết"))}: “${esc(ask.note)}”</p>
+<form method="post" action="/studio/${esc(id)}/fix/apply">${ask.actions.map((a, i) => `<label class="fixrow"><input type="checkbox" name="pick" value="${i}" checked>${a.panel > 0 && existsSync(join(dir, id, page(a.panel))) ? `<img class="fixthumb" src="${media(id, page(a.panel))}" alt="" loading="lazy">` : ""}<span><b>${esc(a.say)}</b></span></label>`).join("")}
+<div class="vactions"><button class="btn on">${esc(t("Làm"))}</button></div></form>
+<form class="inline" method="post" action="/studio/${esc(id)}/fix/drop"><button class="btn">${esc(t("Bỏ, viết lại"))}</button></form></div>`
+      : `<div class="warn small">${esc(ask.reply || t("Máy chưa hiểu, anh viết rõ hơn giúp: khung nào, chữ nào, sai thế nào."))}</div>`
+    : "";
+  const form = busy || done
+    ? ""
+    : `<form class="form" method="post" action="/studio/${esc(id)}/fix/ask"><textarea name="note" rows="3" required placeholder="${esc(t("vd: khung 2 Bống nói \"thôi xong\" chứ không phải \"xong rồi\" · bỏ cái cốc trên bàn · khung 1 vẽ lại ở pantry"))}">${esc(ask && !ask.actions.length ? ask.note : "")}</textarea>
+<label class="small rule-pick"><input type="checkbox" name="rule" value="1"> ${esc(t("Áp dụng cho mọi bài từ giờ (lưu vào Luật nhà)"))}</label>
+<button class="btn on">${esc(t("Xem máy định sửa gì"))}</button></form>`;
+  return `<section class="card" id="fix"><h2>${esc(t("Sửa bằng lời"))}</h2><p class="muted small">${esc(t("Viết chỗ sai như nhắn tin: chữ trong bong bóng hay một chi tiết trong tranh. Máy cho xem trước sẽ sửa gì, bấm Làm mới sửa, sửa xong vẫn hoàn tác được."))}</p>
+${result}${proposal}${form}</section>`;
+}
+
 const media = (id: string, file: string) => `/studio-media/${encodeURIComponent(id)}/${file.split("/").map(encodeURIComponent).join("/")}`;
 
 export function episodeStudioPage(s: State, st: Studio, id: string, error?: string, ok?: string, extra = ""): string | undefined {
@@ -445,6 +549,7 @@ ${runBar}
 ${motionSection(st, id)}
 ${letter?.page ? `<section class="card"><h2>${esc(t("Trang ghép"))}</h2><img class="strip-page" src="${media(id, letter.page)}" alt=""></section>` : ""}
 ${letter ? `<section class="card"><h2>${esc(t("Bản hoàn chỉnh"))}</h2><div class="pages">${letter.pages.map((p) => `<figure><img src="${media(id, p.file)}" alt="${esc(t("Khung {n}", { n: p.n }))}" loading="lazy"><figcaption>${p.n}${p.overflow ? ` · <span class="tag over">${esc(t("{n} lời thoại tràn", { n: p.overflow }))}</span>` : ""}</figcaption></figure>`).join("")}</div></section>` : ""}
+${letter ? comicFixCard(st, id, Boolean(job?.running)) : ""}
 ${reviewCard(st, id, Boolean(job?.running))}
 <section class="card"><h2>${esc(t("Hướng từ khán giả"))}</h2><p class="pre">${esc(ep.direction)}</p>${ep.credits.length ? `<p class="muted small">${esc(t("Ghi công"))}: ${ep.credits.map((c) => esc(c.name)).join(", ")}</p>` : ""}</section>
 ${extra}

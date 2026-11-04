@@ -119,7 +119,18 @@ export function mockSparkTransport(opts: { failReview?: number[] } = {}): { tran
       out = { pass: !issues.length, issues };
     } else if (name === "recap") out = { summary: (text.split("EPISODE:\n")[1] ?? "").split("\n").slice(0, 2).join(" ") || "Một ngày ở văn phòng.", threads_closed: [], threads_opened: [] };
     else if (name === "canon") out = { facts: [{ fact: `${other.name} đã làm xong việc từ sáng mà không nói với ai`, characters: [other.slug] }] };
-    else throw new Error(`mock Muse Spark has no answer for schema "${name}"`);
+    else if (name === "comic_fixes") {
+      // Stands in for Sửa bằng lời on a comic: quoted words go into the first bubble, "bỏ"/"vẽ" edits panel 1.
+      const note = text.match(/His note: """([\s\S]*?)"""/)?.[1] ?? "";
+      const said = note.match(/["“]([^"”]+)["”]/)?.[1];
+      const hasLine = /panel 1:[^\n]*\n\s+line 0/.test(text);
+      const base = { panel: 1, line: -1, speaker: "", text: "", what: "", say: "" };
+      const actions = [
+        ...(said ? [hasLine ? { ...base, do: "line_text", line: 0, text: said, say: `Khung 1: đổi lời thành "${said}"` } : { ...base, do: "add_line", speaker: lead.slug === "lead" ? (text.match(/Cast slugs: ([a-z0-9-]+)/)?.[1] ?? "") : lead.slug, text: said, say: `Khung 1: thêm lời "${said}"` }] : []),
+        ...(/(^|\s)(bỏ|vẽ)(\s|$)/i.test(note) ? [{ ...base, do: "fix_picture", what: "remove the coffee cup on the desk", say: "Khung 1: bỏ cốc trên bàn" }] : []),
+      ];
+      out = { reply: actions.length ? "Sẽ sửa như anh nói." : "Anh muốn sửa khung nào?", actions };
+    } else throw new Error(`mock Muse Spark has no answer for schema "${name}"`);
     return {
       status: 200,
       json: async () => ({ id: `chat_mock_${calls.length}`, choices: [{ message: { role: "assistant", content: JSON.stringify(out) } }] }),

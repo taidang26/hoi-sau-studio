@@ -939,4 +939,17 @@ export const EN: Record<string, string> = {
   "Độ dài, số cảnh, phụ đề": "Length, shots, subtitles",
   "Ổ đĩa sắp đầy: còn {n} GB": "Disk almost full: {n} GB left",
   "— tải clip lên ở dưới —": "— upload a clip below —",
+  // 4/11: Sửa bằng lời for comics.
+  "Tập chưa có bản hoàn chỉnh để sửa.": "This episode has no finished panels to fix yet.",
+  "Máy đang đọc lời anh và soi từng khung…": "Reading your note and checking every panel…",
+  "Chọn ít nhất một chỗ cần sửa.": "Tick at least one fix.",
+  "Lời mới không qua soát an toàn ({why}). Tập vẫn như cũ.": "The new words did not pass the safety check ({why}). The episode is unchanged.",
+  "Tập đã sửa phải duyệt lại trước khi đăng.": "A fixed episode needs approving again before it posts.",
+  "Máy chưa hiểu, anh viết rõ hơn giúp: khung nào, chữ nào, sai thế nào.": "Not clear yet. Say which panel, which words, and what is wrong.",
+  "Viết chỗ sai như nhắn tin: chữ trong bong bóng hay một chi tiết trong tranh. Máy cho xem trước sẽ sửa gì, bấm Làm mới sửa, sửa xong vẫn hoàn tác được.": "Write what is wrong as you would in a message: words in a bubble or something in the picture. You see what will change first, nothing changes until you press Do it, and you can still undo.",
+  "vd: khung 2 Bống nói \"thôi xong\" chứ không phải \"xong rồi\" · bỏ cái cốc trên bàn · khung 1 vẽ lại ở pantry": "e.g. in panel 2 Bống says \"thôi xong\", not \"xong rồi\" · remove the cup on the desk · redraw panel 1 in the pantry",
+  "Clip làm trong dashboard": "Clips made in the dashboard",
+  "Mấy clip này do dashboard tự đăng đúng giờ, nên để dashboard mở (máy ngủ được, đừng tắt).": "The dashboard posts these on time itself, so keep it open (the computer may sleep, just don't shut it down).",
+  "Bỏ hẹn": "Unschedule",
+  "Đã đổi giờ {n} clip làm trong dashboard.": "Changed the time of {n} dashboard clips.",
 };

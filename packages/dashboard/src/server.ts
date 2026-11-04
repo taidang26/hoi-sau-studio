@@ -39,7 +39,7 @@ import {
   type ChannelStatus,
 } from "./views.js";
 import { Insights, performancePage } from "./performance.js";
-import { planFromForm, postedClips, schedulePage, type Schedule } from "./schedule.js";
+import { fromLocalField, planFromForm, postedClips, schedulePage, type Schedule } from "./schedule.js";
 import { addHouseRule, isArea, removeHouseRule, rulesPage } from "./rules.js";
 import { statfsSync } from "node:fs";
 
@@ -329,6 +329,17 @@ export function handler(opts: DashboardOptions) {
     if (path === "/schedule" && req.method === "POST" && opts.schedule) {
       const form = await readForm(req);
       const listing = opts.schedule.list();
+      // Clips made in the Video screen keep their own time, posted by the dashboard.
+      let moved = 0;
+      const videos = opts.videos;
+      for (const m of videos?.scheduled() ?? []) {
+        if (form.getAll("vdrop").includes(m.id)) (videos!.setWhen(m.id), moved++);
+        else {
+          const at = fromLocalField(form.get(`vat:${m.id}`) ?? "");
+          if (at && at !== m.when) (videos!.setWhen(m.id, at), moved++);
+        }
+      }
+      if (listing.unknown.length && moved) return redirect(res, withNote("/schedule", "ok", t("Đã đổi giờ {n} clip làm trong dashboard.", { n: moved })));
       if (listing.unknown.length) return redirect(res, withNote("/schedule", "err", t("Có lịch không đọc được trên máy, nên chưa sửa được từ đây.")));
       const posted = postedClips(loadState(opts));
       const plan = planFromForm(form, listing.slots.filter((x) => !posted.has(x.id)));
@@ -754,6 +765,21 @@ export function handler(opts: DashboardOptions) {
           return fail("/studio", e);
         }
       }
+      const fx = path.match(/^\/studio\/([a-z0-9-]+)\/fix\/(ask|apply|drop|keep|undo)$/);
+      if (fx) {
+        const [, id, act] = fx;
+        try {
+          const form = await readForm(req);
+          if (act === "ask") st.askFix(id, form.get("note") ?? "", form.get("rule") === "1");
+          if (act === "apply") st.applyFix(id, form.getAll("pick").map(Number));
+          if (act === "drop") st.dropFix(id);
+          if (act === "keep") st.keepFix(id);
+          if (act === "undo") st.undoFix(id);
+          return redirect(res, `/studio/${id}#fix`);
+        } catch (e) {
+          return fail(`/studio/${id}#fix`, e);
+        }
+      }
       const sf = path.match(/^\/studio\/([a-z0-9-]+)\/safety$/);
       if (sf) {
         try {
@@ -885,7 +911,8 @@ export function handler(opts: DashboardOptions) {
       const toReview = vd?.list().filter((m) => !m.posted && !vd.approved(m.id) && vd.plan(m.id) && !vd.jobs.get(m.id)?.running).length;
       return page(res, 200, overviewPage(state, opts.channel(), abilities(), ok, err, { upcoming, diskFreeGb, toReview }));
     }
-    if (path === "/schedule" && opts.schedule) return page(res, 200, schedulePage(state, opts.schedule.list(), ok, err));
+    if (path === "/schedule" && opts.schedule)
+      return page(res, 200, schedulePage(state, opts.schedule.list(), ok, err, (vd?.scheduled() ?? []).map((m) => ({ id: m.id, title: m.title, at: m.when!, caption: m.caption, cover: vd!.coverFile && existsSync(vd!.coverFile(m.id)) ? `/studio-media/${vd!.epId(m.id)}/cover.jpg` : undefined }))));
     if (path === "/rules") return page(res, 200, rulesPage(undefined, ok, err));
     if (path === "/channels") return page(res, 200, channelsPage(state));
     const br = path.match(/^\/channels\/([a-z0-9-]+)$/);

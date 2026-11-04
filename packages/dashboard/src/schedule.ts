@@ -187,7 +187,16 @@ const cover = (s: Pick<State, "clipFiles">, id: string) => {
 };
 const caption = (s: Pick<State, "clipFiles">, id: string) => esc((s.clipFiles.get(id)?.caption ?? "").split("\n")[0].slice(0, 90));
 
-export function schedulePage(s: Pick<State, "episodes" | "clipFiles">, l: Listing, ok?: string, err?: string): string {
+/** A clip made in the dashboard's Video screen with a set time: the dashboard posts it itself while it is open. */
+export interface DashClip {
+  id: string;
+  title: string;
+  at: string;
+  caption?: string;
+  cover?: string;
+}
+
+export function schedulePage(s: Pick<State, "episodes" | "clipFiles">, l: Listing, ok?: string, err?: string, dash: DashClip[] = []): string {
   const waiting = waitingClips(s, l.slots);
   const days = new Map<string, Slot[]>();
   for (const x of l.slots) days.set(planTime(x.at).slice(0, 10), [...(days.get(planTime(x.at).slice(0, 10)) ?? []), x]);
@@ -210,7 +219,12 @@ ${stock ? `<p class="notice">${esc(stock)}</p>` : ""}
 <form method="post" action="/schedule" class="schedule">
 <section class="card">${list}</section>
 ${wait}
-<div class="vactions"><button class="btn on" name="do" value="save"${l.unknown.length ? " disabled" : ""}>${esc(t("Lưu lịch"))}</button>
+${dash.length ? `<section class="card"><h2>${esc(t("Clip làm trong dashboard"))} <span class="muted">${dash.length}</span></h2><p class="muted small">${esc(t("Mấy clip này do dashboard tự đăng đúng giờ, nên để dashboard mở (máy ngủ được, đừng tắt)."))}</p><ul class="slots">${dash
+    .map((d) => `<li class="slot"><span class="slot-cover">${d.cover ? `<img src="${esc(d.cover)}" alt="" loading="lazy">` : `<span class="ph"></span>`}</span><div class="slot-body"><b><a href="/video/${esc(d.id)}">${esc(d.title)}</a></b><small class="muted">${esc((d.caption ?? "").split("\n")[0].slice(0, 90))}</small></div>
+<label class="slot-time"><span class="sr">${esc(t("Giờ đăng"))}</span><input type="datetime-local" name="vat:${esc(d.id)}" value="${local(d.at)}"></label>
+<label class="slot-drop"><input type="checkbox" name="vdrop" value="${esc(d.id)}"> ${esc(t("Bỏ hẹn"))}</label></li>`)
+    .join("")}</ul></section>` : ""}
+<div class="vactions"><button class="btn on" name="do" value="save"${l.unknown.length && !dash.length ? " disabled" : ""}>${esc(t("Lưu lịch"))}</button>
 <button class="btn" name="do" value="shuffle"${l.unknown.length ? " disabled" : ""}>${esc(t("Xếp lại giờ ngẫu nhiên"))}</button>
 <label class="small">${esc(t("Mỗi ngày"))} <select name="perday"><option value="2-3">2–3</option><option value="3-5" selected>3–5</option><option value="4-4">4</option><option value="5-6">5–6</option></select> ${esc(t("bài, 7:00–23:00, cách nhau ít nhất 2 tiếng"))}</label></div>
 </form>`;

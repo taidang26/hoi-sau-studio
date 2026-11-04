@@ -783,3 +783,6 @@ table.perf th.num, table.perf td.num { text-align: right; }
 .rules-add .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
 .rules-add .row input { flex: 1 1 260px; }
 .rule-pick { display: flex; gap: 8px; align-items: center; margin: 2px 0 8px; }
+
+/* Sửa bằng lời on a comic: a small copy of the panel next to each proposed fix */
+.fixthumb { width: 64px; height: 80px; object-fit: cover; border-radius: 10px; flex: none; }

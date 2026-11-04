@@ -465,3 +465,59 @@ test("swears are always masked, the way Threads writes them", async () => {
   assert.equal(maskSwears("vlog với dmm"), "vlog với d*m", "only whole words");
   assert.equal(maskSwears("vãi cả chưởng"), "v*i cả chưởng");
 });
+
+test("Sửa bằng lời on a comic: words and a picture change, before is kept, undo puts it all back", async () => {
+  const { askComicFixes, applyComicFixes, undoComicFix, comicFixDone, keepComicFix, validComicFix } = await import("./index.js");
+  const box = sandbox();
+  const spark = mockSparkTransport();
+  const ctx: StudioContext = {
+    ...openStudio({ mock: true, ...box }),
+    spark: new MuseSpark({ apiKey: "k", transport: spark.transport }),
+    image: new MuseImage({ apiKey: "k", transport: mockTransport().transport }),
+  };
+  ctx.dir = box.episodesDir;
+  createEpisode({ id: "ep-fix", lead: "cu-li", characters: ["te-te"], direction: "Quên tắt mic khi họp", credits: [], format: "strip3" }, box.episodesDir);
+  await runEpisode(ctx, "ep-fix");
+  const folder = join(box.episodesDir, "ep-fix");
+  const scriptBefore = readFileSync(join(folder, "script.json"), "utf8");
+  const pageBefore = readFileSync(join(folder, "final", "01.png"));
+  const panelBefore = readStep<{ renders: Array<{ file: string }> }>("ep-fix", "panels", box.episodesDir)!.renders[0].file;
+
+  // An unclear note asks back and changes nothing.
+  const unclear = await askComicFixes(ctx, "ep-fix", "chưa ổn lắm");
+  assert.equal(unclear.actions.length, 0);
+  assert.match(unclear.reply, /\?/);
+
+  const plan = await askComicFixes(ctx, "ep-fix", 'khung 1 nói "Tắt mic chưa đấy" và bỏ cái cốc');
+  assert.deepEqual(plan.actions.map((a) => a.do), ["line_text", "fix_picture"]);
+  const call = spark.calls.find((c) => c.response_format.json_schema.name === "comic_fixes")!;
+  assert.ok(call.messages[0].content.some((c: any) => c.type === "image_url"), "the finished panels go with the note");
+  // Edits pointing at a panel that does not exist are dropped.
+  const script = readStep<any>("ep-fix", "script", box.episodesDir);
+  assert.equal(validComicFix(script, ["cu-li"], { do: "line_text", panel: 9, line: 0, speaker: "", text: "x", what: "", say: "" }), false);
+
+  assert.deepEqual(await applyComicFixes(ctx, "ep-fix", plan.actions), [1]);
+  assert.equal(readStep<any>("ep-fix", "script", box.episodesDir).panels[0].dialogue[0].text, "Tắt mic chưa đấy");
+  const after1 = readStep<{ renders: Array<{ file: string; history: string[] }> }>("ep-fix", "panels", box.episodesDir)!.renders[0];
+  assert.notEqual(after1.file, panelBefore);
+  assert.deepEqual(after1.history.at(-1), panelBefore);
+  assert.notDeepEqual(readFileSync(join(folder, "final", "01.png")), pageBefore);
+  assert.ok(existsSync(join(folder, "fix-undo", "final", "01.png")), "the page before is kept for the before/after view");
+  assert.deepEqual(comicFixDone("ep-fix", box.episodesDir)?.panels, [1]);
+  // The new words went through the safety gate again.
+  assert.equal(readStep<any>("ep-fix", "safety", box.episodesDir).pass, true);
+
+  undoComicFix("ep-fix", box.episodesDir);
+  assert.equal(readFileSync(join(folder, "script.json"), "utf8"), scriptBefore);
+  assert.deepEqual(readFileSync(join(folder, "final", "01.png")), pageBefore);
+  assert.equal(comicFixDone("ep-fix", box.episodesDir), undefined);
+
+  // A refused line puts everything back and says why.
+  await assert.rejects(applyComicFixes(ctx, "ep-fix", [{ do: "line_text", panel: 1, line: 0, speaker: "", text: "chuyện chính trị hôm nay", what: "", say: "" }]), SafetyError);
+  assert.equal(readFileSync(join(folder, "script.json"), "utf8"), scriptBefore);
+
+  await applyComicFixes(ctx, "ep-fix", [plan.actions[0]]);
+  keepComicFix("ep-fix", box.episodesDir);
+  assert.equal(comicFixDone("ep-fix", box.episodesDir), undefined);
+  assert.equal(readStep<any>("ep-fix", "script", box.episodesDir).panels[0].dialogue[0].text, "Tắt mic chưa đấy");
+});

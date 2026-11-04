@@ -544,7 +544,7 @@ ${done.panels.map((n) => `<div class="fixshot"><b>${esc(t("Khung {n}", { n }))}<
   const form = busy || done
     ? ""
     : `<form class="form" method="post" action="/studio/${esc(id)}/fix/ask"><textarea name="note" rows="3" required placeholder="${esc(t("vd: khung 2 Bống nói \"thôi xong\" chứ không phải \"xong rồi\" · bỏ cái cốc trên bàn · khung 1 vẽ lại ở pantry"))}">${esc(ask && !ask.actions.length ? ask.note : "")}</textarea>
-<label class="small rule-pick"><input type="checkbox" name="rule" value="1"> ${esc(t("Áp dụng cho mọi bài từ giờ (lưu vào Luật nhà)"))}</label>
+<label class="check small rule-pick"><input type="checkbox" name="rule" value="1"> ${esc(t("Áp dụng cho mọi bài từ giờ (lưu vào Luật nhà)"))}</label>
 <button class="btn on">${esc(t("Xem máy định sửa gì"))}</button></form>`;
   return `<section class="card" id="fix"><h2>${esc(t("Sửa bằng lời"))}</h2><p class="muted small">${esc(t("Viết chỗ sai như nhắn tin: chữ trong bong bóng hay một chi tiết trong tranh. Máy cho xem trước sẽ sửa gì, bấm Làm mới sửa, sửa xong vẫn hoàn tác được."))}</p>
 ${result}${proposal}${form}</section>`;

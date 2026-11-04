@@ -38,6 +38,7 @@ import {
   type BrandControls,
   type ChannelStatus,
 } from "./views.js";
+import { Insights, performancePage } from "./performance.js";
 
 const STATIC_DIR = fileURLToPath(new URL("../static", import.meta.url));
 const FONTS: Record<string, string> = { "BeVietnamPro-SemiBold.ttf": DEFAULT_FONT_PATH, "BeVietnamPro-Bold.ttf": BOLD_FONT_PATH };
@@ -79,6 +80,8 @@ export interface DashboardOptions extends Paths {
   research?: Research;
   /** Sample data: buttons that would change real accounts say so instead. */
   demo?: boolean;
+  /** Pulls fresh numbers for the Hiệu suất page. Omitted: the page shows what was pulled before. */
+  insights?: Insights;
 }
 
 async function readForm(req: IncomingMessage): Promise<URLSearchParams> {
@@ -310,6 +313,11 @@ export function handler(opts: DashboardOptions) {
       } catch (e) {
         return fail(to, e);
       }
+    }
+
+    if (path === "/performance/refresh" && req.method === "POST") {
+      opts.insights?.refresh();
+      return redirect(res, "/performance");
     }
 
     // Settings and accounts.
@@ -849,6 +857,7 @@ export function handler(opts: DashboardOptions) {
       return page(res, 200, inboxPage(state, { selected: q.get("c") ?? undefined, error: err, ok, canPull: Boolean(opts.inbox?.pull) ? !acc || acc.anyPage() : Boolean(opts.demo && acc), canConnect: abilities().canConnect }));
     }
     if (path === "/episodes") return page(res, 200, episodesPage(state));
+    if (path === "/performance") return page(res, 200, performancePage(state, { refreshing: opts.insights?.running, canRefresh: Boolean(opts.insights), error: err ?? opts.insights?.error, ok }));
     if (path === "/automation") return page(res, 200, automationPage(state, Boolean(st)));
     if (path === "/comments") {
       return page(res, 200, commentsPage(state, { q: q.get("q") ?? undefined, platform: q.get("platform") || undefined, episode: q.get("episode") || undefined, brand: q.get("brand") || undefined, picked: q.get("picked") === "1" }, abilities(), ok, err));

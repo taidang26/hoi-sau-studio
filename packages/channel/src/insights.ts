@@ -97,6 +97,50 @@ export async function facebookInsights(page: GraphClient, postId: string, reachM
   return out;
 }
 
+/**
+ * A Facebook Reel is a video, not a post: its post fields and post insights answer "nonexisting
+ * field", so its numbers come from video_insights. Each metric is asked on its own, since Meta
+ * keeps renaming them and one unknown name fails the whole call.
+ */
+export const FACEBOOK_REEL_PLAYS = ["blue_reels_play_count", "fb_reels_total_plays"];
+
+export async function facebookReelInsights(page: GraphClient, videoId: string): Promise<Numbers & { missing: string[] }> {
+  const out: Numbers & { missing: string[] } = { missing: [] };
+  const read = async (metric: string) => {
+    const res = await page.get<{ data: { name: string; values?: { value?: unknown }[] }[] }>(`${videoId}/video_insights`, { metric });
+    return res.data?.find((r) => r.name === metric)?.values?.[0]?.value;
+  };
+  const errors: string[] = [];
+  for (const metric of FACEBOOK_REEL_PLAYS) {
+    try {
+      const v = await read(metric);
+      if (typeof v === "number") {
+        out.views = v;
+        break;
+      }
+      errors.push(`${metric}: no value`);
+    } catch (e) {
+      if (e instanceof GraphError && e.kind === "token") throw e;
+      errors.push(`${metric}: ${reason(e)}`);
+    }
+  }
+  if (out.views === undefined) out.missing.push(`plays (${errors.join("; ")})`);
+  await attempt(out.missing, "reach", async () => {
+    const v = await read("post_impressions_unique");
+    if (typeof v === "number") out.reach = v;
+  });
+  // Likes, comments and shares come together as one object.
+  await attempt(out.missing, "reactions, comments, shares", async () => {
+    const v = (await read("post_video_social_actions")) as Record<string, number> | undefined;
+    if (v && typeof v === "object") {
+      out.reactions = v.like ?? v.LIKE ?? 0;
+      out.comments = v.comment ?? v.COMMENT ?? 0;
+      out.shares = v.share ?? v.SHARE ?? 0;
+    }
+  });
+  return out;
+}
+
 export async function instagramInsights(page: GraphClient, mediaId: string, video = false): Promise<Numbers & { missing: string[] }> {
   const out: Numbers & { missing: string[] } = { missing: [] };
   const metrics = ["reach", "likes", "comments", "shares", "saved", ...(video ? ["views"] : [])];

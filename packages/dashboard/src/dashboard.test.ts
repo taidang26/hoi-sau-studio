@@ -209,7 +209,7 @@ test("automation runs and motion comic files show up", async () => {
     assert.match(auto, /token &lt;hết hạn&gt;/);
     assert.match(auto, /href="\/studio\/cu-li-ep-001"/);
     assert.match(auto, /https:\/\/facebook.com\/p\/1/);
-    assert.match(await (await fetch(at + "/")).text(), /Lần chạy tự động gần nhất/);
+    assert.match(await (await fetch(at + "/automation")).text(), /Cu Li bị gọi họp lúc 6h sáng/);
 
     const page = await (await fetch(at + "/studio/cu-li-ep-001")).text();
     assert.match(page, /<video[^>]+src="\/studio-media\/cu-li-ep-001\/motion\/reel\.mp4"/);
@@ -249,7 +249,6 @@ test("coach lessons and episode scores show on the dashboard", async () => {
     const home = await (await fetch(at + "/")).text();
     assert.match(home, /Bài học từ khán giả/);
     assert.match(home, /class="lesson bad">Tránh/);
-    assert.match(home, /Ngày đăng liên tiếp/);
     assert.match(await (await fetch(at + "/episodes")).text(), /<th[^>]*>Điểm<\/th>/);
   } finally {
     server.close();
@@ -285,7 +284,8 @@ test("pictures first: placeholder portraits are served and pages use them", asyn
   assert.match(res.headers.get("content-type") ?? "", /svg/);
   assert.equal((await fetch(base + "/portrait/..%2Fsecret.svg")).status, 404);
   const home = await (await fetch(base + "/")).text();
-  assert.match(home, /class="cast-card"/);
+  assert.match(await (await fetch(base + "/characters")).text(), /src="\/(portrait|face)\//);
+  assert.match(home, /class="hero/);
   // Every character has a locked sheet now, so pages show the front view cut from it.
   assert.match(await (await fetch(base + "/channels")).text(), /src="\/face\/sao-la\.webp"/);
   const face = await fetch(base + "/face/sao-la.webp");
@@ -358,8 +358,8 @@ test("studio: pick a series style, draw and lock a sheet with poses, make a thre
     assert.match(char, /Đồ nhận diện/);
     assert.equal((await fetch(at + "/sheet/te-te/pose-sheet.png")).status, 200);
 
-    // A strip3 episode: the form offers it first, and each panel is its own post image.
-    assert.match(await (await fetch(at + "/studio")).text(), /<input type="radio" name="format" value="strip3" checked>/);
+    // One panel is the default now; a strip3 episode still makes each panel its own post image.
+    assert.match(await (await fetch(at + "/studio")).text(), /<input type="radio" name="format" value="single" checked>/);
     await post("/studio/new", { id: "ep-010", lead: "te-te", with: ["cu-li"], direction: "Ở nhà thì chán, đi làm thì mệt", format: "strip3" });
     await post("/studio/ep-010/run");
     await studio.settle("ep-010");

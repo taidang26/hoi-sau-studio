@@ -366,21 +366,21 @@ export function studioPage(s: State, st: Studio, error?: string, inspiration = "
   const ideas = s.comments.filter((c) => picked.has(c.id));
   const cast = s.characters.map((c) => c);
   const pic = (slug: string) => charSrc(s.characters.find((x) => x.profile.slug === slug)!);
+  const defaultLead = cast.some((c) => c.profile.slug === "cu-li") ? "cu-li" : cast[0]?.profile.slug;
   const form = `<form class="card form new-ep" method="post" action="/studio/new"><h2>${esc(t("Tập mới"))}</h2>
-<fieldset class="pick-cast"><legend>${esc(t("Nhân vật chính"))}</legend>${cast.map((c, i) => `<label class="cast-pick"><input type="radio" name="lead" value="${esc(c.profile.slug)}"${i === 0 ? " checked" : ""}><img src="${pic(c.profile.slug)}" alt="" style="background:${esc(c.profile.look.palette[0].hex)}44"><span>${esc(c.profile.name)}</span></label>`).join("")}</fieldset>
-<fieldset class="pick-cast small-pick"><legend>${esc(t("Cùng xuất hiện"))}</legend>${cast.map((c) => `<label class="cast-pick"><input type="checkbox" name="with" value="${esc(c.profile.slug)}"><img src="${pic(c.profile.slug)}" alt="" style="background:${esc(c.profile.look.palette[0].hex)}44"><span>${esc(c.profile.name)}</span></label>`).join("")}</fieldset>
+<fieldset class="pick-cast"><legend>${esc(t("Nhân vật chính"))}</legend>${cast.map((c, i) => `<label class="cast-pick"><input type="radio" name="lead" value="${esc(c.profile.slug)}"${c.profile.slug === defaultLead || (!defaultLead && i === 0) ? " checked" : ""}><img src="${pic(c.profile.slug)}" alt="" style="background:${esc(c.profile.look.palette[0].hex)}44"><span>${esc(c.profile.name)}</span></label>`).join("")}</fieldset>
+<fieldset class="pick-cast small-pick"><legend>${esc(t("Cùng xuất hiện"))}</legend>${cast.map((c) => `<label class="cast-pick" data-slug="${esc(c.profile.slug)}"${c.profile.slug === defaultLead ? " hidden" : ""}><input type="checkbox" name="with" value="${esc(c.profile.slug)}"><img src="${pic(c.profile.slug)}" alt="" style="background:${esc(c.profile.look.palette[0].hex)}44"><span>${esc(c.profile.name)}</span></label>`).join("")}</fieldset>
 <label>${esc(t("Hướng truyện"))}<textarea name="direction" rows="3" required placeholder="${esc(t("Chuyện gì xảy ra trong tập này"))}">${esc(ideas.map((c) => c.text).join("\n"))}</textarea></label>
-<fieldset class="pick-format"><legend>${esc(t("Kiểu truyện"))}</legend>${EPISODE_FORMATS.map((f) => `<label class="format-pick"><input type="radio" name="format" value="${f}"${f === "strip3" ? " checked" : ""}><span class="fmt fmt-${f}">${"<i></i>".repeat(f === "single" ? 1 : f === "strip3" ? 3 : 5)}</span>${esc(t(FORMAT_LABEL[f]))}</label>`).join("")}</fieldset>
+<fieldset class="pick-format"><legend>${esc(t("Kiểu truyện"))}</legend>${EPISODE_FORMATS.map((f) => `<label class="format-pick"><input type="radio" name="format" value="${f}"${f === "single" ? " checked" : ""}><span class="fmt fmt-${f}">${"<i></i>".repeat(f === "single" ? 1 : f === "strip3" ? 3 : 5)}</span>${esc(t(FORMAT_LABEL[f]))}</label>`).join("")}</fieldset>
 ${ideas.length ? `<fieldset><legend>${esc(t("Ghi công người bình luận"))}</legend>${ideas.map((c) => `<label class="check"><input type="checkbox" name="credit" value="${esc(`${c.author.name}::${c.text}`)}" checked> <b>${esc(c.author.name)}</b>: <span class="muted">${esc(c.text)}</span></label>`).join("")}</fieldset>` : `<p class="muted small">${t('Mẹo: chọn bình luận hay ở trang <a href="/comments">Bình luận</a>, chúng sẽ hiện ở đây làm hướng truyện.')}</p>`}
 ${inspiration}
-<div class="row-actions"><button class="btn on">${esc(t("Tạo tập"))}</button>${aiNote(st)}</div></form>`;
+<div class="row-actions"><button class="btn on">${esc(t("Tạo tập"))}</button>${aiNote(st)}</div></form>
+<script>(function(){var f=document.querySelector(".new-ep");if(!f)return;function sync(){var l=f.querySelector("input[name=lead]:checked");f.querySelectorAll(".small-pick label").forEach(function(x){var me=l&&x.dataset.slug===l.value;x.hidden=me;if(me)x.querySelector("input").checked=false})}f.addEventListener("change",function(e){if(e.target.name==="lead")sync()});sync()})()</script>`;
 
-  const flow = `<ol class="flow">${EPISODE_STEPS.map((x, i) => `<li><b>${i + 1}</b>${esc(t(STEP_LABEL[x]))}</li>`).join("")}</ol>`;
-  const body = `<header class="page-head"><div><h1>Studio</h1><p class="muted">${esc(t("Mỗi tập đi qua 8 bước. Muse Spark viết, Muse Image vẽ theo bản vẽ chuẩn đã chốt của nhân vật, rồi tự soát lại từng khung. Bước nào cũng xem lại và chạy lại riêng được."))}</p></div></header>
-${flow}
+  const body = `<header class="page-head"><div><h1>${esc(t("Truyện tranh"))}</h1><p class="muted">${esc(t("Chọn nhân vật, viết một câu hướng truyện. Muse Spark viết, Muse Image vẽ theo bản vẽ chuẩn của nhân vật rồi tự soát từng khung."))}</p></div></header>
 ${flash(undefined, error)}
 <div class="grid-studio">${form}<div>${rows || `<div class="card empty"><p>${esc(t("Chưa có tập nào. Tạo tập đầu tiên ở bên cạnh."))}</p></div>`}</div></div>`;
-  return layout("Studio", "/studio", body);
+  return layout(t("Truyện tranh"), "/studio", body);
 }
 
 interface PostFile {

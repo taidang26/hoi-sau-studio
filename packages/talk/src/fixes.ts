@@ -13,7 +13,7 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import sharp from "sharp";
-import { S, type ChatMessage, type StudioContext } from "@hoi-sau/studio";
+import { houseRulesPrompt, S, type ChatMessage, type StudioContext } from "@hoi-sau/studio";
 import type { Plan } from "./illustrate.js";
 import { voicedRegions } from "./sync.js";
 import { RATE } from "./voice.js";
@@ -99,6 +99,7 @@ export async function askFixes(ctx: StudioContext, plan: Plan, dir: string, note
     "- redo_pose(shot): the second pose jumps or looks broken. one_pose(shot): keep the picture still. no_mouth(shot): the mouth should not move (back view, nobody talks).",
     "Fill every field: shot id or empty, line index or -1, seconds or -1. Write `say` as one short Vietnamese sentence the owner reads, e.g. 'Câu 1: đổi \"Mày\" thành \"Mẹ\"'.",
     "If the note is unclear, return no edits and ask one short question in `reply`. Otherwise `reply` says in one short Vietnamese sentence what WILL be done (nothing is done until he presses the button), e.g. 'Sẽ đổi chữ câu đầu và vẽ thêm một cảnh.'",
+    houseRulesPrompt(["art", "video", "caption", "dialogue"]),
   ].filter(Boolean).join("\n\n");
   const r = await ctx.spark.json<FixPlan>("clip_fixes", FIX_PLAN, [{ role: "user", content: [{ type: "text", text }, ...thumbs] }]);
   return { reply: r.reply, actions: r.actions.filter((a) => validAction(plan, a)) };

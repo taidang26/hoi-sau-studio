@@ -15,6 +15,7 @@ import { canReply, windowClosesAt, type Comment, type Conversation } from "@hoi-
 import type { BackupInfo } from "./backup.js";
 import type { BrandView, CharacterView, Episode, Run, State } from "./data.js";
 import { lang, locale, t } from "./i18n.js";
+import { clipPerformance, clipLabel } from "./performance.js";
 
 export const esc = (v: unknown): string =>
   String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
@@ -47,21 +48,31 @@ const formatName = (f: string) => (FORMAT[f] ? t(FORMAT[f]) : f);
 const icon = (d: string) =>
   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
 
-const NAV = [
-  ["/", "Tổng quan", icon('<rect x="3" y="3" width="7.5" height="9" rx="2"/><rect x="13.5" y="3" width="7.5" height="5" rx="2"/><rect x="13.5" y="11" width="7.5" height="10" rx="2"/><rect x="3" y="15" width="7.5" height="6" rx="2"/>')],
-  ["/studio", "Studio", icon('<path d="M4 20l4-1 11-11a2.1 2.1 0 0 0-3-3L5 16z"/><path d="M14 7l3 3"/>')],
-  ["/video", "Video", icon('<rect x="3" y="5" width="13" height="14" rx="2.5"/><path d="M16 10l5-3v10l-5-3z"/>')],
-  ["/characters", "Nhân vật", icon('<circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/>')],
-  ["/style", "Phong cách", icon('<circle cx="12" cy="12" r="9"/><circle cx="8.5" cy="10" r="1.3"/><circle cx="12" cy="7.5" r="1.3"/><circle cx="15.5" cy="10" r="1.3"/><path d="M12 21a2.5 2.5 0 0 1 0-5h2.5a2.5 2.5 0 0 0 2.5-2.5"/>')],
-  ["/research", "Tư liệu", icon('<rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-8 9"/>')],
-  ["/comments", "Bình luận", icon('<path d="M4 5h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H9l-5 4V6a1 1 0 0 1 1-1z"/>')],
-  ["/inbox", "Hộp thư", icon('<path d="M3 13l3-8h12l3 8v5a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/><path d="M3 13h5l1.5 2.5h5L16 13h5"/>')],
-  ["/episodes", "Tập đã đăng", icon('<rect x="3" y="4" width="18" height="16" rx="3"/><path d="M3 9h18M8 4v5M16 4v5"/>')],
-  ["/performance", "Hiệu suất", icon('<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>')],
-  ["/channels", "Kênh", icon('<circle cx="12" cy="12" r="2.5"/><path d="M7.8 7.8a6 6 0 0 0 0 8.4M16.2 7.8a6 6 0 0 1 0 8.4M4.9 4.9a10 10 0 0 0 0 14.2M19.1 4.9a10 10 0 0 1 0 14.2"/>')],
-  ["/automation", "Tự động", icon('<circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3 2"/>')],
-  ["/settings", "Cài đặt", icon('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>')],
-] as const;
+const ICON = {
+  home: icon('<rect x="3" y="3" width="7.5" height="9" rx="2"/><rect x="13.5" y="3" width="7.5" height="5" rx="2"/><rect x="13.5" y="11" width="7.5" height="10" rx="2"/><rect x="3" y="15" width="7.5" height="6" rx="2"/>'),
+  make: icon('<rect x="3" y="5" width="13" height="14" rx="2.5"/><path d="M16 10l5-3v10l-5-3z"/>'),
+  cast: icon('<circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/>'),
+  audience: icon('<path d="M4 5h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H9l-5 4V6a1 1 0 0 1 1-1z"/>'),
+  posted: icon('<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>'),
+  settings: icon('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>'),
+};
+
+/**
+ * Six places, each with its own tabs. Every older address still works and lights up its group:
+ * Làm bài holds Video and Truyện tranh, Khán giả holds comments and messages, and so on.
+ */
+export const NAV = [
+  { href: "/", label: "Hôm nay", icon: ICON.home, tabs: [] as Array<[string, string]> },
+  { href: "/video", label: "Làm bài", icon: ICON.make, tabs: [["/video", "Video"], ["/studio", "Truyện tranh"]] as Array<[string, string]> },
+  { href: "/characters", label: "Nhân vật", icon: ICON.cast, tabs: [["/characters", "Nhân vật"], ["/style", "Nét vẽ"]] as Array<[string, string]> },
+  { href: "/comments", label: "Khán giả", icon: ICON.audience, tabs: [["/comments", "Bình luận"], ["/inbox", "Tin nhắn"]] as Array<[string, string]> },
+  { href: "/episodes", label: "Đã đăng", icon: ICON.posted, tabs: [["/episodes", "Bài đã đăng"], ["/schedule", "Lịch đăng"], ["/performance", "Hiệu suất"]] as Array<[string, string]> },
+  { href: "/settings", label: "Cài đặt", icon: ICON.settings, tabs: [["/settings", "Kết nối"], ["/channels", "Kênh"], ["/rules", "Luật nhà"], ["/research", "Tư liệu"], ["/automation", "Tự động"]] as Array<[string, string]> },
+];
+
+const under = (path: string, href: string) => (href === "/" ? path === "/" : path === href || path.startsWith(`${href}/`) || path.startsWith(`${href}?`));
+/** The menu group a page belongs to: its own entry, else the group that has it as a tab. */
+export const navGroup = (path: string) => NAV.find((g) => under(path, g.href) || g.tabs.some(([h]) => under(path, h)));
 
 const STATIC_DIR = fileURLToPath(new URL("../static", import.meta.url));
 let assets = { mtime: -1, html: "" };
@@ -88,10 +99,10 @@ function HEAD_ASSETS(): string {
 }
 
 export function layout(title: string, path: string, body: string): string {
-  const nav = NAV.map(([href, label, svg]) => {
-    const active = href === "/" ? path === "/" : path.startsWith(href);
-    return `<a href="${href}"${active ? ' class="active" aria-current="page"' : ""} title="${esc(t(label))}">${svg}<span>${esc(t(label))}</span></a>`;
-  }).join("");
+  const group = navGroup(path);
+  const nav = NAV.map((g) => `<a href="${g.href}"${g === group ? ' class="active" aria-current="page"' : ""} title="${esc(t(g.label))}">${g.icon}<span>${esc(t(g.label))}</span></a>`).join("");
+  const tab = group?.tabs.filter(([h]) => under(path, h)).sort((a, b) => b[0].length - a[0].length)[0]?.[0];
+  const tabs = group && group.tabs.length > 1 ? `<nav class="subtabs" aria-label="${esc(t(group.label))}">${group.tabs.map(([h, l]) => `<a href="${h}"${h === tab ? ' class="on" aria-current="page"' : ""}>${esc(t(l))}</a>`).join("")}</nav>` : "";
   const back = encodeURIComponent(path || "/");
   const langs = `<div class="lang" role="group" aria-label="${esc(t("Ngôn ngữ"))}"><a href="/lang/vi?back=${back}"${lang() === "vi" ? ' class="on" aria-current="true"' : ""}>VI</a><a href="/lang/en?back=${back}"${lang() === "en" ? ' class="on" aria-current="true"' : ""}>EN</a></div>`;
   return `<!doctype html><html lang="${lang()}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#fff7ee">
@@ -99,7 +110,7 @@ export function layout(title: string, path: string, body: string): string {
 <body><div class="shell"><input type="checkbox" id="menu" class="menu-toggle" aria-hidden="true"><aside class="side"><div class="side-top"><a class="brand" href="/"><span class="mark">HS</span><span class="brand-name">Hồi Sau<small>${esc(t("Studio truyện tranh"))}</small></span></a>
 <label for="menu" class="menu-btn" aria-label="${esc(t("Mở menu"))}">${icon('<path d="M4 7h16M4 12h16M4 17h16"/>')}</label></div><nav>${nav}</nav>
 <div class="side-foot">${langs}<p>${esc(t("Khán giả viết tiếp. Xem hồi sau sẽ rõ."))}</p></div></aside>
-<main>${body}</main></div></body></html>`;
+<main>${tabs}${body}</main></div></body></html>`;
 }
 
 /** "pufferfish (cá nóc)" reads "cá nóc" in Vietnamese and "pufferfish" in English. */
@@ -169,70 +180,87 @@ ${ep ? `<a class="c-thumb" href="/comments?episode=${esc(ep.episodeId)}">${thumb
 <form method="post" action="/comments/${encodeURIComponent(c.id)}/pick"><button class="${isPicked ? "btn on" : "btn"}" title="${esc(t("Dùng làm hướng cho tập sau"))}">${isPicked ? `✓ ${esc(t("Đã chọn"))}` : esc(t("Chọn làm ý tập sau"))}</button></form></li>`;
 }
 
-/** Today's loop as checkable steps, each with the one button that moves it on. */
-function todayCard(s: State, ch: ChannelStatus, a: Abilities): string {
+/** What the Hôm nay page knows besides the files: the posting schedule and the disk. */
+export interface TodayInfo {
+  /** Upcoming posts, soonest first. */
+  upcoming?: Array<{ id: string; at: string }>;
+  /** Free space where the data lives, in GB. */
+  diskFreeGb?: number;
+  /** Videos made and waiting for a look before approval. */
+  toReview?: number;
+}
+
+/** Clip or episode id as people know it: "Clip 10 · chikhang", an episode's title, or "Tập N". */
+export const postName = (s: State, id: string) => (/^pilot-.+-\d+$/.test(id) ? clipLabel(id) : episodeName(s, id));
+
+/** Cover of a clip or episode: the comic's first page, else the clip's Threads still. */
+export const coverOf = (s: State, id: string): string | undefined => s.comics.get(id)?.cover ?? s.clipFiles.get(id)?.still;
+
+const when = (iso: string) => new Date(iso).toLocaleString(locale(), { timeZone: "Asia/Ho_Chi_Minh", weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+
+/** Only what needs doing now, each with the one button that does it; nothing when all is well. */
+function todoCard(s: State, ch: ChannelStatus, a: Abilities, info: TodayInfo): string {
   const picked = new Set(s.directions.map((d) => d.commentId));
   const dayAgo = Date.now() - 24 * 3600_000;
   const waiting = s.inbox.filter((c) => canReply(c) && c.messages[c.messages.length - 1]?.from === "customer").length;
-  const madeToday = [...s.comics.values()].length > 0;
-  const postedToday = s.episodes.some((e) => e.state === "published" && Date.parse(e.at) > dayAgo);
-  const steps: Array<[boolean, string, string, string]> = [
-    [ch.facebook, "Kết nối Facebook và Instagram", ch.facebook ? t("Đã kết nối") : t("Đăng nhập Facebook một lần"), ch.facebook ? "" : a.canConnect ? `<a class="btn on" href="/channels/hoi-sau">${esc(t("Kết nối"))}</a>` : ""],
-    [s.comments.some((c) => Date.parse(c.createdAt) > dayAgo), "Đọc bình luận mới", t("{n} bình luận trong 24 giờ", { n: s.comments.filter((c) => Date.parse(c.createdAt) > dayAgo).length }), a.canPull ? button("/comments/refresh", esc(t("Lấy mới"))) : `<a class="btn" href="/comments">${esc(t("Xem"))}</a>`],
-    [picked.size > 0, "Chọn ý cho tập sau", t("{n} ý đã chọn", { n: picked.size }), `<a class="btn${picked.size ? "" : " on"}" href="/comments">${esc(t("Chọn ý"))}</a>`],
-    [madeToday && picked.size > 0, "Làm tập trong Studio", t("Viết, vẽ, tự soát, ghép chữ"), `<a class="btn${picked.size ? " on" : ""}" href="/studio">${esc(t("Mở Studio"))}</a>`],
-    [postedToday, "Đăng tập", postedToday ? t("Đã đăng hôm nay") : t("Chưa đăng hôm nay"), `<a class="btn" href="/automation">${esc(t("Xem lịch"))}</a>`],
-    [waiting === 0, "Trả lời tin nhắn", waiting ? t("{n} người đang chờ", { n: waiting }) : t("Không ai đang chờ"), waiting ? `<a class="btn on" href="/inbox">${esc(t("Trả lời"))}</a>` : ""],
-  ];
-  const done = steps.filter(([ok]) => ok).length;
-  return `<section class="card today"><div class="card-head"><h2>${esc(t("Việc hôm nay"))}</h2><span class="progress" style="--p:${Math.round((done / steps.length) * 100)}%"><b>${done}/${steps.length}</b></span></div>
-<ol class="todo-list">${steps.map(([ok, title, hint, action], i) => `<li class="${ok ? "done" : ""}"><span class="tick">${ok ? "✓" : i + 1}</span><div><b>${esc(t(title))}</b><small>${esc(hint)}</small></div>${action}</li>`).join("")}</ol></section>`;
+  const fresh = s.comments.filter((c) => Date.parse(c.createdAt) > dayAgo).length;
+  const left = info.upcoming?.length;
+  const items: Array<[string, string, string, string]> = [];
+  if (!ch.facebook && a.canConnect) items.push(["bad", t("Chưa kết nối Facebook và Instagram"), t("Đăng nhập Facebook một lần"), `<a class="btn on" href="/channels/hoi-sau">${esc(t("Kết nối"))}</a>`]);
+  if (info.diskFreeGb !== undefined && info.diskFreeGb < 3) items.push(["bad", t("Ổ đĩa sắp đầy: còn {n} GB", { n: info.diskFreeGb.toFixed(1) }), t("Máy cần chỗ trống để làm và đăng video"), `<a class="btn" href="/settings">${esc(t("Xem sao lưu"))}</a>`]);
+  if (waiting) items.push(["warn", t("{n} người đang chờ trả lời", { n: waiting }), t("Tin nhắn chỉ trả lời được trong 24 giờ"), `<a class="btn on" href="/inbox">${esc(t("Trả lời"))}</a>`]);
+  if (info.toReview) items.push(["warn", t("{n} video chờ anh xem", { n: info.toReview }), t("Soát từng cảnh rồi bấm Duyệt"), `<a class="btn on" href="/video">${esc(t("Xem"))}</a>`]);
+  if (left !== undefined && left < 4) items.push(["warn", left ? t("Lịch đăng sắp hết: còn {n} bài", { n: left }) : t("Lịch đăng đang trống"), t("Làm thêm clip rồi xếp vào lịch"), `<a class="btn on" href="/video">${esc(t("Làm bài mới"))}</a>`]);
+  if (fresh) items.push(["ok", t("{n} bình luận mới", { n: fresh }), t("Ý hay thì chọn làm tập sau"), `<a class="btn" href="/comments">${esc(t("Xem"))}</a>`]);
+  if (picked.size) items.push(["ok", t("{n} ý khán giả đã chọn", { n: picked.size }), t("Làm tập truyện từ các ý này"), `<a class="btn on" href="/studio">${esc(t("Làm tập"))}</a>`]);
+  const body = items.length
+    ? `<ol class="todo-list">${items.map(([cls, title, hint, action]) => `<li><span class="dot ${cls}"></span><div><b>${esc(title)}</b><small>${esc(hint)}</small></div>${action}</li>`).join("")}</ol>`
+    : `<div class="all-good"><b>✓ ${esc(t("Không có việc gì gấp"))}</b><small class="muted">${esc(t("Lịch đăng vẫn tự chạy."))}</small></div>`;
+  return `<section class="card today"><div class="card-head"><h2>${esc(t("Việc cần làm"))}</h2></div>${body}</section>`;
 }
 
-export function overviewPage(s: State, ch: ChannelStatus, a: Abilities = { canPull: false, canConnect: false, studio: false }, ok?: string, err?: string): string {
-  const published = s.episodes.filter((e) => e.state === "published");
+function upcomingCard(s: State, info: TodayInfo): string {
+  const next = (info.upcoming ?? []).slice(0, 4);
+  if (!info.upcoming) return "";
+  const rows = next.map((x) => {
+    const c = coverOf(s, x.id);
+    return `<li><span class="up-cover">${c ? `<img src="${esc(c)}" alt="" loading="lazy">` : ""}</span><div><b>${esc(postName(s, x.id))}</b><small class="muted">${esc(when(x.at))}</small></div></li>`;
+  }).join("");
+  return `<section class="card upcoming"><div class="card-head"><h2>${esc(t("Sắp đăng"))}</h2><a href="/schedule">${esc(t("Sửa lịch"))} →</a></div>${rows ? `<ul class="up-list">${rows}</ul>` : `<p class="muted small">${esc(t("Chưa có bài nào hẹn giờ."))}</p>`}</section>`;
+}
+
+export function overviewPage(s: State, ch: ChannelStatus, a: Abilities = { canPull: false, canConnect: false, studio: false }, ok?: string, err?: string, info: TodayInfo = {}): string {
   const stuck = s.episodes.filter((e) => e.state === "publishing");
-  const picked = new Set(s.directions.map((d) => d.commentId));
+  const perf = clipPerformance(s);
+  const views = perf.reduce((n, c) => n + (c.views ?? 0), 0);
   const dayAgo = Date.now() - 24 * 3600_000;
   const fresh = s.comments.filter((c) => Date.parse(c.createdAt) > dayAgo).length;
+  const waiting = s.inbox.filter((c) => canReply(c) && c.messages[c.messages.length - 1]?.from === "customer").length;
 
-  // Newest published episode that Studio has pages for, else the newest Studio episode.
-  const latestId = published.find((e) => s.comics.get(e.episodeId)?.pages.length)?.episodeId ?? [...s.comics.values()].pop()?.id;
-  const latest = latestId ? s.comics.get(latestId) : undefined;
-  const latestPosts = published.filter((e) => e.episodeId === latestId);
-  const latestComments = s.comments.filter((c) => s.byPost.get(c.postId)?.episodeId === latestId).length;
+  // The newest post, clip or comic, with its numbers.
+  const latest = perf[0];
+  const comic = latest ? s.comics.get(latest.id) : undefined;
+  const clip = latest ? s.clipFiles.get(latest.id) : undefined;
+  const media = comic?.pages.length
+    ? `<a class="strip" href="/studio/${esc(comic.id)}">${comic.reel ? `<video src="${esc(comic.reel)}" muted loop playsinline autoplay poster="${esc(comic.cover ?? "")}"></video>` : ""}${comic.pages.map((p, i) => `<img src="${esc(p)}" alt="${esc(t("Khung {n}", { n: i + 1 }))}" loading="lazy">`).join("")}</a>`
+    : clip?.video
+      ? `<div class="strip"><video src="${esc(clip.video)}" muted loop playsinline controls preload="metadata"${clip.still ? ` poster="${esc(clip.still)}"` : ""}></video></div>`
+      : "";
   const hero = latest
-    ? `<section class="card hero-comic"><div class="hero-meta"><span class="tag due">${esc(t("Tập mới nhất"))}</span><h2>${esc(latest.title)}</h2>${latest.logline ? `<p class="muted">${esc(latest.logline)}</p>` : ""}
-<div class="faces">${[...new Set([latest.lead, ...latest.characters])].map((slug) => face(s, slug)).join("")}</div>
-<div class="hero-tags">${latestPosts.map((e) => (e.permalink ? `<a class="tag ${e.platform}" href="${esc(e.permalink)}" target="_blank" rel="noopener">${esc(platformName(e.platform))} ↗</a>` : `<span class="tag ${e.platform}">${esc(platformName(e.platform))}</span>`)).join("")}</div>
-<p class="muted small">${esc(t("{n} bình luận", { n: latestComments }))} · <a href="/studio/${esc(latest.id)}">${esc(t("mở trong Studio"))}</a></p></div>
-<a class="strip" href="/studio/${esc(latest.id)}">${latest.reel ? `<video src="${esc(latest.reel)}" muted loop playsinline autoplay poster="${esc(latest.cover ?? "")}"></video>` : ""}${latest.pages.map((p, i) => `<img src="${esc(p)}" alt="${esc(t("Khung {n}", { n: i + 1 }))}" loading="lazy">`).join("")}</a></section>`
-    : `<section class="card hero-empty"><div><h2>${esc(t("Chưa có tập nào"))}</h2><p class="muted">${esc(t("Tạo tập đầu tiên trong Studio: chọn nhân vật, viết một câu hướng truyện, AI làm phần còn lại."))}</p></div><a class="btn on" href="/studio">${esc(t("Mở Studio"))}</a></section>`;
+    ? `<section class="card hero-comic"><div class="hero-meta"><span class="tag due">${esc(t("Bài mới nhất"))}</span><h2>${esc(postName(s, latest.id))}</h2>${clip?.caption ? `<p class="muted">${esc(clip.caption.split("\n")[0])}</p>` : comic?.logline ? `<p class="muted">${esc(comic.logline)}</p>` : ""}
+<p class="big-num"><b>${esc(latest.views === undefined ? "–" : latest.views.toLocaleString(locale()))}</b> ${esc(t("lượt xem"))}</p><p class="muted small">${esc(when(latest.at))}</p>
+<div class="hero-tags">${latest.posts.map((p) => (p.permalink ? `<a class="tag ${p.platform}" href="${esc(p.permalink)}" target="_blank" rel="noopener">${esc(platformName(p.platform))} ↗</a>` : `<span class="tag ${p.platform}">${esc(platformName(p.platform))}</span>`)).join("")}</div></div>${media}</section>`
+    : `<section class="card hero-empty"><div><h2>${esc(t("Chưa có bài nào"))}</h2><p class="muted">${esc(t("Dán một câu đùa hoặc một ảnh meme, máy làm thành clip có nhân vật của anh."))}</p></div><a class="btn on" href="/video">${esc(t("Làm bài mới"))}</a></section>`;
 
-  const max = Math.max(1, ...s.characters.map((x) => x.comments));
-  const cast =
-    s.characters
-      .map(
-        (c) => `<a class="cast-card" href="/characters/${esc(c.profile.slug)}"><img src="${charSrc(c)}" alt="" style="background:${esc(c.profile.look.palette[0].hex)}44" loading="lazy"><b>${esc(c.profile.name)}</b>
-<span class="bar"><i style="width:${Math.round((c.comments / max) * 100)}%;background:${esc(c.profile.look.palette[0].hex)}"></i></span><small class="muted">${esc(t("{c} bình luận · {e} tập", { c: c.comments, e: c.episodes }))}</small></a>`,
-      )
-      .join("") + `<a class="cast-card add" href="/characters/new"><span class="plus">+</span><b>${esc(t("Thêm nhân vật"))}</b></a>`;
-
-  const body = `<header class="page-head"><div><h1>${esc(t("Tổng quan"))}</h1></div>
-<div class="minis">${mini(t("Tập"), new Set(published.map((e) => e.episodeId)).size, "", "/episodes")}${mini(t("Bình luận"), s.comments.length, fresh ? t("+{n} hôm nay", { n: fresh }) : "", "/comments")}${mini(t("Ngày đăng liên tiếp"), s.streak)}${mini(t("Ý đã chọn"), picked.size, "", "/comments?picked=1")}${mini(t("Tin chờ"), s.inbox.filter((c) => canReply(c) && c.messages[c.messages.length - 1]?.from === "customer").length, "", "/inbox")}</div></header>
+  const body = `<header class="page-head"><div><h1>${esc(t("Hôm nay"))}</h1></div>
+<div class="minis">${mini(t("Bài đã đăng"), perf.length, "", "/episodes")}${perf.some((c) => c.views !== undefined) ? mini(t("Lượt xem"), views.toLocaleString(locale()), "", "/performance") : ""}${info.upcoming ? mini(t("Sắp đăng"), info.upcoming.length, "", "/schedule") : ""}${s.comments.length ? mini(t("Bình luận"), s.comments.length, fresh ? t("+{n} hôm nay", { n: fresh }) : "", "/comments") : ""}${waiting ? mini(t("Tin chờ"), waiting, "", "/inbox") : ""}</div></header>
 ${flash(ok, err)}
-${stuck.length ? `<div class="warn"><b>${esc(t("{n} bài đang đăng dở.", { n: stuck.length }))}</b> ${esc(t("Có thể đã lên trang: mở trang kiểm tra trước khi đăng lại."))} ${stuck.map((e) => `<span class="tag ${e.platform}">${esc(episodeName(s, e.episodeId))} · ${esc(platformName(e.platform))}</span>`).join(" ")}</div>` : ""}
+${stuck.length ? `<div class="warn"><b>${esc(t("{n} bài đang đăng dở.", { n: stuck.length }))}</b> ${esc(t("Có thể đã lên trang: mở trang kiểm tra trước khi đăng lại."))} ${stuck.map((e) => `<span class="tag ${e.platform}">${esc(postName(s, e.episodeId))} · ${esc(platformName(e.platform))}</span>`).join(" ")}</div>` : ""}
 <div class="overview">
-<div class="ov-main">${hero}<section class="cast">${cast}</section></div>
-<div class="ov-side">${todayCard(s, ch, a)}${lastRun(s.runs[0])}</div>
-</div>
-<div class="grid2">
-${s.brands.length ? brandsCard(s, ch) : `<section class="card"><h2>${esc(t("Kênh"))}</h2><ul class="channels"><li><span class="dot ${ch.facebook ? "ok" : "off"}"></span>Facebook<span class="muted">${esc(t(ch.facebook ? "đã kết nối" : "chưa kết nối"))}</span></li><li><span class="dot ${ch.instagram ? "ok" : "off"}"></span>Instagram<span class="muted">${esc(t(ch.instagram ? "đã kết nối" : "chưa kết nối"))}</span></li></ul></section>`}
-${lessonsCard(s)}
-</div>
-<section class="card"><div class="card-head"><h2>${esc(t("Bình luận mới nhất"))}</h2><div class="actions">${pullComments(a)}<a href="/comments">${esc(t("Xem tất cả"))} →</a></div></div>
-${s.comments.length ? `<ul class="comments">${s.comments.slice(0, 5).map((c) => commentRow(c, s, picked)).join("")}</ul>` : empty("Chưa có bình luận.", pullComments(a) || connectLink(a))}</section>`;
-  return layout(t("Tổng quan"), "/", body);
+<div class="ov-main">${hero}${lessonsCard(s)}</div>
+<div class="ov-side">${todoCard(s, ch, a, info)}${upcomingCard(s, info)}</div>
+</div>`;
+  return layout(t("Hôm nay"), "/", body);
 }
 
 const RUN_STATUS: Record<Run["status"], [string, string]> = {
@@ -256,13 +284,6 @@ function lessonsCard(s: State): string {
     })
     .join("");
   return `<section class="card"><div class="card-head"><h2>${esc(t("Bài học từ khán giả"))}</h2>${s.lessonsAt ? `<span class="muted small">${time(s.lessonsAt)}</span>` : ""}</div><ul class="lessons">${rows}</ul><p class="muted small">${esc(t("Rút ra từ số liệu các tập đã đăng. AI viết kịch bản đọc đúng danh sách này."))}</p></section>`;
-}
-
-function lastRun(r?: Run): string {
-  if (!r) return "";
-  const [cls, label] = RUN_STATUS[r.status];
-  return `<a class="card run-card" href="/automation"><div class="card-head"><h2>${esc(t("Lần chạy tự động gần nhất"))}</h2><span><span class="dot ${cls}"></span>${esc(t(label))}</span></div>
-<p class="muted small">${esc(r.date)} · ${time(r.startedAt)}${r.mode === "mock" ? ` · ${esc(t("chạy thử"))}` : ""}</p>${stageChips(r)}</a>`;
 }
 
 const stageChips = (r: Run) =>
@@ -387,29 +408,33 @@ export function episodesPage(s: State): string {
 <td>${postState(e)}</td><td>${time(e.at)}</td><td>${e.postId ? `<a href="/comments?episode=${esc(e.episodeId)}">${n}</a>` : "–"}</td><td title="${st ? esc(t("{a} người bình luận, {s} chia sẻ, {v} lưu", { a: st.authors, s: st.shares, v: st.saves })) : ""}">${st ? st.score : "–"}</td><td>${e.permalink ? `<a href="${esc(e.permalink)}" target="_blank" rel="noopener">${esc(t("Mở"))} ↗</a>` : ""}</td></tr>`;
     })
     .join("");
-  const ids = [...new Set(s.episodes.map((e) => e.episodeId))];
+  const group = (id: string) => id.replace(/-still$/, "");
+  const ids = [...new Set(s.episodes.map((e) => group(e.episodeId)))];
+  const perf = new Map(clipPerformance(s).map((c) => [c.id, c]));
   const cards = ids
     .map((id) => {
-      const posts = s.episodes.filter((e) => e.episodeId === id);
+      const posts = s.episodes.filter((e) => group(e.episodeId) === id);
       const comic = s.comics.get(id);
-      const st = s.stats.find((x) => x.episodeId === id);
-      const n = s.comments.filter((c) => s.byPost.get(c.postId)?.episodeId === id).length;
-      const cast = comic ? [...new Set([comic.lead, ...comic.characters])] : [posts[0].character];
+      const views = perf.get(id)?.views;
+      const n = s.comments.filter((c) => { const ep = s.byPost.get(c.postId); return ep && group(ep.episodeId) === id; }).length;
+      const cast = comic ? [...new Set([comic.lead, ...comic.characters])] : [];
       const brands = [...new Set(posts.map((e) => e.brand))];
-      return `<article class="card ep-card"><a class="ep-cover" href="${comic ? `/studio/${esc(id)}` : `/comments?episode=${esc(id)}`}">${comic?.cover ? `<img src="${esc(comic.cover)}" alt="${esc(comic.title)}" loading="lazy">` : `<div class="ph">${face(s, posts[0].character, "lg")}</div>`}${st ? `<span class="score" title="${esc(t("Điểm tương tác"))}">${st.score}</span>` : ""}</a>
-<div class="ep-body"><div class="faces">${cast.map((slug) => face(s, slug)).join("")}</div><h2>${esc(episodeName(s, id))}</h2>
-<div class="hero-tags">${[...new Set(posts.map((e) => e.platform))].map((pl) => {
+      const cover = coverOf(s, id);
+      const tiktok = posts.find((e) => e.platform === "tiktok" && e.inbox);
+      return `<article class="card ep-card"><a class="ep-cover" href="${comic ? `/studio/${esc(id)}` : `/comments?episode=${esc(id)}`}">${cover ? `<img src="${esc(cover)}" alt="${esc(postName(s, id))}" loading="lazy">` : `<div class="ph">${face(s, posts[0].character, "lg")}</div>`}${views !== undefined ? `<span class="score" title="${esc(t("Lượt xem"))}">${esc(views.toLocaleString(locale()))} 👁</span>` : ""}</a>
+<div class="ep-body">${cast.length ? `<div class="faces">${cast.map((slug) => face(s, slug)).join("")}</div>` : ""}<h2>${esc(postName(s, id))}</h2>
+<div class="hero-tags">${[...new Set(posts.map((e) => e.platform))].filter((pl) => pl !== "tiktok").map((pl) => {
         const live = posts.filter((e) => e.platform === pl && e.state === "published");
-        return live.length ? `<a class="tag ${pl}" href="${esc(live[0].permalink ?? "#")}" target="_blank" rel="noopener">${esc(platformName(pl))}${live.length > 1 ? ` ×${live.length}` : ""}</a>` : `<span class="tag over">${esc(platformName(pl))} ${esc(t("đang đăng"))}</span>`;
-      }).join("")}</div>
+        return live.length ? `<a class="tag ${pl}" href="${esc(live[0].permalink ?? "#")}" target="_blank" rel="noopener">${esc(platformName(pl))}${live.length > 1 ? ` ×${live.length}` : ""} ↗</a>` : `<span class="tag over">${esc(platformName(pl))} ${esc(t("đang đăng"))}</span>`;
+      }).join("")}${tiktok ? `<span class="tag tiktok" title="${esc(t("Bản nháp nằm trong app TikTok, anh mở app để đăng"))}">TikTok ${esc(t("nháp"))}</span>` : ""}</div>
 ${brands.length > 1 ? `<p class="muted small">${brands.map((b) => esc(brandName(s, b))).join(" · ")}</p>` : ""}
-<p class="muted small"><a href="/comments?episode=${esc(id)}">💬 ${n}</a> · ${time(posts[posts.length - 1].at)}</p></div></article>`;
+<p class="muted small">${n ? `<a href="/comments?episode=${esc(id)}">💬 ${n}</a> · ` : ""}${time(posts[posts.length - 1].at)}</p></div></article>`;
     })
     .join("");
-  const body = `<header class="page-head"><div><h1>${esc(t("Tập đã đăng"))}</h1></div></header>
+  const body = `<header class="page-head"><div><h1>${esc(t("Bài đã đăng"))}</h1><p class="muted">${esc(t("Mỗi thẻ là một bài, gộp mọi nền tảng. Số là tổng lượt xem."))}</p></div><a class="btn" href="/schedule">${esc(t("Lịch đăng"))} →</a></header>
 ${s.episodes.length ? `<div class="ep-grid">${cards}</div>
 <details class="card"><summary>${esc(t("Chi tiết từng bài"))}</summary><div class="scroll"><table><thead><tr><th>${esc(t("Tập"))}</th><th>${esc(t("Nhân vật"))}</th><th>${esc(t("Kênh"))}</th><th>${esc(t("Nền tảng"))}</th><th>${esc(t("Kiểu bài"))}</th><th>${esc(t("Trạng thái"))}</th><th>${esc(t("Thời gian"))}</th><th>${esc(t("Bình luận"))}</th><th title="${esc(t("Điểm tương tác của tập, sau 24 giờ"))}">${esc(t("Điểm"))}</th><th></th></tr></thead><tbody>${rows}</tbody></table></div></details>` : empty("Chưa đăng tập nào. Làm tập trong Studio, hệ thống tự động sẽ đăng lên các kênh đang bật.", `<a class="btn on" href="/studio">${esc(t("Mở Studio"))}</a>`)}`;
-  return layout(t("Tập đã đăng"), "/episodes", body);
+  return layout(t("Bài đã đăng"), "/episodes", body);
 }
 
 export interface CommentFilter {

@@ -18,11 +18,13 @@ import { Accounts } from "./accounts.js";
 import { Backup } from "./backup.js";
 import { demoAnalyst, Research, seedResearch } from "./research.js";
 import { t } from "./i18n.js";
-import { seedLessons, writeDemoData } from "./seed.js";
+import { seedLessons, seedSchedule, writeDemoData } from "./seed.js";
 import { Studio } from "./studio.js";
 import { mockExec, nodeExec, Videos } from "./video.js";
 import { Insights } from "./performance.js";
 import { defaultPaths, startDashboard } from "./server.js";
+import { Schedule } from "./schedule.js";
+import { loadComics } from "./data.js";
 
 const ROOT = fileURLToPath(new URL("../../..", import.meta.url));
 
@@ -80,6 +82,9 @@ if (demo) {
   seedLessons(studioDirs.seriesDir);
 }
 paths.episodesDir = studioDirs.episodesDir;
+// Luật nhà: one file the writer, planner and fixer prompts all read (also in the CLIs the dashboard runs).
+process.env.HOISAU_RULES_FILE = join(studioDirs.seriesDir, "house-rules.json");
+if (demo && !existsSync(process.env.HOISAU_RULES_FILE) && existsSync(join(SERIES_DIR, "house-rules.json"))) cpSync(join(SERIES_DIR, "house-rules.json"), process.env.HOISAU_RULES_FILE);
 paths.charactersDir ??= studioDirs.charactersDir;
 const museMock = demo || env.MUSE_MOCK === "1";
 if (demo) paths.brandArtDir = join(paths.dataDir, "studio", "brand-art");
@@ -155,6 +160,15 @@ if (!demo) {
   const story = join(ROOT, "..", "hoi-sau-story", "data");
   paths.extraDataDirs = process.env.EXTRA_DATA_DIRS ? process.env.EXTRA_DATA_DIRS.split(";").filter(Boolean) : existsSync(story) ? [story] : [];
 }
+// Lịch đăng: the clips post from the hoi-sau-story checkout through Windows Task Scheduler; the page reads
+// and rewrites those tasks. The demo keeps a plan file of its own, with a few approved clips to place.
+const storyRepo = join(ROOT, "..", "hoi-sau-story");
+const schedule = new Schedule({
+  repo: demo ? join(paths.dataDir, "story") : existsSync(join(storyRepo, "scripts", "post-clip.ps1")) ? storyRepo : ROOT,
+  windows: !demo && process.platform === "win32",
+});
+if (demo) seedSchedule(paths.dataDir, schedule, loadComics(studioDirs.episodesDir));
+
 // "Cập nhật số liệu" on Hiệu suất: channel insights over every journal; the demo only touches the pull time.
 const insights = new Insights({
   exec: demo
@@ -189,6 +203,7 @@ await startDashboard(
     research,
     videos,
     insights,
+    schedule,
     demo,
     banner: demo ? "Đang xem dữ liệu mẫu. Bài đăng, bình luận và tin nhắn ở đây là bịa, chỉ để thử giao diện." : undefined,
     channel: () => ({

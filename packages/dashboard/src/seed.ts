@@ -134,3 +134,43 @@ export function seedLessons(seriesDir: string, now = new Date()): void {
   mkdirSync(seriesDir, { recursive: true });
   writeFileSync(file, JSON.stringify(memory, null, 2) + "\n");
 }
+
+/**
+ * Sample post files for the demo clips (posted ones and a few approved, not yet posted), and a
+ * schedule that already holds some of them. Covers borrow the sample comics' first pages.
+ */
+export function seedSchedule(dir: string, schedule: { save(slots: Array<{ id: string; at: string }>): unknown; list(): { slots: unknown[] } }, comics: Map<string, { cover?: string }>, now = new Date()): void {
+  const posts = join(dir, "posts");
+  const covers = [...comics.values()].map((c) => c.cover).filter((c): c is string => Boolean(c));
+  const captions: Record<string, string> = {
+    "pilot-sepvohan-1": "Sếp nghĩ vô hạn #danvanphong #hoisau",
+    "pilot-luongthap-2": "Lương thấp nhưng tinh thần cao #danvanphong",
+    "pilot-chikhang-3": "Chị Khang nói đúng quá #congso",
+    "pilot-trasua-4": "Trà sữa là động lực #danvanphong",
+    "pilot-luoi-5": "Lười có kế hoạch #hoisau",
+    "pilot-gui500k-6": "Gửi 500k mừng cưới #danvanphong",
+    "pilot-luatien-7": "Lừa tình cảm, không lừa tiền #hoisau",
+    "pilot-trasua-13": "Trà sữa lúc 3 giờ chiều #danvanphong",
+    "pilot-luatien-14": "Không thể kiếm nhiều tiền #hoisau",
+    "pilot-gui500k-15": "Gửi 500k lần hai #congso",
+    "pilot-luoi-16": "Lười nhưng đúng deadline #danvanphong",
+    "pilot-meme-17": "Cơm tự nấu #danvanphong #hoisau",
+  };
+  if (!existsSync(posts)) {
+    mkdirSync(posts, { recursive: true });
+    Object.entries(captions).forEach(([id, caption], i) => {
+      const still = covers[i % Math.max(1, covers.length)];
+      writeFileSync(join(posts, `${id}.json`), JSON.stringify({ episodeId: id, format: "reels-9x16", caption, mediaUrls: [`https://hoisau.web.app/media/pilot/${id.replace(/^pilot-/, "")}.mp4`] }, null, 2) + "\n");
+      if (still) writeFileSync(join(posts, `${id}-still.json`), JSON.stringify({ episodeId: `${id}-still`, format: "image-4x5", caption, mediaUrls: [still] }, null, 2) + "\n");
+    });
+  }
+  if (!schedule.list().slots.length) {
+    const hour = 3600_000;
+    const base = Math.ceil(now.getTime() / hour) * hour;
+    schedule.save([
+      { id: "pilot-trasua-13", at: new Date(base + 2 * hour + 36 * 60_000).toISOString() },
+      { id: "pilot-luatien-14", at: new Date(base + 7 * hour + 4 * 60_000).toISOString() },
+      { id: "pilot-gui500k-15", at: new Date(base + 20 * hour + 44 * 60_000).toISOString() },
+    ]);
+  }
+}

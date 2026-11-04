@@ -67,7 +67,7 @@ npm run channel -- publish episodes/ep-001/post.json    # Hồi Sau, plus the le
 npm run channel -- publish post.json --brand poppy instagram   # one brand and platform by hand
 ```
 
-`post.json` carries `lead` (and optionally `characters`); without them the post goes to Hồi Sau only. Each brand has its own journal entries, so one episode can be on several Pages without being posted twice to any of them. The dashboard's **Kênh** page lists the brands, then each brand's accounts, posts and comments.
+`post.json` carries `lead` (and optionally `characters`); without them the post goes to Hồi Sau only. Each brand has its own journal entries, so one episode can be on several Pages without being posted twice to any of them. The dashboard's **Cài đặt → Kênh** tab lists the brands, then each brand's accounts, posts and comments.
 
 ![Channels page](docs/images/channels.png)
 
@@ -182,7 +182,7 @@ paths are read under `MEDIA_BASE_URL`.
 Running for real since 27 Oct:
 
 - **Daily comic** on the Hồi Sau Facebook Page, Instagram and Threads, made with the full Muse episode pipeline (offline mock included), Vietnamese lettering, story memory and canon from the published episodes, and the safety gate. Nothing is posted until the owner approves the exact files.
-- **Short videos** from the dashboard's **Video** screen: illustrated voice-over clips and text memes, checked shot by shot, fixed by a plain-language note with before/after evidence (**Sửa bằng lời**), with MusicGen music, TikTok covers and the [/tai](https://hoisau.web.app/tai) download page. A **Làm từ chữ hoặc ảnh** box turns pasted text or up to four pictures into a proposed text clip or one-panel comic. Approved clips post at the times in a plan file through Windows scheduled tasks, so nobody has to be at the keyboard. See [docs/short-videos.md](docs/short-videos.md).
+- **Short videos** from the dashboard's **Làm bài → Video** screen: illustrated voice-over clips and text memes, checked shot by shot, fixed by a plain-language note with before/after evidence (**Sửa bằng lời**), with MusicGen music, TikTok covers and the [/tai](https://hoisau.web.app/tai) download page. A **Làm từ chữ hoặc ảnh** box turns pasted text or up to four pictures into a proposed text clip or one-panel comic. Approved clips post at the times in a plan file through Windows scheduled tasks, so nobody has to be at the keyboard; the **Lịch đăng** tab shows and edits that schedule. Standing instructions ("short captions", "office by default"…) live in **Luật nhà** and every prompt reads them. See [docs/short-videos.md](docs/short-videos.md).
 - **TikTok**: videos and photo episodes go to the app's drafts (Sandbox; Production in review), or are posted by hand from /tai.
 - **Listening**: comments are screened, scored and grouped; replies and the coach's lessons wait for approval.
 - **Backups** from the dashboard of everything that lives only on the owner's machine (comments, journal, episodes, story memory, character sheets), the last 3 kept, skipping what videos can make again and never filling the drive; `.env` is never copied.

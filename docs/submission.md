@@ -64,7 +64,7 @@ Hồi Sau runs original AI characters as a daily office-comedy comic for young V
 
 Six Vietnamese animals share the office: a slow loris, a pufferfish, a pangolin, a saola, the binturong director and a ferret-badger rival. The audience's share and comment rates decide who leads. A safety gate checks every script against one banned-topic list and each character's limits before anything is drawn, comments can never instruct the model, and nothing is posted until the owner approves the exact files.
 
-**Results.** In its first week, on brand-new Pages with no ads, the studio made 28 episodes and posted 20 short clips to Facebook, Instagram and Threads: 2,002 views and 21 engagements so far, with 14:00 the best posting hour. No comments have come in yet, so every direction this week was set by us; the comment loop is built and shown in the demo on sample comments with the real model. The self-review caught and fixed off-model details, such as a too-short hoodie sleeve in episode 3.
+**Results.** In its first week, on brand-new Pages with no ads, the studio made 28 episodes and posted 21 short clips to Facebook, Instagram and Threads: 2,098 views and 21 engagements so far, with 14:00 the best posting hour. No comments have come in yet, so every direction this week was set by us; the comment loop is built and shown in the demo on sample comments with the real model. The self-review caught and fixed off-model details, such as a too-short hoodie sleeve in episode 3.
 
 **Why it matters.** The same loop can run any creator's character or a brand's mascot: a consistent look, a consistent personality, a story that keeps going, and an audience with a reason to come back tomorrow.
 

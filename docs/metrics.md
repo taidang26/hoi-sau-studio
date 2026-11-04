@@ -77,15 +77,15 @@ A number Meta does not give is left out and listed under `missing` for that post
 
 ## Results
 
-Read from the dashboard's **Hiệu suất** page and overview on 4 Nov 2026, about 08:30 Hanoi, after `channel insights`. All numbers are organic: no ads were run.
+Read from the dashboard's **Hiệu suất** page and overview on 4 Nov 2026, about 11:00 Hanoi, after `channel insights`. All numbers are organic: no ads were run.
 
 ### What was published
 
 | | Value |
 | --- | --- |
 | Episodes made in the studio | 28 |
-| Short clips posted on Facebook, Instagram and Threads | 20, all with numbers |
-| Views, all clips, all three platforms | 2,002 |
+| Short clips posted on Facebook, Instagram and Threads | 21, all with numbers |
+| Views, all clips, all three platforms | 2,098 |
 | Engagements (likes, comments, shares, saves) | 21 |
 | Best posting hour | 14:00 (310 average views, one clip) |
 | Top clips | Clip 10, 199 views (Instagram 196, Threads 3); Clip 9, 84 views |

@@ -1319,7 +1319,7 @@ function fixCard(v: Videos, m: Meta, plan: Plan, busy: boolean): string {
     : `<form class="form" method="post" action="/video/${esc(id)}/ask"><input type="hidden" name="at" id="fix-at" value="${ask?.at ?? ""}">
 <p class="small"><span class="tag" id="fix-where">${esc(t("Chưa dừng video: lỗi chung cả clip"))}</span></p>
 <textarea name="note" id="fix-note" rows="3" required placeholder="${esc(t("vd: chỗ này thiếu tranh cho câu Taeyang · câu đầu là Mẹ không phải Mày · Rico quay lưng mà có ghim sao"))}">${esc(note)}</textarea>
-<label class="small rule-pick"><input type="checkbox" name="rule" value="1"> ${esc(t("Áp dụng cho mọi bài từ giờ (lưu vào Luật nhà)"))}</label>
+<label class="check small rule-pick"><input type="checkbox" name="rule" value="1"> ${esc(t("Áp dụng cho mọi bài từ giờ (lưu vào Luật nhà)"))}</label>
 <button class="btn on">${esc(t("Xem máy định sửa gì"))}</button></form>`;
   const proposal = ask && !busy
     ? ask.actions.length

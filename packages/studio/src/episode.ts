@@ -262,7 +262,7 @@ export function readStep<T>(id: string, step: string, dir?: string): T | undefin
   return existsSync(f) ? (JSON.parse(readFileSync(f, "utf8")) as T) : undefined;
 }
 
-function writeStep(id: string, step: string, value: unknown, dir?: string): void {
+export function writeStep(id: string, step: string, value: unknown, dir?: string): void {
   mkdirSync(episodeDir(id, dir), { recursive: true });
   const text = JSON.stringify(value, null, 2) + "\n";
   writeFileSync(file(id, step, dir), text);

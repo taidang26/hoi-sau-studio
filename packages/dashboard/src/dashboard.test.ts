@@ -369,6 +369,26 @@ test("studio: pick a series style, draw and lock a sheet with poses, make a thre
     assert.match(html, /\/studio-media\/ep-010\/final\/03\.png/);
     assert.ok(!existsSync(join(dirs.episodesDir, "ep-010", "final", "page.png")));
 
+    // Sửa bằng lời on the finished comic: proposal first, then before/after with keep or undo.
+    const script010 = readFileSync(join(dirs.episodesDir, "ep-010", "script.json"), "utf8");
+    assert.match(html, /id="fix"/);
+    assert.equal((await post("/studio/ep-010/fix/ask", { note: 'khung 1 nói "Về thôi" và bỏ cái cốc' })).headers.get("location"), "/studio/ep-010#fix");
+    await studio.settle("ep-010");
+    assert.equal(studio.jobs.get("ep-010")!.error, undefined);
+    let fixPage = await (await fetch(at + "/studio/ep-010")).text();
+    assert.match(fixPage, /Máy định làm/);
+    assert.match(fixPage, /Khung 1: đổi lời thành &quot;Về thôi&quot;|Khung 1: đổi lời thành "Về thôi"/);
+    await post("/studio/ep-010/fix/apply", { pick: ["0", "1"] });
+    await studio.settle("ep-010");
+    assert.equal(studio.jobs.get("ep-010")!.error, undefined);
+    fixPage = await (await fetch(at + "/studio/ep-010")).text();
+    assert.match(fixPage, /fix-undo\/final\/01\.png/);
+    assert.match(fixPage, /\/studio\/ep-010\/fix\/undo/);
+    assert.notEqual(readFileSync(join(dirs.episodesDir, "ep-010", "script.json"), "utf8"), script010);
+    await post("/studio/ep-010/fix/undo");
+    assert.equal(readFileSync(join(dirs.episodesDir, "ep-010", "script.json"), "utf8"), script010);
+    assert.doesNotMatch(await (await fetch(at + "/studio/ep-010")).text(), /fix-undo/);
+
     // From a quote: the exact words go on the panel as its headline band.
     await post("/studio/new", { id: "ep-011", lead: "cu-li", direction: "Tũn đổ lỗi cho đồng nghiệp", format: "single", headline: "Kiểm điểm bản thân ít thôi, trách đồng nghiệp nhiều vào" });
     assert.equal(JSON.parse(readFileSync(join(dirs.episodesDir, "ep-011", "episode.json"), "utf8")).headline, "Kiểm điểm bản thân ít thôi, trách đồng nghiệp nhiều vào");

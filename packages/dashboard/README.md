@@ -39,6 +39,8 @@ Known gap: behind Firebase Hosting only the `__session` cookie is forwarded, so 
 - **Khoá model sheet** on a character page: locks the latest `studio sheet` render as the reference every panel is drawn against.
 - **Truyện tranh** (Studio): one panel by default (three-panel strip and page still offered); creates an episode from the picked comments (direction plus credits), runs the steps in the background, and shows each step's output (premise, beats, script, storyboard, panels, review with before/after, lettered pages, canon), with "Chạy lại từ đây" (rerun from here) on every step.
 
+- **Sửa bằng lời** on a finished episode: write what is wrong (a bubble's words, one thing in a picture, or a whole panel to redraw). Muse Spark reads the note against the script and the finished panels and lists what it will change; nothing changes until you press Làm. New words pass the safety check again before lettering, a picture change is an edit of that panel only, and the page then shows each changed panel before and after, with Giữ or Hoàn tác. A fixed episode needs approving again.
+
 In `--demo`, Studio works on copies in `data-demo/studio/`, uses the offline Muse mock, and starts with one finished sample episode.
 
 ## Video
@@ -48,7 +50,7 @@ In `--demo`, Studio works on copies in `data-demo/studio/`, uses the offline Mus
 
 ## Lịch đăng (posting schedule)
 
-Approved clips post from Windows scheduled tasks (`\HoiSau\`, one per clip, running `scripts/post-clip.ps1` in the hoi-sau-story checkout), so the dashboard does not have to stay open. The **Lịch đăng** tab reads those tasks and shows each clip with its cover, caption and time. Change a time, drop a clip, add approved clips that are not scheduled yet, or "Xếp lại giờ ngẫu nhiên" (3–5 a day by default, 7:00–23:00 Hanoi, at least two hours apart), then "Lưu lịch": it writes `data/post-plan.txt`, runs `schedule-posts.ps1 -Plan` and only after that succeeds removes tasks of clips no longer in the plan. A task it cannot read makes the page read-only. Off Windows (and in `--demo`) it edits the plan file only. Clips made in the dashboard's own Video screen still use its "Hẹn giờ" button, which needs the dashboard running.
+Approved clips post from Windows scheduled tasks (`\HoiSau\`, one per clip, running `scripts/post-clip.ps1` in the hoi-sau-story checkout), so the dashboard does not have to stay open. The **Lịch đăng** tab reads those tasks and shows each clip with its cover, caption and time. Change a time, drop a clip, add approved clips that are not scheduled yet, or "Xếp lại giờ ngẫu nhiên" (3–5 a day by default, 7:00–23:00 Hanoi, at least two hours apart), then "Lưu lịch": it writes `data/post-plan.txt`, runs `schedule-posts.ps1 -Plan` and only after that succeeds removes tasks of clips no longer in the plan. A task it cannot read makes the page read-only. Off Windows (and in `--demo`) it edits the plan file only. Clips made in the dashboard's own Video screen are listed there too, under their own heading: their time can be moved or cleared from the same page, and the dashboard posts them itself, so it has to stay open.
 
 ## Luật nhà (house rules)
 

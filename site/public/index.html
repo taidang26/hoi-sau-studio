@@ -3,20 +3,279 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Hồi Sau</title>
-<meta name="description" content="Truyện tranh hài văn phòng, tập sau do bình luận của bạn viết tiếp.">
-<link rel="stylesheet" href="/style.css">
+<title>Hồi Sau Comics</title>
+<meta name="description" content="Truyện tranh hài công sở, mỗi ngày một tập. Sáu con vật Việt Nam làm chung một văn phòng, bình luận của bạn viết tiếp tập sau.">
+<meta property="og:title" content="Hồi Sau Comics">
+<meta property="og:description" content="Truyện tranh hài công sở, mỗi ngày một tập. Bình luận của bạn viết tiếp tập sau.">
+<meta property="og:image" content="https://hoisau.dangtrantai.com/home/panel-tun.webp">
+<meta property="og:type" content="website">
+<meta name="theme-color" content="#fff7e8">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#fff7e8;--paper:#fff;--ink:#2b2118;--muted:#7a6a58;--line:#2b2118;--soft:#f1e4cc;--accent:#e8743b;--sun:#f2b632;--teal:#1f9c8f;--sky:#cfe6f5}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--ink);font:17px/1.55 "Be Vietnam Pro",system-ui,-apple-system,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased}
+img,video{max-width:100%;height:auto;display:block}
+a{color:inherit}
+.wrap{max-width:1120px;margin:0 auto;padding:0 20px}
+/* language: one attribute on <html> decides which half shows */
+html[lang=vi] [lang=en],html[lang=en] [lang=vi]{display:none!important}
+
+header.top{position:sticky;top:0;z-index:5;background:color-mix(in srgb,var(--bg) 92%,transparent);backdrop-filter:blur(6px);border-bottom:2px solid var(--line)}
+header.top .wrap{display:flex;align-items:center;gap:16px;height:60px}
+.logo{display:flex;align-items:center;gap:10px;font-weight:800;font-size:20px;text-decoration:none;letter-spacing:-.01em}
+.logo img{width:36px;height:36px;border-radius:50%;border:2px solid var(--line);object-fit:cover;object-position:50% 12%;background:#fff}
+nav.menu{margin-left:auto;display:flex;gap:22px;font-weight:500;font-size:15px}
+nav.menu a{text-decoration:none}
+nav.menu a:hover{color:var(--accent)}
+.lang{display:flex;border:2px solid var(--line);border-radius:999px;overflow:hidden;font-weight:700;font-size:13px}
+.lang button{border:0;background:transparent;padding:5px 11px;cursor:pointer;font:inherit;color:var(--ink)}
+.lang button[aria-pressed=true]{background:var(--ink);color:var(--bg)}
+
+.hero{padding:56px 0 40px}
+.hero .wrap{display:grid;grid-template-columns:1.05fr .95fr;gap:48px;align-items:center}
+.kicker{display:inline-block;background:var(--sun);border:2px solid var(--line);border-radius:999px;padding:4px 14px;font-weight:700;font-size:14px;transform:rotate(-2deg)}
+h1{font-size:clamp(44px,7vw,84px);line-height:.98;margin:18px 0 18px;letter-spacing:-.03em;font-weight:800}
+h1 em{font-style:normal;color:var(--accent)}
+.lead{font-size:clamp(18px,2vw,21px);max-width:30em;margin:0 0 28px}
+.channels{display:flex;flex-wrap:wrap;gap:10px}
+.chan{display:inline-flex;align-items:center;gap:8px;padding:10px 16px;border:2px solid var(--line);border-radius:14px;background:var(--paper);text-decoration:none;font-weight:700;font-size:15px;box-shadow:3px 3px 0 var(--line);transition:transform .12s,box-shadow .12s}
+.chan:hover{transform:translate(-1px,-1px);box-shadow:4px 4px 0 var(--line)}
+.chan svg{width:20px;height:20px}
+.chan.main{background:var(--accent);color:#fff}
+.stage{position:relative;max-width:440px;justify-self:center;width:100%}
+.stage .panel{border:3px solid var(--line);border-radius:14px;box-shadow:8px 8px 0 var(--line);transform:rotate(2deg);background:#fff;width:100%;aspect-ratio:4/5;object-fit:cover}
+.sticker{position:absolute;width:30%;border:3px solid var(--line);border-radius:50%;background:#fff;aspect-ratio:1;object-fit:cover;object-position:50% 8%;box-shadow:4px 4px 0 var(--line)}
+.sticker.a{left:-9%;bottom:-6%;transform:rotate(-8deg)}
+.sticker.b{right:-7%;top:-7%;transform:rotate(9deg);width:26%}
+
+section{padding:56px 0}
+.band{background:var(--paper);border-top:2px solid var(--line);border-bottom:2px solid var(--line)}
+h2{font-size:clamp(28px,4vw,40px);line-height:1.1;margin:0 0 8px;letter-spacing:-.02em;font-weight:800}
+.sub{color:var(--muted);margin:0 0 28px;max-width:38em}
+
+.cast{display:grid;grid-template-columns:repeat(6,1fr);gap:14px}
+.card{background:var(--paper);border:2px solid var(--line);border-radius:16px;overflow:hidden;box-shadow:4px 4px 0 var(--line);display:flex;flex-direction:column}
+.band .card{background:var(--bg)}
+.card img{aspect-ratio:4/5;object-fit:contain;background:#fff;border-bottom:2px solid var(--line);width:100%}
+.card .t{padding:10px 12px 14px}
+.card b{font-size:19px;display:block;line-height:1.2}
+.card small{display:block;color:var(--muted);font-size:13px;margin:2px 0 6px}
+.card p{margin:0;font-size:14px;line-height:1.4}
+.boss{position:relative}
+.boss::after{content:"👑";position:absolute;top:8px;right:10px;font-size:20px}
+
+.feed{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;align-items:start}
+.post{background:var(--paper);border:2px solid var(--line);border-radius:16px;overflow:hidden;box-shadow:4px 4px 0 var(--line);display:flex;flex-direction:column}
+.post .media{position:relative;background:#111;aspect-ratio:9/16;cursor:pointer}
+.post.photos .media{aspect-ratio:4/5;background:#fff}
+.post .media img,.post .media video{width:100%;height:100%;object-fit:cover}
+.post .play{position:absolute;inset:auto auto 12px 12px;width:44px;height:44px;border-radius:50%;background:var(--accent);border:2px solid var(--line);display:grid;place-items:center}
+.post .play svg{width:18px;height:18px;fill:#fff;margin-left:3px}
+.post .count{position:absolute;top:10px;right:10px;background:rgba(0,0,0,.7);color:#fff;font-size:12px;font-weight:700;border-radius:999px;padding:2px 9px}
+.post .t{padding:10px 12px 12px;display:flex;flex-direction:column;gap:8px;flex:1}
+.post .cap{font-weight:700;font-size:15px;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.post .links{display:flex;gap:6px;margin-top:auto}
+.post .links a{width:32px;height:32px;border:2px solid var(--line);border-radius:10px;display:grid;place-items:center;background:var(--bg)}
+.post .links svg{width:16px;height:16px}
+.post time{font-size:12px;color:var(--muted)}
+.more{margin-top:24px;display:flex;flex-wrap:wrap;gap:10px}
+
+.steps{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;counter-reset:s}
+.step{border:2px solid var(--line);border-radius:16px;padding:18px;background:var(--bg);position:relative}
+.step .ic{width:52px;height:52px;border:2px solid var(--line);border-radius:14px;display:grid;place-items:center;font-size:26px;margin-bottom:12px;background:var(--sun)}
+.step:nth-child(2) .ic{background:var(--sky)}.step:nth-child(3) .ic{background:#ffd7c2}.step:nth-child(4) .ic{background:#c9ecd9}
+.step b{display:block;font-size:18px;margin-bottom:4px}
+.step p{margin:0;font-size:14.5px;color:var(--muted)}
+.step::before{counter-increment:s;content:counter(s);position:absolute;top:14px;right:16px;font-weight:800;font-size:28px;color:var(--soft)}
+
+.split{display:grid;grid-template-columns:1.2fr .8fr;gap:40px;align-items:center}
+.split img{border:2px solid var(--line);border-radius:14px;box-shadow:6px 6px 0 var(--line);background:#fff}
+.labels{display:grid;grid-template-columns:1fr 1fr;text-align:center;font-weight:700;font-size:14px;margin-top:12px}
+.labels span:first-child{color:var(--muted)}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}
+.chip{border:2px solid var(--line);border-radius:999px;padding:5px 13px;font-weight:700;font-size:14px;background:var(--paper)}
+.chip.m{background:#0866ff;color:#fff}
+
+footer{border-top:2px solid var(--line);padding:36px 0 48px;font-size:14px;color:var(--muted)}
+footer .wrap{display:flex;flex-wrap:wrap;gap:12px 28px;align-items:center;justify-content:space-between}
+footer nav{display:flex;flex-wrap:wrap;gap:6px 18px}
+footer a{color:var(--ink)}
+
+@media (max-width:980px){
+  .cast{grid-template-columns:repeat(3,1fr)}
+  .feed{grid-template-columns:repeat(3,1fr)}
+  .steps{grid-template-columns:repeat(2,1fr)}
+}
+@media (max-width:760px){
+  nav.menu{display:none}
+  .lang{margin-left:auto}
+  .hero{padding:32px 0 28px}
+  .hero .wrap{grid-template-columns:1fr;gap:44px}
+  .stage{max-width:320px}
+  .split{grid-template-columns:1fr;gap:24px}
+  .feed{grid-template-columns:repeat(2,1fr);gap:12px}
+  section{padding:44px 0}
+}
+@media (max-width:520px){
+  .wrap{padding:0 16px}
+  .cast{grid-template-columns:repeat(2,1fr);gap:12px}
+  .steps{grid-template-columns:1fr}
+  .chan{padding:9px 13px;font-size:14px}
+}
+</style>
 </head>
 <body>
+
+<header class="top"><div class="wrap">
+  <a class="logo" href="/"><img src="/home/cu-li.webp" alt="">Hồi Sau</a>
+  <nav class="menu">
+    <a href="#cast"><span lang="vi">Nhân vật</span><span lang="en">Cast</span></a>
+    <a href="#moi" data-feed-link hidden><span lang="vi">Tập mới</span><span lang="en">Latest</span></a>
+    <a href="#cach-lam"><span lang="vi">Cách làm</span><span lang="en">How it's made</span></a>
+  </nav>
+  <div class="lang" role="group" aria-label="Ngôn ngữ / Language">
+    <button type="button" data-lang="vi" aria-pressed="true">VI</button>
+    <button type="button" data-lang="en" aria-pressed="false">EN</button>
+  </div>
+</div></header>
+
 <main>
-  <h1>Hồi Sau</h1>
-  <p>Mỗi ngày một tập hài văn phòng. Tập sau do bình luận của bạn viết tiếp.</p>
-  <ul class="links">
-    <li><a href="https://www.instagram.com/hoisau.comic/">Instagram</a></li>
-    <li><a href="https://www.threads.com/@hoisau.comic">Threads</a></li>
-  </ul>
-  <p class="muted">Lolo, Poppy, Pango và Uni làm chung một văn phòng. Bạn bình luận điều muốn thấy, AI đọc bình luận, chọn ý hay nhất và vẽ tập kế tiếp, ghi tên người góp ý.</p>
-  <footer><a href="/privacy">Chính sách quyền riêng tư</a> · <a href="/data-deletion">Xoá dữ liệu</a> · <a href="/terms">Điều khoản</a></footer>
+<section class="hero"><div class="wrap">
+  <div>
+    <span class="kicker"><span lang="vi">Truyện tranh hài công sở</span><span lang="en">An office comedy comic</span></span>
+    <h1>Hồi Sau <em>Comics</em></h1>
+    <p class="lead">
+      <span lang="vi">Sáu con vật Việt Nam làm chung một văn phòng. Mỗi ngày một tập, và bình luận của bạn viết tiếp tập sau.</span>
+      <span lang="en">Six Vietnamese animals share one office. A new episode every day, and your comments write what happens next.</span>
+    </p>
+    <div class="channels">
+      <a class="chan main" href="https://www.facebook.com/profile.php?id=61595845893958" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M13.5 21v-7.5h2.6l.4-3h-3V8.6c0-.9.3-1.5 1.5-1.5h1.6V4.4c-.3 0-1.2-.1-2.3-.1-2.3 0-3.9 1.4-3.9 4v2.2H7.8v3h2.6V21h3.1z"/></svg>Facebook</a>
+      <a class="chan" href="https://www.instagram.com/hoisau.comic/" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="currentColor"/></svg>Instagram</a>
+      <a class="chan" href="https://www.threads.net/@hoisau.comic" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.7 11.2c-.1 0-.2-.1-.3-.1-.2-3-1.8-4.7-4.6-4.7-1.6 0-3 .7-3.9 2l1.6 1.1c.6-1 1.6-1.2 2.3-1.2 1 0 1.7.3 2.2.9.3.4.6 1 .7 1.7-.8-.1-1.6-.2-2.5-.1-2.5.1-4.1 1.6-4 3.6.1 1 .6 1.9 1.4 2.4.7.5 1.6.7 2.6.6 1.3-.1 2.3-.5 3-1.4.5-.7.9-1.5 1-2.6.6.4 1.1.9 1.3 1.5.4 1 .4 2.6-.9 3.9-1.2 1.2-2.6 1.7-4.7 1.7-2.4 0-4.1-.8-5.3-2.3C5.5 16.6 4.9 14.6 4.9 12s.6-4.6 1.7-6.1C7.8 4.4 9.6 3.6 12 3.6s4.2.8 5.4 2.3c.6.7 1 1.6 1.3 2.7l1.9-.5c-.4-1.3-.9-2.4-1.7-3.4C17.4 2.9 15.1 1.8 12 1.8 8.9 1.8 6.6 2.9 5.1 4.8 3.8 6.6 3.1 9 3.1 12s.7 5.4 2 7.2c1.5 1.9 3.8 3 6.9 3 2.7 0 4.6-.7 6.1-2.2 2-2 2-4.5 1.3-6-.5-1.2-1.4-2.1-2.7-2.8zm-4.5 4.4c-1 .1-2.1-.4-2.2-1.4 0-.7.5-1.6 2.3-1.7h.6c.7 0 1.3.1 1.9.2-.2 2.4-1.4 2.8-2.6 2.9z"/></svg>Threads</a>
+      <a class="chan" href="https://www.tiktok.com/@hoisau.comic" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.6 2h-3.2v13.2a2.9 2.9 0 1 1-2.9-2.9c.3 0 .6 0 .9.1V9.1a6.1 6.1 0 1 0 5.2 6.1V8.5a7.7 7.7 0 0 0 4.5 1.4V6.7a4.5 4.5 0 0 1-4.5-4.7z"/></svg>TikTok</a>
+    </div>
+  </div>
+  <div class="stage">
+    <img class="panel" src="/home/panel-tun.webp" alt="Tũn ngồi trước máy tính trong văn phòng, nghĩ: thôi xong, căng rồi" width="720" height="900">
+    <img class="sticker a" src="/home/ca-noc.webp" alt="">
+    <img class="sticker b" src="/home/cay-muc.webp" alt="">
+  </div>
+</div></section>
+
+<section id="cast" class="band"><div class="wrap">
+  <h2><span lang="vi">Cả phòng tầng 7</span><span lang="en">The 7th floor</span></h2>
+  <p class="sub"><span lang="vi">Ai cũng ngoan trước mặt sếp. Ai cũng có một mặt khác.</span><span lang="en">Everyone behaves in front of the boss. Everyone has another side.</span></p>
+  <div class="cast">
+    <div class="card"><img src="/home/cu-li.webp" alt="Tũn, cu li" loading="lazy" width="480" height="600"><div class="t"><b>Tũn</b><small><span lang="vi">cu li</span><span lang="en">slow loris</span></small><p><span lang="vi">Nhân viên content năm hai, lúc nào cũng bị giao việc phút chót.</span><span lang="en">Second-year content executive, always handed the last-minute job.</span></p></div></div>
+    <div class="card"><img src="/home/ca-noc.webp" alt="Bống, cá nóc" loading="lazy" width="480" height="600"><div class="t"><b>Bống</b><small><span lang="vi">cá nóc</span><span lang="en">pufferfish</span></small><p><span lang="vi">Kế toán giữ bảng lương. Không giận, chỉ to ra một chút.</span><span lang="en">The accountant with the payroll. Never angry, just a bit bigger.</span></p></div></div>
+    <div class="card"><img src="/home/te-te.webp" alt="Tê, tê tê" loading="lazy" width="480" height="600"><div class="t"><b>Tê</b><small><span lang="vi">tê tê</span><span lang="en">pangolin</span></small><p><span lang="vi">Trưởng nhóm 11 năm, sống sót qua 4 đời sếp.</span><span lang="en">Team lead for 11 years, survived four bosses.</span></p></div></div>
+    <div class="card"><img src="/home/sao-la.webp" alt="Sa, sao la" loading="lazy" width="480" height="600"><div class="t"><b>Sa</b><small><span lang="vi">sao la</span><span lang="en">saola</span></small><p><span lang="vi">Designer mới vào, được công ty khoe là "kỳ lân".</span><span lang="en">The new designer, sold as the company's "unicorn".</span></p></div></div>
+    <div class="card boss"><img src="/home/cay-muc.webp" alt="Mực, cầy mực, ôm mèo Tuyết" loading="lazy" width="480" height="600"><div class="t"><b>Mực</b><small><span lang="vi">cầy mực · giám đốc</span><span lang="en">binturong · the director</span></small><p><span lang="vi">Ngồi tầng 8, luôn ôm mèo Tuyết. Mèo mới là người quyết.</span><span lang="en">Sits on floor 8 with his cat Tuyết. The cat makes the calls.</span></p></div></div>
+    <div class="card"><img src="/home/chon-bac-ma.webp" alt="Lẻo, chồn bạc má" loading="lazy" width="480" height="600"><div class="t"><b>Lẻo</b><small><span lang="vi">chồn bạc má</span><span lang="en">ferret-badger</span></small><p><span lang="vi">Trưởng nhóm bên cạnh. Thảo mai, giỏi tranh công, mưu nào cũng hỏng.</span><span lang="en">The rival lead. All smiles, takes the credit, every scheme backfires.</span></p></div></div>
+  </div>
+</div></section>
+
+<section id="moi" hidden><div class="wrap">
+  <h2><span lang="vi">Tập mới đăng</span><span lang="en">Latest episodes</span></h2>
+  <p class="sub"><span lang="vi">Bấm để xem. Thích tập nào thì vào bình luận, biết đâu tập sau là ý của bạn.</span><span lang="en">Tap to watch. Leave a comment on the one you like: the next episode could be your idea.</span></p>
+  <div class="feed" id="feed"></div>
+  <div class="more">
+    <a class="chan" href="https://www.facebook.com/profile.php?id=61595845893958" target="_blank" rel="noopener"><span lang="vi">Xem hết trên Facebook</span><span lang="en">See all on Facebook</span></a>
+    <a class="chan" href="https://www.instagram.com/hoisau.comic/" target="_blank" rel="noopener"><span lang="vi">Xem hết trên Instagram</span><span lang="en">See all on Instagram</span></a>
+  </div>
+</div></section>
+
+<section id="cach-lam" class="band"><div class="wrap">
+  <h2><span lang="vi">Một tập ra đời thế nào</span><span lang="en">How an episode gets made</span></h2>
+  <p class="sub"><span lang="vi">AI viết, vẽ và tự soát. Người thật duyệt từng bài trước khi đăng.</span><span lang="en">AI writes, draws and checks. A person approves every post before it goes out.</span></p>
+  <div class="steps">
+    <div class="step"><div class="ic">💬</div><b><span lang="vi">Bạn bình luận</span><span lang="en">You comment</span></b><p><span lang="vi">Muốn ai bị làm sao, chuyện gì ở công ty bạn, cứ viết dưới bài.</span><span lang="en">Who should get what, what happened at your office: write it under the post.</span></p></div>
+    <div class="step"><div class="ic">🧠</div><b><span lang="vi">AI đọc và chọn ý</span><span lang="en">AI picks the idea</span></b><p><span lang="vi">Lọc bình luận xấu, chọn ý hợp với nhân vật, viết kịch bản có trí nhớ các tập trước.</span><span lang="en">Filters out abuse, picks what fits the cast, writes a script that remembers past episodes.</span></p></div>
+    <div class="step"><div class="ic">🎨</div><b><span lang="vi">Vẽ và tự soát</span><span lang="en">Draw and self-check</span></b><p><span lang="vi">Vẽ theo bảng nhân vật đã khoá, soát lại từng khung, sai thì vẽ lại đúng chỗ đó.</span><span lang="en">Drawn against locked model sheets, every panel checked, wrong details redrawn on the spot.</span></p></div>
+    <div class="step"><div class="ic">✅</div><b><span lang="vi">Duyệt rồi mới đăng</span><span lang="en">Approved, then posted</span></b><p><span lang="vi">Lên Facebook, Instagram, Threads và TikTok cùng lúc, mỗi ngày.</span><span lang="en">Out to Facebook, Instagram, Threads and TikTok together, every day.</span></p></div>
+  </div>
+</div></section>
+
+<section><div class="wrap split">
+  <div>
+    <img src="/home/loi-thoai-truoc-sau.webp" alt="Cùng một khung tranh: bên trái chữ tiếng Việt AI vẽ, bên phải lời thoại đặt bằng lớp chữ riêng" loading="lazy" width="795" height="488">
+    <div class="labels"><span lang="vi">Trước</span><span lang="en">Before</span><span lang="vi">Sau: lớp chữ riêng</span><span lang="en">After: a separate text layer</span></div>
+  </div>
+  <div>
+    <h2><span lang="vi">Tiếng Việt đủ dấu, không méo</span><span lang="en">Vietnamese that reads right</span></h2>
+    <p class="sub" style="margin-bottom:0"><span lang="vi">Tranh vẽ không có chữ. Lời thoại đặt sau bằng lớp chữ riêng, ngắt đúng từng tiếng, sửa câu không cần vẽ lại, đổi sang tiếng Anh chỉ là thay chữ.</span><span lang="en">Panels are drawn with no text. Dialogue is set on its own layer, broken only between syllables, so a line can change without a redraw and an English edition is just a text swap.</span></p>
+    <div class="chips">
+      <span class="chip m"><span lang="vi">Chỉ dùng model của Meta</span><span lang="en">Meta models only</span></span>
+      <span class="chip">Muse Spark</span><span class="chip">Muse Image</span><span class="chip">SAM 3.1</span><span class="chip">MusicGen</span><span class="chip">MMS</span>
+    </div>
+  </div>
+</div></section>
 </main>
+
+<footer><div class="wrap">
+  <div>© 2026 Hồi Sau Comics · <a href="https://github.com/taidang26/hoi-sau-studio" target="_blank" rel="noopener"><span lang="vi">Mã nguồn</span><span lang="en">Source code</span></a></div>
+  <nav>
+    <a href="/privacy"><span lang="vi">Chính sách quyền riêng tư</span><span lang="en">Privacy policy</span></a>
+    <a href="/data-deletion"><span lang="vi">Xoá dữ liệu</span><span lang="en">Data deletion</span></a>
+    <a href="/terms"><span lang="vi">Điều khoản</span><span lang="en">Terms</span></a>
+  </nav>
+</div></footer>
+
+<script>
+(function () {
+  var root = document.documentElement;
+  function setLang(l) {
+    root.lang = l;
+    document.querySelectorAll("[data-lang]").forEach(function (b) { b.setAttribute("aria-pressed", String(b.dataset.lang === l)); });
+    try { localStorage.setItem("hoisau-lang", l); } catch (e) {}
+  }
+  var saved = null;
+  try { saved = localStorage.getItem("hoisau-lang"); } catch (e) {}
+  var q = new URLSearchParams(location.search).get("lang");
+  setLang(q === "en" || q === "vi" ? q : saved || (/^vi\b/i.test(navigator.language || "vi") ? "vi" : "en"));
+  document.querySelectorAll("[data-lang]").forEach(function (b) { b.addEventListener("click", function () { setLang(b.dataset.lang); }); });
+
+  // Latest posts: feed.json is written at deploy time from what is approved and already live.
+  var ICONS = {
+    facebook: '<path fill="currentColor" d="M13.5 21v-7.5h2.6l.4-3h-3V8.6c0-.9.3-1.5 1.5-1.5h1.6V4.4c-.3 0-1.2-.1-2.3-.1-2.3 0-3.9 1.4-3.9 4v2.2H7.8v3h2.6V21h3.1z"/>',
+    instagram: '<g fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/></g>',
+    threads: '<path fill="currentColor" d="M12 2a10 10 0 1 0 6.4 17.7l-1.3-1.5A8 8 0 1 1 20 12v1a2 2 0 0 1-4 0V8h-2v.7A5 5 0 1 0 15.6 15 4 4 0 0 0 22 13v-1A10 10 0 0 0 12 2zm0 13a3 3 0 1 1 0-6 3 3 0 0 1 0 6z"/>',
+    tiktok: '<path fill="currentColor" d="M16.6 2h-3.2v13.2a2.9 2.9 0 1 1-2.9-2.9c.3 0 .6 0 .9.1V9.1a6.1 6.1 0 1 0 5.2 6.1V8.5a7.7 7.7 0 0 0 4.5 1.4V6.7a4.5 4.5 0 0 1-4.5-4.7z"/>'
+  };
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+  function day(iso) {
+    var d = new Date(iso);
+    return isNaN(d) ? "" : d.toLocaleDateString(root.lang === "en" ? "en-GB" : "vi-VN", { day: "numeric", month: "numeric" });
+  }
+  function card(p) {
+    var media = p.kind === "video"
+      ? (p.image ? '<img src="' + esc(p.image) + '" alt="" loading="lazy">' : '<video src="' + esc(p.video) + '#t=0.5" muted playsinline preload="metadata"></video>') +
+        '<span class="play"><svg viewBox="0 0 24 24"><path d="M6 4l14 8-14 8z"/></svg></span>'
+      : '<img src="' + esc(p.image) + '" alt="" loading="lazy">' + (p.count > 1 ? '<span class="count">1/' + p.count + "</span>" : "");
+    var links = (p.links || []).map(function (l) {
+      return '<a href="' + esc(l.url) + '" target="_blank" rel="noopener" aria-label="' + l.platform + '"><svg viewBox="0 0 24 24">' + (ICONS[l.platform] || "") + "</svg></a>";
+    }).join("");
+    return '<article class="post ' + p.kind + '"><div class="media" data-video="' + esc(p.video || "") + '">' + media + '</div>' +
+      '<div class="t"><div class="cap">' + esc(p.title) + '</div><time>' + day(p.publishedAt) + '</time><div class="links">' + links + "</div></div></article>";
+  }
+  fetch("/feed.json", { cache: "no-cache" }).then(function (r) { return r.ok ? r.json() : null; }).then(function (data) {
+    var items = (data && data.items || []).filter(function (p) { return p.image || p.video; }).slice(0, 8);
+    if (!items.length) return;
+    var box = document.getElementById("feed");
+    box.innerHTML = items.map(card).join("");
+    document.getElementById("moi").hidden = false;
+    document.querySelectorAll("[data-feed-link]").forEach(function (a) { a.hidden = false; });
+    box.addEventListener("click", function (e) {
+      var m = e.target.closest(".media");
+      if (!m || !m.dataset.video || m.querySelector("video[controls]")) return;
+      m.innerHTML = '<video src="' + m.dataset.video + '" controls autoplay playsinline></video>';
+    });
+  }).catch(function () {});
+})();
+</script>
 </body>
 </html>

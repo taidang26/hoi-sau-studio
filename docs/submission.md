@@ -14,7 +14,7 @@ Deadline: **4 Nov, 9 PM ET = 5 Nov, 09:00 Hanoi**. Late entries are not consider
 
 **Repository (public):** https://github.com/taidang26/hoi-sau-studio
 
-**Demo video (3 min, public or unlisted):** *link*
+**Demo video (3 min, public or unlisted):** https://youtu.be/WrNiN2R5GcI (2:34, unlisted). Voice-over: ElevenLabs, narration only; music MusicGen; everything the product does runs on Meta models.
 
 **Live product:**
 - The series, live: [Facebook](https://www.facebook.com/profile.php?id=61595845893958) · [Instagram @hoisau.comic](https://www.instagram.com/hoisau.comic/) · [Threads @hoisau.comic](https://www.threads.net/@hoisau.comic)
@@ -36,7 +36,7 @@ In the order the submission form asks (seen 28 Oct). Paste these as they are; *i
 | Most Viral X post | *link to the demo post on X* |
 | Project Description | The short description below, then "The problem" and "What we built" from the full description, then the "Live product" links above (the form has no field for them; they need no Meta App Review, since viewers only see public posts) |
 | Public GitHub Repository | https://github.com/taidang26/hoi-sau-studio |
-| 3-Minute Demo Video | *YouTube link, public or unlisted* |
+| 3-Minute Demo Video | https://youtu.be/WrNiN2R5GcI |
 | Use of Meta products | "How we used Meta's tools" below, as text |
 | Why Meta's models matter | The paragraph under "Why Meta's models matter" below |
 | Feedback on Meta products | The list under "Feedback on Meta products" below |

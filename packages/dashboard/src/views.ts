@@ -711,7 +711,7 @@ export function settingsPage(settings: SettingView[], opts: { demo: boolean; moc
 ${flash(opts.ok, opts.error)}
 ${opts.demo ? `<div class="notice">${esc(t("Đang xem dữ liệu mẫu nên không lưu cài đặt."))}</div>` : ""}
 <div class="settings-grid"><form class="card form" method="post" action="/settings"><h2>${esc(t("Khoá kết nối"))}</h2>${rows}<button class="btn on"${opts.demo ? " disabled" : ""}>${esc(t("Lưu"))}</button></form>
-<div class="settings-side"><section class="card"><h2>${esc(t("Thứ tự thiết lập"))}</h2><ol class="flow vertical"><li><b>1</b><span>${esc(t("Nhập Mã ứng dụng Meta và Khoá bí mật"))}</span></li><li><b>2</b><span>${t('Vào <a href="/channels">Kênh</a>, bấm Kết nối Facebook, chọn Trang')}</span></li><li><b>3</b><span>${esc(t("Nhập khoá AI Muse để AI viết và vẽ"))}</span></li><li><b>4</b><span>${t('Vào <a href="/style">Phong cách</a> chọn kiểu vẽ, rồi vẽ bản chuẩn cho nhân vật')}</span></li></ol>
+<div class="settings-side"><section class="card"><h2>${esc(t("Thứ tự thiết lập"))}</h2><ol class="flow vertical"><li><b>1</b><span>${esc(t("Nhập Mã ứng dụng Meta và Khoá bí mật"))}</span></li><li><b>2</b><span>${t('Vào <a href="/channels">Kênh</a>, bấm Kết nối Facebook, chọn Trang')}</span></li><li><b>3</b><span>${esc(t("Nhập khoá AI Muse để AI viết và vẽ"))}</span></li><li><b>4</b><span>${t('Vào <a href="/style">Nét vẽ</a> chọn kiểu vẽ, rồi vẽ bản chuẩn cho nhân vật')}</span></li></ol>
 ${opts.mock ? `<p class="muted small">${esc(t("AI đang ở chế độ vẽ thử: ảnh là mẫu, không tốn lượt."))}</p>` : ""}</section>${backupCard(opts.backup)}</div></div>`;
   return layout(t("Cài đặt"), "/settings", body);
 }

@@ -206,7 +206,7 @@ export class Studio {
     const lead = form.get("lead") ?? "";
     const direction = (form.get("direction") ?? "").trim();
     if (!direction) throw new Error(t("Hãy viết hướng truyện."));
-    const format = (form.get("format") || "strip3") as EpisodeFormat;
+    const format = (form.get("format") || "single") as EpisodeFormat;
     const headline = (form.get("headline") ?? "").trim();
     const ep = createEpisode({ id: (form.get("id") ?? "").trim() || this.nextId(lead), lead, characters: form.getAll("with"), direction, credits, format, ...(headline ? { headline } : {}) }, this.opts.episodesDir);
     return ep.id;
@@ -371,7 +371,7 @@ export function studioPage(s: State, st: Studio, error?: string, inspiration = "
 <fieldset class="pick-cast"><legend>${esc(t("Nhân vật chính"))}</legend>${cast.map((c, i) => `<label class="cast-pick"><input type="radio" name="lead" value="${esc(c.profile.slug)}"${c.profile.slug === defaultLead || (!defaultLead && i === 0) ? " checked" : ""}><img src="${pic(c.profile.slug)}" alt="" style="background:${esc(c.profile.look.palette[0].hex)}44"><span>${esc(c.profile.name)}</span></label>`).join("")}</fieldset>
 <fieldset class="pick-cast small-pick"><legend>${esc(t("Cùng xuất hiện"))}</legend>${cast.map((c) => `<label class="cast-pick" data-slug="${esc(c.profile.slug)}"${c.profile.slug === defaultLead ? " hidden" : ""}><input type="checkbox" name="with" value="${esc(c.profile.slug)}"><img src="${pic(c.profile.slug)}" alt="" style="background:${esc(c.profile.look.palette[0].hex)}44"><span>${esc(c.profile.name)}</span></label>`).join("")}</fieldset>
 <label>${esc(t("Hướng truyện"))}<textarea name="direction" rows="3" required placeholder="${esc(t("Chuyện gì xảy ra trong tập này"))}">${esc(ideas.map((c) => c.text).join("\n"))}</textarea></label>
-<fieldset class="pick-format"><legend>${esc(t("Kiểu truyện"))}</legend>${EPISODE_FORMATS.map((f) => `<label class="format-pick"><input type="radio" name="format" value="${f}"${f === "single" ? " checked" : ""}><span class="fmt fmt-${f}">${"<i></i>".repeat(f === "single" ? 1 : f === "strip3" ? 3 : 5)}</span>${esc(t(FORMAT_LABEL[f]))}</label>`).join("")}</fieldset>
+<fieldset class="pick-format"><legend>${esc(t("Kiểu truyện"))}</legend>${[...EPISODE_FORMATS].sort((a, b) => Number(b === "single") - Number(a === "single")).map((f) => `<label class="format-pick"><input type="radio" name="format" value="${f}"${f === "single" ? " checked" : ""}><span class="fmt fmt-${f}">${"<i></i>".repeat(f === "single" ? 1 : f === "strip3" ? 3 : 5)}</span>${esc(t(FORMAT_LABEL[f]))}</label>`).join("")}</fieldset>
 ${ideas.length ? `<fieldset><legend>${esc(t("Ghi công người bình luận"))}</legend>${ideas.map((c) => `<label class="check"><input type="checkbox" name="credit" value="${esc(`${c.author.name}::${c.text}`)}" checked> <b>${esc(c.author.name)}</b>: <span class="muted">${esc(c.text)}</span></label>`).join("")}</fieldset>` : `<p class="muted small">${t('Mẹo: chọn bình luận hay ở trang <a href="/comments">Bình luận</a>, chúng sẽ hiện ở đây làm hướng truyện.')}</p>`}
 ${inspiration}
 <div class="row-actions"><button class="btn on">${esc(t("Tạo tập"))}</button>${aiNote(st)}</div></form>
@@ -466,7 +466,7 @@ ${section("canon", canon ? (canon.facts.length ? `<ul>${canon.facts.map((f) => `
 export function stylePage(st: Studio, error?: string): string {
   const style = loadStyle(st.opts.seriesDir);
   const job = st.jobs.get("style");
-  if (!style) return layout(t("Phong cách"), "/style", `<header class="page-head"><div><h1>${esc(t("Phong cách"))}</h1></div></header><div class="card empty"><p>${esc(t("Chưa có bộ phong cách."))}</p></div>`);
+  if (!style) return layout(t("Nét vẽ"), "/style", `<header class="page-head"><div><h1>${esc(t("Nét vẽ"))}</h1></div></header><div class="card empty"><p>${esc(t("Chưa có bộ phong cách."))}</p></div>`);
   const runFile = join(st.styleDir, "run.json");
   const renders: StyleRender[] = existsSync(runFile) ? (JSON.parse(readFileSync(runFile, "utf8")) as { renders: StyleRender[] }).renders : [];
   const cards = style.variants
@@ -486,10 +486,10 @@ export function stylePage(st: Studio, error?: string): string {
   const locked = style.reference
     ? `<section class="card"><h2>${esc(t("Ảnh mẫu đang dùng"))}</h2><img class="sheet" src="/series-media/${encodeURIComponent(style.reference)}" alt=""><p class="muted small">${esc(t("Ảnh này đi kèm mọi bản vẽ chuẩn và khung đầu của mỗi tập. Đổi phong cách thì nên vẽ lại bản chuẩn của các nhân vật."))}</p></section>`
     : "";
-  const body = `<header class="page-head"><div><h1>${esc(t("Phong cách"))}</h1><p class="muted">${esc(t("Một kiểu vẽ cho cả series. Cùng một cảnh được vẽ theo từng kiểu; chọn kiểu đọc rõ nhất trên điện thoại."))}</p></div></header>
+  const body = `<header class="page-head"><div><h1>${esc(t("Nét vẽ"))}</h1><p class="muted">${esc(t("Một kiểu vẽ cho cả series. Cùng một cảnh được vẽ theo từng kiểu; chọn kiểu đọc rõ nhất trên điện thoại."))}</p></div></header>
 ${bar}
 <div class="styles">${cards}</div>
 ${locked}
 <section class="card"><details><summary><b>${esc(t("Phần chung"))}</b> <span class="muted small">${esc(t("Mô tả gửi AI"))}</span></summary><p>${esc(style.base)}</p>${style.avoid.length ? `<h3>${esc(t("Tránh"))}</h3><ul>${style.avoid.map((a) => `<li>${esc(a)}</li>`).join("")}</ul>` : ""}</details></section>`;
-  return layout(t("Phong cách"), "/style", body);
+  return layout(t("Nét vẽ"), "/style", body);
 }

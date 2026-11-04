@@ -339,7 +339,7 @@ export const EN: Record<string, string> = {
   "Nhập Mã ứng dụng Meta và Khoá bí mật": "Enter the Meta App ID and App Secret",
   'Vào <a href="/channels">Kênh</a>, bấm Kết nối Facebook, chọn Trang': 'Go to <a href="/channels">Channels</a>, click Connect Facebook, pick the Page',
   "Nhập khoá AI Muse để AI viết và vẽ": "Enter the Muse AI key so the AI can write and draw",
-  'Vào <a href="/style">Phong cách</a> chọn kiểu vẽ, rồi vẽ bản chuẩn cho nhân vật': 'Pick an <a href="/style">Art style</a>, then draw each character\'s model sheet',
+  'Vào <a href="/style">Nét vẽ</a> chọn kiểu vẽ, rồi vẽ bản chuẩn cho nhân vật': 'Pick an <a href="/style">Art style</a>, then draw each character\'s model sheet',
   "AI đang ở chế độ vẽ thử: ảnh là mẫu, không tốn lượt.": "The AI is in test mode: pictures are samples and cost nothing.",
   "Mã ứng dụng Meta (App ID)": "Meta App ID",
   "developers.facebook.com → Ứng dụng của bạn → Cài đặt → Thông tin cơ bản": "developers.facebook.com → My Apps → Settings → Basic",

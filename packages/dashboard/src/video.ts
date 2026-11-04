@@ -1140,13 +1140,21 @@ function ideaBox(v: Videos): string {
     const i = v.idea(id)!;
     return `<li><a href="/video/idea/${esc(id)}">${esc(i.plan?.title || i.text.slice(0, 40) || t("{n} ảnh", { n: i.images.length }))}</a>${i.job?.running ? ` <span class="spinner"></span>` : ""}</li>`;
   }).join("");
-  return `<section class="card ideabox"><h2>${esc(t("Làm từ chữ hoặc ảnh"))}</h2>
-<p class="muted small">${esc(t("Như gửi cho Claude: dán câu, ảnh chụp bài đăng, ảnh meme, hoặc cả chữ lẫn ảnh. Máy đọc rồi đề xuất làm clip chữ hay tranh, anh xem lại và sửa trước khi bấm làm."))}</p>
+  const samples = v.samples();
+  return `<section class="card ideabox"><h2>${esc(t("Muốn làm gì, cứ viết như nhắn tin"))}</h2>
+<p class="muted small">${esc(t("Dán câu, ảnh chụp bài đăng, ảnh meme hay một clip. Máy tự điền phần còn lại rồi cho anh xem trước, chưa làm gì khi anh chưa bấm."))}</p>
 <form class="form" method="post" action="/video/idea" enctype="multipart/form-data">
 <textarea name="text" rows="3" placeholder="${esc(t("vd: Đi làm đã mệt rồi còn phải ăn bữa cơm dở ẹc do mình tự nấu mang theo"))}"></textarea>
-<div class="row"><label>${esc(t("Ảnh (tối đa 4)"))}<input type="file" name="images" accept="image/*" multiple></label>
-<label>${esc(t("Làm thành"))}<select name="want"><option value="">${esc(t("Máy tự chọn"))}</option><option value="meme">${esc(t("Clip chữ (video)"))}</option><option value="comic">${esc(t("Tranh 1 khung"))}</option></select></label></div>
-<button class="btn on">${esc(t("Đọc và đề xuất"))}</button></form>${list ? `<ul class="small idealist">${list}</ul>` : ""}</section>`;
+<label class="small">${esc(t("Đính kèm ảnh hoặc clip (không bắt buộc)"))}<input type="file" name="files" accept="image/*,video/*" multiple></label>
+${samples.length ? `<details class="small"><summary>${esc(t("Hoặc dùng clip mẫu có sẵn"))}</summary><select name="sample"><option value="">${esc(t("— không dùng —"))}</option>${samples.map((x) => `<option value="${esc(x.path)}">${esc(x.label)}</option>`).join("")}</select></details>` : ""}
+<button class="btn on">${esc(t("Gửi"))}</button></form>${list ? `<ul class="small idealist">${list}</ul>` : ""}</section>`;
+}
+
+/** The cast member a note names (slug or name, any case), else Tũn, else the first. */
+export function leadFromText(text: string, cast: Array<{ slug: string; name: string }>): string {
+  const low = ` ${text.toLowerCase().replace(/[^\p{L}\p{N}-]+/gu, " ")} `;
+  const said = (w: string) => Boolean(w) && low.includes(` ${w.toLowerCase()} `);
+  return cast.find((c) => said(c.name) || said(c.slug))?.slug ?? cast.find((c) => c.slug === "cu-li")?.slug ?? cast[0]?.slug ?? "cu-li";
 }
 
 /** The proposal for one drop-in: what was read (evidence), then the clip and the comic forms, filled and editable. */
@@ -1168,19 +1176,21 @@ export function ideaPage(v: Videos, id: string, studio: boolean, err?: string): 
   const meme = `<form class="form" method="post" action="/video/new" enctype="multipart/form-data"><input type="hidden" name="kind" value="meme"><input type="hidden" name="scenes" value="${p.meme.scenes.length > 1 ? 2 : 1}">
 <label>${esc(t("Dòng chữ 1: câu dẫn"))}<input name="top" maxlength="90" required value="${esc(p.meme.top)}"></label>
 <label>${esc(t("Dòng chữ 2: câu chốt (hiện sau, chữ đỏ)"))}<input name="punch" maxlength="90" required value="${esc(p.meme.punch)}"></label>
+<details><summary class="small">${esc(t("Chỉnh thêm cảnh, nhân vật, chú thích (máy đã điền sẵn)"))}</summary>
 <label>${esc(t("Cảnh 1 vẽ gì"))}<input name="scene1" value="${esc(p.meme.scenes[0] ?? "")}"></label>
 ${p.meme.scenes.length > 1 ? `<label>${esc(t("Cảnh 2 vẽ gì"))}<input name="scene2" value="${esc(p.meme.scenes[1] ?? "")}"></label>` : ""}
 <div class="row"><label>${esc(t("Nhân vật chính"))}${pick("slug", p.lead)}</label><label>${esc(t("Tên video"))}<input name="title" value="${esc(p.title)}"></label></div>
-<label>${esc(t("Chú thích (ngắn, tối đa 5 hashtag không dấu)"))}<input name="caption" maxlength="${CAPTION_MAX}" value="${esc(p.caption ?? "")}"></label>
+<label>${esc(t("Chú thích (ngắn, tối đa 5 hashtag không dấu)"))}<input name="caption" maxlength="${CAPTION_MAX}" value="${esc(p.caption ?? "")}"></label></details>
 <input type="hidden" name="music" value="${esc(MEME_MUSIC)}">
 <p class="muted small">${esc(t("Chữ giữ nguyên văn. Câu chốt hiện ngay khi đọc xong dòng 1. Có nhạc nền."))}</p>
 <button class="btn on">▶ ${esc(t("Làm clip chữ"))}</button></form>`;
   const comic = studio
     ? `<form class="form" method="post" action="/studio/new"><input type="hidden" name="format" value="single"><input type="hidden" name="run" value="1">
+<label>${esc(t("Tranh vẽ gì, ai nói gì"))}<textarea name="direction" rows="3" required>${esc(p.comic.direction)}</textarea></label>
+<details><summary class="small">${esc(t("Chỉnh thêm nhân vật, câu in trên tranh (máy đã điền sẵn)"))}</summary>
 <div class="row"><label>${esc(t("Nhân vật chính"))}${pick("lead", p.lead)}</label></div>
 ${cast.filter((c) => c.slug !== p.lead).length ? `<fieldset><legend>${esc(t("Cùng xuất hiện"))}</legend>${cast.filter((c) => c.slug !== p.lead).map((c) => `<label class="check"><input type="checkbox" name="with" value="${esc(c.slug)}"${p.comic.with.includes(c.slug) ? " checked" : ""}> ${esc(c.name)}</label>`).join("")}</fieldset>` : ""}
-<label>${esc(t("Câu in trên đầu tranh (nguyên văn)"))}<textarea name="headline" rows="2">${esc(p.comic.headline ?? "")}</textarea></label>
-<label>${esc(t("Tranh vẽ gì, ai nói gì"))}<textarea name="direction" rows="3" required>${esc(p.comic.direction)}</textarea></label>
+<label>${esc(t("Câu in trên đầu tranh (nguyên văn)"))}<textarea name="headline" rows="2">${esc(p.comic.headline ?? "")}</textarea></label></details>
 <button class="btn on">▶ ${esc(t("Làm tranh 1 khung"))}</button></form>`
     : `<p class="muted small">${esc(t("Phần làm tranh chưa bật trên máy này."))}</p>`;
   const first = p.kind === "comic" ? [t("Tranh 1 khung"), comic, t("Hoặc làm clip chữ"), meme] : [t("Clip chữ (video)"), meme, t("Hoặc làm tranh 1 khung"), comic];
@@ -1206,33 +1216,9 @@ export function videosPage(v: Videos, err?: string, ok?: string): string {
       return `<a class="card vcard" href="/video/${esc(m.id)}">${cover}<div><b>${esc(m.title)}</b><p class="muted small">${esc(cast.find((c) => c.slug === m.slug)?.name ?? m.slug)} · ${esc(when(m.createdAt))}</p>${job?.running ? `<span class="tag due"><span class="spinner"></span>${esc(t("đang chạy…"))}</span>` : `<span class="tag">${esc(next ? t("Tiếp: {s}", { s: next }) : t("Đã đăng"))}</span>`}</div></a>`;
     })
     .join("");
-  const form = `<details class="card"><summary>${esc(t("Làm video có lời từ clip mẫu"))}</summary>
-<form class="form" method="post" action="/video/new" enctype="multipart/form-data">
-<input type="hidden" name="kind" value="illustrate">
-<div class="row"><label>${esc(t("Clip mẫu"))}<select name="sample"><option value="">${esc(t("— tải clip lên ở dưới —"))}</option>${samples.map((s) => `<option value="${esc(s.path)}">${esc(s.label)}</option>`).join("")}</select></label>
-<label>${esc(t("Hoặc tải clip lên"))}<input type="file" name="clip" accept="video/*"></label></div>
-<div class="row"><label>${esc(t("Nhân vật chính"))}<select name="slug">${cast.map((c) => `<option value="${esc(c.slug)}"${c.slug === "cu-li" ? " selected" : ""}>${esc(c.name)}</option>`).join("")}</select></label>
-<label>${esc(t("Tên video"))}<input name="title" placeholder="${esc(t("vd: Lương và deadline"))}"></label></div>
-<label class="check"><input type="checkbox" name="mouth" value="1" checked> ${esc(t("Nhép miệng theo lời"))}</label>
-<p class="muted small">${esc(t("Giữ tiếng và nhịp cắt của clip mẫu. Máy tự chia cảnh, vẽ, vẽ tư thế 2 và miệng. Anh soát từng cảnh rồi mới dựng và đăng."))}</p>
-<button class="btn on">${esc(t("Bắt đầu"))}</button></form></details>`;
-  const meme = `<details class="card"><summary>${esc(t("Tự gõ clip chữ (không lời)"))}</summary>
-<form class="form" method="post" action="/video/new" enctype="multipart/form-data">
-<input type="hidden" name="kind" value="meme">
-<label>${esc(t("Dòng chữ 1: câu dẫn"))}<input name="top" maxlength="90" required placeholder="${esc(t("vd: Sếp bảo tăng ca là cơ hội phát triển"))}"></label>
-<label>${esc(t("Dòng chữ 2: câu chốt (hiện sau, chữ đỏ)"))}<input name="punch" maxlength="90" required placeholder="${esc(t("vd: Cơ hội để sếp về sớm"))}"></label>
-<div class="row"><label>${esc(t("Nhân vật chính"))}<select name="slug">${cast.map((c) => `<option value="${esc(c.slug)}"${c.slug === "cu-li" ? " selected" : ""}>${esc(c.name)}</option>`).join("")}</select></label>
-<label>${esc(t("Số cảnh"))}<select name="scenes"><option value="2">2</option><option value="1">1</option></select></label>
-<label>${esc(t("Độ dài (giây; để trống: theo thời gian đọc)"))}<input type="number" name="seconds" min="6" max="20" placeholder="${esc(t("tự tính"))}"></label></div>
-<label>${esc(t("Cảnh 1 vẽ gì (để trống: máy tự nghĩ)"))}<input name="scene1" placeholder="${esc(t("vd: Tũn ngồi bàn làm việc, mắt díp lại"))}"></label>
-<label>${esc(t("Cảnh 2 vẽ gì"))}<input name="scene2" placeholder="${esc(t("vd: Sếp Mực đếm tiền, tiền lật lật"))}"></label>
-<label>${esc(t("Nhạc nền (tiếng Anh cho MusicGen; để trống: không nhạc)"))}<input name="music" value="${esc(MEME_MUSIC)}"></label>
-<label>${esc(t("Tên video"))}<input name="title"></label>
-<p class="muted small">${esc(t("Bối cảnh mặc định là văn phòng Hồi Sau, nhân vật đúng trang phục. Máy vẽ từng cảnh và tư thế 2 trên nền đứng yên, làm nhạc, rồi anh soát từng cảnh trước khi dựng."))}</p>
-<button class="btn on">${esc(t("Bắt đầu"))}</button></form></details>`;
   return layout(t("Video"), "/video", `<header class="head"><h1>${esc(t("Làm bài mới"))}</h1></header>${flash(ok, err)}${ideaBox(v)}
 <h2 class="section-title">${esc(t("Video đã làm"))}</h2>${cards ? `<div class="vgrid">${cards}</div>` : `<p class="muted">${esc(t("Chưa có video nào."))}</p>`}
-<h2 class="section-title muted">${esc(t("Cách làm khác"))}</h2>${meme}${form}`);
+`);
 }
 
 function shotCard(v: Videos, m: Meta, plan: Plan, s: Shot, busy: boolean): string {
@@ -1275,7 +1261,7 @@ ${plan.shots[0] !== s ? `<label>${esc(t("Cảnh bắt đầu từ giây"))}<inpu
 <label>${esc(t("Tư thế 2 (để trống: chỉ 1 tư thế)"))}<input name="pose" value="${esc(s.pose)}"></label>
 <button class="btn">${esc(t("Lưu"))}</button><p class="muted small">${esc(t("Sửa mô tả cảnh xong bấm Vẽ lại cả cảnh. Sửa lời, giờ phụ đề hay bong bóng chỉ cần Dựng lại. Xem giây trong video ở trên để biết câu nói lúc nào."))}</p></form></details>`;
   return `<div class="card vshot${checked ? " checked" : ""}" id="${esc(s.id)}"><div class="vshot-head"><b>${esc(s.id)}</b> · ${s.t.toFixed(1)}–${end.toFixed(1)}s ${s.bubble ? `<span class="bubble-text">💬 ${esc(s.bubble)}</span>` : ""}</div>
-<p class="vlines">${lines.map((l) => esc(l.text)).join(" ")}</p><div class="vpics">${pics.join("")}</div>${actions}${busy ? "" : edit}${manualEnd}</div>`;
+${((said) => (said.length > 140 ? `<details class="vlines"><summary>${esc(said.slice(0, 120))}…</summary>${esc(said)}</details>` : `<p class="vlines">${esc(said)}</p>`))(lines.map((l) => l.text).join(" "))}<div class="vpics">${pics.join("")}</div>${actions}${busy ? "" : edit}${manualEnd}</div>`;
 }
 
 const shotAt = (plan: Plan, at: number) => [...plan.shots].reverse().find((s) => s.t <= at + 1e-6) ?? plan.shots[0];
@@ -1396,9 +1382,6 @@ export function videoPage(v: Videos, id: string, err?: string, ok?: string): str
     .filter((k) => (k === "mouth" ? m.mouth : true) && existsSync(v.videoFile(id, k)))
     .map((k) => `<figure class="vvideo"><video controls preload="metadata" playsinline src="/video-media/${esc(id)}/${esc(basename(v.videoFile(id, k)))}"></video><figcaption>${esc(k === "mouth" ? t("Có nhép miệng") : t("Không nhép"))}${v.stale(id, k) ? ` · <b class="warn-text">${esc(t("cũ hơn tranh, dựng lại"))}</b>` : ""}</figcaption></figure>`)
     .join("");
-  const tools = busy
-    ? ""
-    : `<div class="vactions">${button(`/video/${id}/continue`, esc(t("Vẽ tiếp phần còn thiếu")))}${plan ? button(`/video/${id}/render`, esc(t("Dựng video")), left.length ? "btn" : "btn on") : ""}</div>`;
   const addShot = plan && !busy && m.kind !== "meme"
     ? `<details class="card vmanual" id="add-shot"><summary>${esc(t("Sửa tay: thêm cảnh"))}</summary><p class="muted small">${esc(t("Cho câu thoại chưa có tranh riêng. Cảnh mới chạy từ giây này đến cảnh kế tiếp. Câu bị máy nghe sót thì thêm ở ô Sửa lời của cảnh đó."))}</p>
 <form class="form" method="post" action="/video/${esc(id)}/addshot"><div class="row"><label>${esc(t("Bắt đầu từ giây"))}<input name="t" inputmode="decimal" size="5" required placeholder="12.5"></label>
@@ -1425,18 +1408,35 @@ export function videoPage(v: Videos, id: string, err?: string, ok?: string): str
   const approve = `<section class="card" id="approve"><h2>${esc(t("Duyệt và đăng"))}</h2>${left.length ? `<div class="warn small">${esc(t("Còn {n} cảnh chưa soát: {list}.", { n: left.length, list: left.join(", ") }))}</div>` : ""}
 <form class="form" method="post" action="/video/${esc(id)}/approve">
 <label>${esc(t("Chú thích (ngắn, tối đa 5 hashtag không dấu)"))}<textarea name="caption" rows="2" maxlength="${CAPTION_MAX}">${esc(m.caption ?? "")}</textarea></label>
-<div class="row"><label>${esc(t("Bản đăng"))}<select name="version">${m.mouth ? `<option value="mouth"${version === "mouth" ? " selected" : ""}>${esc(t("Có nhép miệng"))}</option>` : ""}<option value="plain"${version === "plain" ? " selected" : ""}>${esc(t("Không nhép"))}</option></select></label>
-<label>${esc(t("Hẹn giờ đăng (giờ máy này; để trống để đăng tay)"))}<input type="datetime-local" name="when" value="${esc(m.when ? new Date(Date.parse(m.when) - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16) : "")}"></label></div>
+<label>${esc(t("Hẹn giờ đăng (giờ máy này; để trống để đăng tay)"))}<input type="datetime-local" name="when" value="${esc(m.when ? new Date(Date.parse(m.when) - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16) : "")}"></label>
+<details class="vmore"><summary>${esc(t("Tuỳ chọn thêm: bản đăng, bìa TikTok, Threads (máy đã điền sẵn)"))}</summary>
+<label>${esc(t("Bản đăng"))}<select name="version">${m.mouth ? `<option value="mouth"${version === "mouth" ? " selected" : ""}>${esc(t("Có nhép miệng"))}</option>` : ""}<option value="plain"${version === "plain" ? " selected" : ""}>${esc(t("Không nhép"))}</option></select></label>
 <label>${esc(t("Threads: ảnh thay video (chọn 1–2 tranh; bỏ trống thì Threads đăng video)"))}</label><div class="vstills">${stillChoices}</div>
 <label>${esc(t("Chữ trên bìa TikTok (| để xuống dòng, *chữ đỏ*; để trống: không làm bìa)"))}<input name="cover" maxlength="120" value="${esc(m.cover ?? "")}"></label>
 ${existsSync(join(v.folder(id), "cover.jpg")) ? `<a href="/video-media/${esc(id)}/cover.jpg" target="_blank"><img class="vcover" src="/video-media/${esc(id)}/cover.jpg" alt="" loading="lazy" style="max-width:180px"></a>` : ""}${m.coverProblem ? `<div class="warn small">${esc(t("Chưa làm được bìa: {why}", { why: m.coverProblem }))}</div>` : ""}
-<label>${esc(t("Chú thích Threads (một câu hỏi, 1 thẻ chủ đề)"))}<input name="threadsCaption" maxlength="${CAPTION_MAX}" value="${esc(m.threadsCaption ?? "")}"></label>
+<label>${esc(t("Chú thích Threads (một câu hỏi, 1 thẻ chủ đề)"))}<input name="threadsCaption" maxlength="${CAPTION_MAX}" value="${esc(m.threadsCaption ?? "")}"></label></details>
 <button class="btn on"${busy ? " disabled" : ""}>${esc(approved ? t("Duyệt lại") : t("Duyệt"))}</button>
 <p class="muted small">${esc(t("Duyệt chỉ nhận khi mọi cảnh đã soát và video mới hơn tranh. Duyệt xong máy tự làm bìa TikTok và cập nhật trang tải clip về điện thoại. Đăng Reels lên Facebook và Instagram, gửi nháp TikTok, Threads đăng ảnh hoặc video."))}</p></form>${publish}</section>`;
+  const rendered = Boolean(videos) && !v.stale(id, version);
+  const next = busy || !plan
+    ? ""
+    : m.posted
+      ? ""
+      : approved
+        ? `<section class="card next-step"><h2>${esc(t("Bước tiếp: đăng"))}</h2>${publish}</section>`
+        : left.length
+          ? `<section class="card next-step"><div class="card-head"><h2>${esc(t("Bước tiếp: xem {n} cảnh bên dưới", { n: left.length }))}</h2>${button(`/video/${id}/okall`, esc(t("Cảnh nào cũng ổn, dựng video")), "btn on")}</div><p class="muted small">${esc(t("Cảnh nào sai thì bấm Báo lỗi ở cảnh đó, máy vẽ lại. Còn lại bấm nút này là xong."))}</p>${job?.error ? button(`/video/${id}/continue`, esc(t("Vẽ tiếp phần còn thiếu"))) : ""}</section>`
+          : !rendered
+            ? `<section class="card next-step"><div class="card-head"><h2>${esc(t("Bước tiếp: dựng video"))}</h2>${button(`/video/${id}/render`, esc(t("Dựng video")), "btn on")}</div></section>`
+            : `<section class="card next-step"><div class="card-head"><h2>${esc(t("Bước tiếp: xem video rồi duyệt"))}</h2><a class="btn on" href="#approve">${esc(t("Đến ô duyệt"))}</a></div><p class="muted small">${esc(t("Chỗ nào chưa ưng thì viết vào ô Sửa bằng lời ngay dưới video."))}</p></section>`;
+  const shotList = plan
+    ? `<details class="card vshots"${left.length || !rendered ? " open" : ""}><summary><b>${esc(t("Từng cảnh ({n})", { n: plan.shots.length }))}</b> <span class="muted small">${esc(left.length ? t("còn {n} cảnh chưa xem", { n: left.length }) : t("đã xem hết"))}</span></summary><p class="muted small">${esc(t("Bấm vào tranh để xem cỡ thật. Soi mặt, tay, đồ vật, chữ, đồng hồ, và nền giữa 2 tư thế."))}</p>${shots}</details>`
+    : `<p class="muted">${esc(m.kind === "meme" ? t("Đang lên cảnh…") : t("Đang nghe lời và chia cảnh…"))}</p>`;
   const body = `<header class="head"><a class="muted" href="/video">← ${esc(t("Video"))}</a><h1>${esc(m.title)}</h1></header>${bar}${stepBar(stepsOf(v, m))}
-${videos ? `<section class="card"><div class="vvideos">${videos}</div></section>` : ""}${plan ? fixCard(v, m, plan, busy) : ""}${tools}
-${plan ? `<h2>${esc(t("Soát từng cảnh ở cỡ thật"))}</h2><p class="muted small">${esc(t("Bấm vào tranh để xem cỡ thật. Soi mặt, tay, đồ vật, chữ, đồng hồ, và nền giữa 2 tư thế."))}</p>${shots}` : `<p class="muted">${esc(m.kind === "meme" ? t("Đang lên cảnh…") : t("Đang nghe lời và chia cảnh…"))}</p>`}
-${plan ? approve : ""}`;
+${next}
+${videos ? `<section class="card"><div class="vvideos">${videos}</div></section>` : ""}${plan ? fixCard(v, m, plan, busy) : ""}
+${shotList}
+${plan && (!left.length || approved || m.posted) ? approve.replace(publish, approved ? "" : publish) : ""}`;
   return layout(m.title, "/video", body);
 }
 

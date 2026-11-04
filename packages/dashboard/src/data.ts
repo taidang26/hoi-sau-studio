@@ -9,7 +9,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { channelStates, loadBrands, parseJournalKey, type Brand, type ChannelState, type Comment, type Conversation, type JournalEntry, type Platform } from "@hoi-sau/channel";
-import { listCharacters, loadProfile, nameVi, type ConsistencyRun, type Profile } from "@hoi-sau/studio";
+import { CHARACTERS_DIR, listCharacters, loadProfile, nameVi, type ConsistencyRun, type Profile } from "@hoi-sau/studio";
 import { lang } from "./i18n.js";
 import { emptyMemory, measureEpisodes, memoryFile, SERIES_DIR, type EpisodeStats, type Lesson, type PostInsights, type StoryMemory } from "@hoi-sau/story";
 
@@ -254,7 +254,33 @@ export function parseJournal(journal: Record<string, JournalEntry>, brands: Bran
 }
 
 /** The profile as the page shows it: the Vietnamese name in Vietnamese, the global name in English. */
-const shownProfile = (p: Profile): Profile => (lang() === "vi" ? { ...p, name: nameVi(p) } : p);
+const shownProfile = (p: Profile, dir = CHARACTERS_DIR): Profile => (lang() === "vi" ? { ...p, name: nameVi(p) } : inEnglish(p, dir));
+
+/**
+ * The profile's Vietnamese prose in English, from characters/<slug>/profile.en.json: a map from each
+ * Vietnamese line to its English. A line edited since then has no match and stays as written.
+ */
+function inEnglish(p: Profile, dir: string): Profile {
+  const en = readJson<Record<string, string>>(join(dir, p.slug, "profile.en.json"), {});
+  const tr = <T extends string | undefined>(s: T): T => (s && en[s] ? en[s] : s) as T;
+  const all = (xs?: string[]) => xs?.map((x) => tr(x));
+  return {
+    ...p,
+    role: tr(p.role),
+    office_type: tr(p.office_type),
+    core_gag: tr(p.core_gag),
+    want: tr(p.want),
+    fear: tr(p.fear),
+    contradiction: tr(p.contradiction),
+    edge: tr(p.edge),
+    life: all(p.life),
+    comic_engine: all(p.comic_engine),
+    relationships: p.relationships?.map((r) => ({ ...r, dynamic: tr(r.dynamic) })),
+    personality: all(p.personality)!,
+    never_says: all(p.never_says)!,
+    voice: { ...p.voice, catchphrases: all(p.voice.catchphrases)! },
+  };
+}
 
 /** Published posts from the dashboard's own data folder and the extra ones; its own wins on the same key. */
 export function readJournals(paths: Paths): Record<string, JournalEntry> {
@@ -290,7 +316,7 @@ export function loadState(paths: Paths): State {
   const characters = listCharacters(paths.charactersDir).map((slug) => {
     const runFile = join(paths.runsDir, slug, "run.json");
     return {
-      profile: shownProfile(loadProfile(slug, paths.charactersDir)),
+      profile: shownProfile(loadProfile(slug, paths.charactersDir), paths.charactersDir),
       run: readJson<ConsistencyRun | undefined>(runFile, undefined),
       episodes: new Set(episodes.filter((e) => e.character === slug && e.state === "published").map((e) => e.episodeId)).size,
       comments: comments.filter((c) => byPost.get(c.postId)?.character === slug).length,

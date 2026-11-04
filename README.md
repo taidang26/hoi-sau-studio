@@ -79,12 +79,15 @@ npm run channel -- publish post.json --brand poppy instagram   # one brand and p
 | Script safety gate before drawing | Muse Spark + rules |
 | Panel review against the model sheet; reading reference images | Muse Spark (vision) |
 | Series style, model and pose sheets, brand art, panels, single-detail redraws | Muse Image |
-| Scoring comments, character replies | Muse Spark Open (open weights, on Baseten or Modal) |
+| Scoring comments, character replies | Muse Spark Open (open weights, on Baseten or Modal; Muse Spark until hosting is set) |
 | Coach lessons from what worked | Muse Spark |
 | Short videos: what each shot shows, the second pose, the bubble; title and caption; the shots of a text meme from its two lines | Muse Spark |
 | Short videos: one full-frame picture per shot, a second pose, a shut and an open mouth | Muse Image |
 | Short videos: checks each picture (on-model, drawn once, no stray text, fills the 9:16 frame) | Muse Spark (vision) |
-| Short videos: the character in both poses so the background stays still; the mouth, nose and eyes | SAM 3.1 |
+| Short videos: reads a note on what is wrong and proposes the edits; finds the thing to fix; compares the picture before and after a fix | Muse Spark (vision) |
+| Short videos: from pasted text or up to four pictures, reads every word and proposes a text clip or a one-panel comic with our cast | Muse Spark (vision) |
+| Short videos: the character in both poses so the background stays still; the mouth, nose and eyes; the region of a detail fix | SAM 3.1 |
+| Trend dance clips (experiment): a person's pose in each frame | Keypoint R-CNN (Meta AI Research, open weights via torchvision, local) |
 | Word times of the voice, for captions and the moving mouth | MMS-1B (`facebook/mms-1b-all`, open weights, local); Muse Voice Transcribe once the key can call it |
 | Short videos: instrumental background music | MusicGen (`facebook/musicgen-small`, open weights, local) |
 | A character's own voice, when a video needs one | MMS-TTS (`facebook/mms-tts-vie`, plus our Hà Nội fine-tune) or SeamlessM4T v2, open weights, local |
@@ -111,6 +114,7 @@ Image models distort Vietnamese diacritics, so Muse Image draws panels **with no
 | `packages/dashboard` | One web screen over all of it |
 | `packages/motion` | Lettered episode → 9:16 motion comic (ffmpeg) for Reels and Threads |
 | `packages/pipeline` | The daily loop: comments → episode → motion comic → posts, with a scheduler |
+| `packages/dance` | Experiment: a person dancing in a clip becomes one of our characters dancing the same moves (Muse Image, SAM 3.1, Keypoint R-CNN) |
 | `packages/talk` | Short 9:16 videos: illustrated voice-over (one picture per shot, two poses, optional moving mouth), text memes (two beats of text, MusicGen music), TikTok covers, talking to camera, lip-sync |
 | `scripts/` | Site build, Windows scheduled tasks: the daily episode, and posting approved clips at set times |
 | `characters/`, `series/` | Character profiles and portraits; series bible and style |
@@ -153,6 +157,9 @@ npm run demo -w @hoi-sau/svg-text        # letter a sample panel in Vietnamese
 npm run dashboard -- --demo              # dashboard with sample data on http://localhost:4321
 npm run motion -- episode ep-001 --draft # motion comic in episodes/ep-001/motion/reel.mp4 (needs ffmpeg)
 npm run pipeline -- run --mock           # one whole day offline: comments → episode → video → posts, in data-demo/
+npm run talk -- demo                     # a short talking clip offline, mock pictures and a hummed voice
+npm run talk -- meme cu-li --out data/video/meme-1   # text meme from data/video/meme-1/meme.json (needs ffmpeg, Python for MusicGen)
+npm run talk -- illustrate cu-li clips/sample.mp4    # illustrated voice-over from a sample clip
 ```
 
 ### Public site and media
@@ -175,9 +182,10 @@ paths are read under `MEDIA_BASE_URL`.
 Running for real since 27 Oct:
 
 - **Daily comic** on the Hồi Sau Facebook Page, Instagram and Threads, made with the full Muse episode pipeline (offline mock included), Vietnamese lettering, story memory and canon from the published episodes, and the safety gate. Nothing is posted until the owner approves the exact files.
-- **Short videos** from the dashboard's **Video** screen: illustrated voice-over clips and text memes, checked shot by shot, fixed by a plain-language note with before/after evidence (**Sửa bằng lời**), with MusicGen music, TikTok covers and the [/tai](https://hoisau.web.app/tai) download page. Approved clips post on a schedule (12:00 and 20:00 Hanoi) through Windows scheduled tasks, so nobody has to be at the keyboard. See [docs/short-videos.md](docs/short-videos.md).
+- **Short videos** from the dashboard's **Video** screen: illustrated voice-over clips and text memes, checked shot by shot, fixed by a plain-language note with before/after evidence (**Sửa bằng lời**), with MusicGen music, TikTok covers and the [/tai](https://hoisau.web.app/tai) download page. A **Làm từ chữ hoặc ảnh** box turns pasted text or up to four pictures into a proposed text clip or one-panel comic. Approved clips post at the times in a plan file through Windows scheduled tasks, so nobody has to be at the keyboard. See [docs/short-videos.md](docs/short-videos.md).
 - **TikTok**: videos and photo episodes go to the app's drafts (Sandbox; Production in review), or are posted by hand from /tai.
 - **Listening**: comments are screened, scored and grouped; replies and the coach's lessons wait for approval.
+- **Backups** from the dashboard of everything that lives only on the owner's machine (comments, journal, episodes, story memory, character sheets), the last 3 kept, skipping what videos can make again and never filling the drive; `.env` is never copied.
 
 Not done yet: direct posting to TikTok until the app passes its audit, and a character voice good enough to ship (the Hà Nội MMS-TTS fine-tune is close but not there, so clips use original sound or music). Day-by-day progress is in [docs/build-log.md](docs/build-log.md).
 

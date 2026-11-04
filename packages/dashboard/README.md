@@ -42,3 +42,8 @@ In `--demo`, Studio works on copies in `data-demo/studio/`, uses the offline Mus
 ## Video
 
 - **Video**: make a short 9:16 clip from a sample clip (illustrated voice-over) or from two lines of text (text meme), check every shot at full size, fix a shot by writing what is wrong (**Sửa bằng lời**, with before/after, a zoom and a changed-pixel map, then keep or undo), render, approve (TikTok cover and the /tai download page are made then) and publish now or at a set time. See [docs/short-videos.md](../../docs/short-videos.md).
+- **Làm từ chữ hoặc ảnh** at the top of Video: paste text or drop up to four pictures; Muse Spark reads them and proposes a text clip or a one-panel comic, every field editable, nothing made until you press the button.
+
+## Backups
+
+Settings sets a backup folder. The dashboard copies what lives only on this machine (comments, inbox, publish journal, research images, drawn episodes, story memory, character folders) into a dated folder of plain copies, keeps the last 3, leaves out what videos can make again, and skips a run when the drive is low. `.env` is never copied.

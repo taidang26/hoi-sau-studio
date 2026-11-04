@@ -1,6 +1,6 @@
 # Short videos
 
-Next to the daily comic, Hồi Sau posts two 9:16 clips a day (12:00 and 20:00 Hanoi) on Facebook and Instagram Reels, TikTok, and as a still with a question on Threads. This page shows how a clip is made and posted, and which parts already run without a developer.
+Next to the daily comic, Hồi Sau posts short 9:16 clips at the times in a plan file (two to four a day) on Facebook and Instagram Reels, TikTok, and as a still with a question on Threads. This page shows how a clip is made and posted, and which parts already run without a developer.
 
 ## Two kinds of clip
 

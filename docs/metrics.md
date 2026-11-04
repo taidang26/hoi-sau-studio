@@ -1,6 +1,6 @@
 # Metrics
 
-How Hồi Sau is measured during the hackathon, and the results. The results tables are filled from real Page, Instagram and Threads data on 3 Nov; until then they show the plan.
+How Hồi Sau is measured during the hackathon, and the results. The results below are real Page, Instagram and Threads data from the first week.
 
 ## What we want to learn
 
@@ -77,35 +77,29 @@ A number Meta does not give is left out and listed under `missing` for that post
 
 ## Results
 
-*To be filled on 3 Nov 2026.*
+Read from the dashboard's **Hiệu suất** page and overview on 4 Nov 2026, about 08:30 Hanoi, after `channel insights`. All numbers are organic: no ads were run.
 
-### Episodes
-
-| # | Date | Lead | Direction from | Reach (FB / IG / Threads) | Score | Share rate | Save rate | Comment rate | Idea rate |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | | | Season plan | | | | | | |
-| 2 | | | Comments on #1 | | | | | | |
-
-### Character test
-
-| Character | Reach | Share rate | Comment rate | Save rate | Verdict |
-| --- | --- | --- | --- | --- | --- |
-| Lolo (slow loris) | | | | | |
-| Poppy (pufferfish) | | | | | |
-| Pango (pangolin) | | | | | |
-| Uni (saola) | | | | | |
-
-### Loop and cost
+### What was published
 
 | | Value |
 | --- | --- |
-| Episodes published | |
-| Episodes whose direction came from comments | |
-| Panels drawn / failed review / edited | |
-| Most common review failure | |
-| Average cost per episode (USD) | |
-| Average run time | |
+| Episodes made in the studio | 28 |
+| Short clips posted on Facebook, Instagram and Threads | 20, all with numbers |
+| Views, all clips, all three platforms | 2,002 |
+| Engagements (likes, comments, shares, saves) | 21 |
+| Best posting hour | 14:00 (310 average views, one clip) |
+| Top clips | Clip 10, 199 views (Instagram 196, Threads 3); Clip 9, 84 views |
 
-### What we learned
+### Loop health
 
-*Three or four sentences, written on 3 Nov, including the coach's top lessons.*
+| | Value |
+| --- | --- |
+| Comments received | 0 |
+| Episodes whose direction came from comments | 0: every direction was set by us |
+| Review catch shown in the demo | Episode 3: Muse Spark flagged Lolo's hoodie sleeve as too short, and only that detail was redrawn |
+
+The Pages were a week old, so no audience had formed to comment yet. The comment loop is built and wired end to end (screen, score, cluster, pick, credit), and the demo video shows it running on the real model with a set of sample comments, labelled as such.
+
+### Not measured yet
+
+Share, save and comment rates per reach, the character test and the cost per episode need more reach than one organic week gives. They are reported once there is enough reach; with zero comments, the coach has no lessons yet.

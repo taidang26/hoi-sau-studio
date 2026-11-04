@@ -147,7 +147,7 @@ after(() => close());
 test("the dashboard lists videos, serves their pictures and takes the shot buttons", async () => {
   const id = v.list()[0].id;
   const list = await (await fetch(`${base}/video`)).text();
-  assert.match(list, /Làm video mới/);
+  assert.match(list, /Làm video có lời từ clip mẫu/);
   assert.match(list, new RegExp(`/video/${id}`));
   assert.equal((await fetch(`${base}/video-media/${id}/shots/s01.png`)).headers.get("content-type"), "image/png");
   assert.equal((await fetch(`${base}/video-media/${id}/meta.json`)).status, 404);
@@ -169,7 +169,7 @@ test("a text meme is planned from two lines of text, drawn, rendered and approve
   assert.deepEqual(calls.map((c) => c[c.indexOf("--step") + 1]), ["plan", "draw", "poses", "stabilize"]);
   const plan = v.plan(id)!;
   assert.deepEqual(plan.lines.map((l) => l.text), ["Sếp bảo tăng ca là cơ hội", "Cơ hội để sếp về sớm"]);
-  assert.deepEqual(plan.shots.map((s) => s.t), [0, 6.3]);
+  assert.deepEqual(plan.shots.map((s) => s.t), [0, 2.96], "the punchline once the seven-word line is read");
   for (const s of v.unchecked(id)) v.tick(id, s);
   v.render(id);
   await v.settle(id);
@@ -195,15 +195,17 @@ test("a second pose that moves the room is measured and flagged", async () => {
 
 test("the Video screen offers the text meme form and takes it", async () => {
   const list = await (await fetch(`${base}/video`)).text();
-  assert.match(list, /Làm clip chữ/);
+  assert.match(list, /Tự gõ clip chữ/);
   const form = new FormData();
-  for (const [k, val] of Object.entries({ kind: "meme", top: "Lương về", punch: "Lương đi", slug: "cu-li", scenes: "1", seconds: "12", scene1: "", music: "" })) form.append(k, val);
+  for (const [k, val] of Object.entries({ kind: "meme", top: "Lương về", punch: "Lương đi", slug: "cu-li", scenes: "1", seconds: "", scene1: "", music: "" })) form.append(k, val);
   const res = await fetch(`${base}/video/new`, { method: "POST", body: form, redirect: "manual" });
   assert.equal(res.status, 303);
   const id = res.headers.get("location")!.split("/").pop()!;
   await v.settle(id);
   assert.equal(v.plan(id)!.shots.length, 1);
-  assert.equal(v.plan(id)!.end, 12);
+  // No length typed: the punchline comes once "Lương về" is read, and the clip is as long as the reading needs.
+  assert.equal(v.plan(id)!.lines[1].start, 2);
+  assert.equal(v.plan(id)!.end, 6.06);
 });
 
 test("a detail fix changes only pose A, makes pose B and mouths again from it, and can be undone", async () => {
@@ -336,4 +338,125 @@ test("fixing by note: the proposal shows evidence first, Làm does it and render
   assert.ok(!existsSync(v.undoDir(id)));
   assert.ok(v.plan(id)!.shots.some((s) => s.t === 5), "kept");
   assert.throws(() => v.apply(id, [0]), /Chưa có gì/);
+});
+
+test("text or pictures in, a proposal with what was read, then the clip is made from the checked form", async () => {
+  const list = await (await fetch(`${base}/video`)).text();
+  assert.match(list, /Làm từ chữ hoặc ảnh/);
+  const empty = await fetch(`${base}/video/idea`, { method: "POST", body: new FormData(), redirect: "manual" });
+  assert.match(decodeURIComponent(empty.headers.get("location")!), /Dán chữ hoặc thêm/);
+
+  // A screenshot of a quote, no text: the words are read off it and split into two beats.
+  const png = await sharp({ create: { width: 400, height: 300, channels: 3, background: "#eee" } }).png().toBuffer();
+  const form = new FormData();
+  form.append("text", "");
+  form.append("images", new Blob([new Uint8Array(png)], { type: "image/png" }), "IMG_0895.png");
+  const res = await fetch(`${base}/video/idea`, { method: "POST", body: form, redirect: "manual" });
+  assert.equal(res.status, 303);
+  const id = res.headers.get("location")!.split("/").pop()!;
+  await v.settle(`idea:${id}`);
+  const html = await (await fetch(`${base}/video/idea/${id}`)).text();
+  assert.match(html, /Chữ đọc được trong ảnh/);
+  assert.match(html, /\/video-media\/_ideas\/y-[^/]+\/img-1\.png/);
+  assert.match(html, /name="top"[^>]*value="Ai cũng xứng đáng có một công việc ổn định\."/);
+  assert.match(html, /name="punch"[^>]*value="Trừ tôi, tôi xứng đáng trúng số rồi nghỉ việc"/);
+  assert.match(html, /Hoặc làm tranh 1 khung/, "the comic is offered too");
+  assert.equal((await fetch(`${base}/video-media/_ideas/${id}/img-1.png`)).status, 200);
+  assert.ok(!v.list().some((m) => m.id.startsWith("y-")), "a drop-in is not a video");
+
+  // Asked for a comic: the comic form comes first.
+  const f2 = new FormData();
+  f2.append("text", "Sếp gọi lên phòng lúc 5 giờ chiều thứ Sáu");
+  f2.append("want", "comic");
+  const r2 = await fetch(`${base}/video/idea`, { method: "POST", body: f2, redirect: "manual" });
+  const id2 = r2.headers.get("location")!.split("/").pop()!;
+  await v.settle(`idea:${id2}`);
+  const h2 = await (await fetch(`${base}/video/idea/${id2}`)).text();
+  assert.ok(h2.indexOf("<h2>Tranh 1 khung</h2>") > 0 && h2.indexOf("<h2>Tranh 1 khung</h2>") < h2.indexOf("Hoặc làm clip chữ"));
+  assert.equal(v.idea(id2)!.plan!.kind, "comic");
+  assert.equal(v.idea(id2)!.plan!.comic.headline, "Sếp gọi lên phòng lúc 5 giờ chiều thứ Sáu", "the words go on the panel as they are");
+});
+
+test("a step that dies on the network runs once more; a real failure does not", async () => {
+  let n = 0;
+  const flaky = new Videos({ ...v.opts, dir: join(root, "flaky"), exec: async (script, args, log, env) => {
+    if (args.includes("draw") && n++ === 0) throw new Error("TypeError: fetch failed");
+    return mock(script, args, log, env);
+  } });
+  const id = flaky.create({ kind: "meme", slug: "cu-li", mouth: false, meme: { top: "Lương về", punch: "Lương đi", scenes: [""], music: "", seconds: 0 }, caption: "Lương đi #danvanphong" });
+  await flaky.settle(id);
+  assert.equal(flaky.jobs.get(id)?.error, undefined);
+  assert.equal(n, 2);
+  assert.equal(flaky.meta(id).caption, "Lương đi #danvanphong", "the caption from the proposal is kept");
+  const broken = new Videos({ ...v.opts, dir: join(root, "broken"), exec: async (script, args, log, env) => {
+    if (args.includes("draw")) throw new Error("Muse Image refused the prompt");
+    return mock(script, args, log, env);
+  } });
+  const id2 = broken.create({ kind: "meme", slug: "cu-li", mouth: false, meme: { top: "a", punch: "b", scenes: [""], music: "", seconds: 0 } });
+  await broken.settle(id2);
+  assert.match(broken.jobs.get(id2)!.error!, /refused/);
+});
+
+test("a new shot for a line starts with the line and hands back to the picture before; a failed picture fix can be undone", async () => {
+  const id = v.create({ slug: "cu-li", mouth: false, sample: v.samples()[0].path });
+  await v.settle(id);
+  v.ask(id, "chỗ này cần cảnh cho câu Taeyang", "4.5");
+  await v.settle(id);
+  v.apply(id, [0]);
+  await v.settle(id);
+  const shots = v.plan(id)!.shots;
+  assert.ok(shots.some((s) => s.t === 4.5 && !s.src), "s03 already starts with that line, so the new one starts at the pause");
+  const back = shots.find((s) => s.src === "s03");
+  assert.ok(back && back.t === 5, "s03 comes back when the new shot ends");
+  v.keep(id);
+
+  // The picture fix fails partway: the rest still runs, the page says so and Hoàn tác puts it back.
+  const failing = new Videos({ ...v.opts, exec: async (script, args, log, env) => {
+    if (args.includes("fix")) throw new Error("s02: the picture was left as it was (\"wall clock\" not found in the picture)");
+    return mock(script, args, log, env);
+  } });
+  const planBefore = readFileSync(join(v.folder(id), "plan.json"), "utf8");
+  failing.ask(id, "bỏ cái đồng hồ treo tường, câu đầu là Mẹ", "2.5");
+  await failing.settle(id);
+  assert.equal(failing.meta(id).ask!.actions.length, 2);
+  failing.apply(id, [0, 1]);
+  await failing.settle(id);
+  assert.match(failing.jobs.get(id)!.error!, /not found/);
+  assert.equal(failing.plan(id)!.lines[0].text.split(" ")[0], "Mẹ", "the text edit still went in");
+  const html = videoPage(failing, id)!;
+  assert.match(html, /Sửa chưa xong/);
+  assert.match(html, /Hoàn tác/);
+  failing.undo(id);
+  assert.equal(readFileSync(join(v.folder(id), "plan.json"), "utf8"), planBefore);
+});
+
+test("an error note goes before the #part of the link, where the page can read it", async () => {
+  const { withNote } = await import("./server.js");
+  assert.equal(withNote("/video/a#fix", "err", "x y"), "/video/a?err=x%20y#fix");
+  assert.equal(withNote("/video/a?v=1", "ok", "z"), "/video/a?v=1&ok=z");
+});
+
+test("when the only edit is refused, nothing is rendered and the page says why", async () => {
+  const id = v.create({ slug: "cu-li", mouth: false, sample: v.samples()[0].path });
+  await v.settle(id);
+  const calls: string[][] = [];
+  const refusing = new Videos({ ...v.opts, exec: async (script, args, log, env) => {
+    calls.push(args);
+    if (args.includes("fix")) throw new Error("Error: s02: the picture was left as it was (wall clock still present)");
+    return mock(script, args, log, env);
+  } });
+  refusing.ask(id, "bỏ cái đồng hồ", "2.5");
+  await refusing.settle(id);
+  calls.length = 0;
+  refusing.apply(id, [0]);
+  await refusing.settle(id);
+  assert.ok(!calls.some((c) => c.includes("render")), "no render when nothing changed");
+  const m = refusing.meta(id);
+  assert.equal(m.done, undefined);
+  assert.match(m.refused!.why, /^s02: the picture was left as it was/);
+  assert.ok(!existsSync(refusing.undoDir(id)));
+  const html = videoPage(refusing, id)!;
+  assert.match(html, /Không sửa được, tranh và video vẫn như cũ/);
+  assert.doesNotMatch(html, /Hoàn tác/);
+  assert.ok(existsSync(join(refusing.folder(id), "log.txt")), "the steps are logged");
 });

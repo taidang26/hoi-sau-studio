@@ -66,8 +66,11 @@ export interface Plan {
 
 // ---------------------------------------------------------------- pure parts
 
-/** Words into spoken lines, split where the voice pauses at least `gap` seconds. */
-export function groupLines(words: Word[], gap = 0.45): Line[] {
+/**
+ * Words into spoken lines, split where the voice pauses at least `gap` seconds, and also before a word
+ * that would make the line longer than `max` seconds (fast talk with no pause read as one 15 s subtitle).
+ */
+export function groupLines(words: Word[], gap = 0.45, max = 3.5): Line[] {
   const out: Line[] = [];
   let cur: Word[] = [];
   const flush = () => {
@@ -75,7 +78,7 @@ export function groupLines(words: Word[], gap = 0.45): Line[] {
     cur = [];
   };
   for (const w of words) {
-    if (cur.length && w.start - cur[cur.length - 1].end >= gap) flush();
+    if (cur.length && (w.start - cur[cur.length - 1].end >= gap || w.end - cur[0].start > max)) flush();
     cur.push(w);
   }
   flush();
@@ -87,9 +90,20 @@ export function parseCuts(log: string): number[] {
   return [...log.matchAll(/pts_time:([0-9.]+)/g)].map((m) => Number(m[1])).filter((t) => t > 0.3);
 }
 
-/** One shot per stretch between cuts; each line belongs to the shot it starts in. */
-export function shotSpans(lines: Line[], cuts: number[], end: number): Array<{ t: number; end: number; lines: number[] }> {
+/**
+ * One shot per stretch between cuts; each line belongs to the shot it starts in. A stretch longer than
+ * `max` seconds (a source with few cuts) is split at line starts, so no picture stays up for 20 s of talk.
+ */
+export function shotSpans(lines: Line[], cuts: number[], end: number, max = 6): Array<{ t: number; end: number; lines: number[] }> {
   const starts = [0, ...cuts.filter((c) => c > 0 && c < end)].sort((a, b) => a - b);
+  for (let i = 0; i < starts.length; i++) {
+    const e = starts[i + 1] ?? end;
+    if (e - starts[i] <= max) continue;
+    // The line start nearest the middle of the stretch, at least 1.5 s from either end.
+    const mid = (starts[i] + e) / 2;
+    const at = lines.map((l) => l.start).filter((x) => x > starts[i] + 1.5 && x < e - 1.5).sort((a, b) => Math.abs(a - mid) - Math.abs(b - mid))[0];
+    if (at !== undefined) { starts.splice(i + 1, 0, at); i--; }
+  }
   return starts
     .map((t, i) => {
       const e = starts[i + 1] ?? end;
@@ -253,7 +267,7 @@ export function sceneCuts(clip: string, threshold = 0.2): number[] {
 const PLAN = S.obj({
   shots: S.arr(
     S.obj({
-      act: S.str("English, one sentence: the lead character acting out exactly what these words say, with the 1-3 props they need, and which way things face; if the words name a time, say what time a clock in the picture shows"),
+      act: S.str("English, one sentence: the lead character acting out exactly what these words say, with the 1-3 props they need, and which way things face; no clock unless the words name a time"),
       pose: S.str("English: the next moment of the same picture, a different pose or expression; same place, same props"),
       bubble: S.str("Vietnamese, at most 7 words, our own punchy words for this beat (never copy the spoken line)"),
       cast: S.arr(S.str("slug of another cast member, only if the words need one"), 0, 2),
@@ -274,7 +288,7 @@ export async function planShots(ctx: StudioContext, slug: string, lines: Line[],
         `A narrated Vietnamese short video is being remade with our cartoon character ${p.name} (${p.species}, ${p.role}) as the narrator, acting out each beat in our office comic.`,
         `For each shot write: what ${p.name} does in the picture (act), a second pose for the same picture (pose), a short speech bubble in our own words (bubble), and any other cast member the words really need (cast; others: ${cast}).`,
         "Keep each picture simple: one clear action, a strong expression, two or three props. Screens face whoever uses them.",
-        "When the words name a time (4 giờ chiều, 8 giờ sáng), any clock in that shot and the next ones shows that time, so write it into act and pose; leave the clock out when no time is said.",
+        "No clocks: only when the words name a time (4 giờ chiều, 8 giờ sáng) may that one shot show a clock at that time; otherwise never mention a clock in act or pose.",
         beats,
       ].join("\n\n"),
     },
@@ -291,8 +305,9 @@ export const LOOK = [
   "Objects face the right way: a screen faces whoever is using it, a character's body faces what he works on, paws hold things naturally, every character has exactly two arms.",
   "The picture fills the whole frame edge to edge: no borders, no empty colour bands at the top or bottom. Keep the top fifth and the bottom fifth calm (a speech bubble and captions go there).",
   "Only draw a computer or phone when the scene needs one; a screen nobody in the scene uses never glows toward the viewer.",
-  "Absolutely no text, letters, numbers, signs, speech bubbles or captions anywhere; a clock shows hands only, at the time the scene asks.",
+  "Absolutely no text, letters, numbers, signs, speech bubbles or captions anywhere. No clock on the wall or desk unless the scene asks for a time; then it shows hands only, at that time.",
   "A character seen from behind shows only the back: front-only details (a chest pin, a tie, a badge or lanyard on the front, the face) are not visible.",
+  "Never draw a real person or a celebrity's likeness: a singer, band, actor or idol the words name appears only as tiny dark silhouettes far away (on a stage, a screen or a poster without a face); our animal cast are the only characters drawn in full.",
 ].join(" ");
 
 const CHECK = S.obj({ pass: S.bool(), problems: S.arr(S.str("one concrete problem"), 0, 8), fix: S.str("English edit instruction naming only what to change, or empty if pass") });
@@ -309,8 +324,8 @@ export async function checkPicture(ctx: StudioContext, slug: string, act: string
       text: [
         `You check one frame of a short comic video before it is posted. The first image is the frame, the second is ${p.name}'s model sheet.`,
         `The frame should show: ${act}.`,
-        `Fail it for: ${p.name} off-model (${p.look.signature.join("; ")}); ${p.name} drawn more than once (unless the scene asks for a copy such as a ghost); any drawn text, letters, numbers or speech bubble; a human;`,
-        "extra arms or hands, a paw holding something wrongly; objects facing the wrong way (a monitor or phone screen must face the character using it, his body must face what he works on; eyes may look at the viewer); a clock with more or fewer than two hands, or a clock showing a different time from the one asked;",
+        `Fail it for: ${p.name} off-model (${p.look.signature.join("; ")}); ${p.name} drawn more than once (unless the scene asks for a copy such as a ghost); any drawn text, letters, numbers or speech bubble; a human, or a realistic or recognisable real person (a named singer or idol may only be a tiny faceless silhouette);`,
+        "extra arms or hands, a paw holding something wrongly; objects facing the wrong way (a monitor or phone screen must face the character using it, his body must face what he works on; eyes may look at the viewer); a clock when the frame does not ask for a time, a clock with more or fewer than two hands, or a clock showing a different time from the one asked;",
         "a busy background (crowds, many props) or sparkles, sweat drops, motion lines; a glowing screen facing the viewer while the character uses it; a misshapen or broken prop (a wallet must look like a normal bifold wallet); empty colour bands across the top or bottom.",
         "If it fails, write the fix as a short edit instruction.",
       ].join(" "),
@@ -355,45 +370,274 @@ export async function fixShot(ctx: StudioContext, plan: Plan, dir: string, id: s
   const file = join(dir, `${id}.png`);
   if (!s || !existsSync(file)) throw new Error(`${id}: no picture to fix`);
   if (!note.trim()) throw new Error(`${id}: say what to change`);
-  const p = ctx.profiles.get(plan.slug)!;
   const before = readFileSync(file);
   writeFileSync(join(dir, `${id}-prev.png`), before);
-  const prompt = `Edit the attached picture. Change only this: ${note.trim()}. Keep everything else exactly the same: framing, camera, background, colours, line style, every other prop, and ${p.name}'s design, pose and place in the frame. ${LOOK}`;
-  let fix = "";
-  for (let attempt = 0; attempt < (opts.tries ?? 2); attempt++) {
-    opts.log?.(`${id}: fixing (${note.trim()})${fix ? ` again (${fix})` : ""}`);
-    const res = await generateSoftly(ctx.image, { prompt: prompt + (fix ? ` Make sure: ${fix}` : ""), size: `${OUT.w}x${OUT.h}`, references: [dataUrl(before), ...characterRefs(ctx, plan.slug)] }, opts.log);
-    // With a thing to find, only that place changes: the edit is pasted back under its (grown, feathered) mask.
-    const image = opts.find && opts.sam ? await pasteRegion(opts.sam, before, res.image, opts.find, opts.log) : res.image;
-    writeFileSync(file, image);
-    const v = await checkPicture(ctx, plan.slug, `${s.act}; changed: ${note.trim()}`, image);
-    opts.log?.(`${id}: ${v.pass ? "check passed" : `check failed: ${v.problems.join("; ")}`}`);
-    if (v.pass) break;
-    fix = v.fix;
+  // Short and with the picture as the only reference, like the mouth edits that work: with the model sheet and
+  // the whole look attached, Muse Image draws the frame anew instead of editing it.
+  const prompt = `Change only this in the picture: ${note.trim()}. Do not move or redraw anything else: the same characters, poses, props, background, framing, colours and line style. No text.`;
+  let fix = "", why = "";
+  const box = opts.find ? await locateThing(ctx, before, opts.find).catch(() => undefined) : undefined;
+  opts.log?.(`${id}: "${opts.find ?? note}" ${box ? `seen at x ${box.x0.toFixed(2)}–${box.x1.toFixed(2)}, y ${box.y0.toFixed(2)}–${box.y1.toFixed(2)}` : "not located by Muse Spark, SAM alone"}`);
+  try {
+    for (let attempt = 0; attempt < (opts.tries ?? 2); attempt++) {
+      opts.log?.(`${id}: fixing (${note.trim()})${fix ? ` again (${fix})` : ""}`);
+      const res = await generateSoftly(ctx.image, { prompt: prompt + (fix ? ` Make sure: ${fix}` : ""), size: `${OUT.w}x${OUT.h}`, references: [dataUrl(before)] }, opts.log);
+      writeFileSync(join(dir, `${id}-fix${attempt + 1}.raw.png`), res.image);
+      // With a thing to find, only that place changes: the edit is pasted back under its (grown, feathered) mask.
+      const pasted = opts.find && opts.sam ? await pasteRegion(opts.sam, before, res.image, opts.find, opts.log, box, isRemoval(note)) : { image: res.image, problem: "" };
+      if (pasted.problem) {
+        why = pasted.problem;
+        opts.log?.(`${id}: ${why}`);
+        continue;
+      }
+      // The edit has to have done what was asked, and only that: Muse Spark compares the two pictures.
+      writeFileSync(join(dir, `${id}-fix${attempt + 1}.pasted.png`), pasted.image);
+      const same = await compareFix(ctx, before, pasted.image, note.trim(), box);
+      opts.log?.(`${id}: compare ${same.ok ? "ok" : `refused: ${same.problem}`}`);
+      if (!same.ok) {
+        why = same.problem || "the change asked for is not in the new picture";
+        opts.log?.(`${id}: ${why}`);
+        continue;
+      }
+      // Pasted under a mask, the rest of the picture is the old one pixel for pixel: the compare is the check
+      // (a whole-picture check here flagged a helmet the fix never touched and sent it into a second edit).
+      if (opts.find && opts.sam) {
+        writeFileSync(file, pasted.image);
+        await carryFix(dir, id, before, pasted.image, opts.log);
+        return;
+      }
+      const v = await checkPicture(ctx, plan.slug, `${s.act}; changed: ${note.trim()}`, pasted.image);
+      opts.log?.(`${id}: ${v.pass ? "check passed" : `check failed: ${v.problems.join("; ")}`}`);
+      writeFileSync(file, pasted.image);
+      why = "";
+      if (v.pass) { dropDerived(dir, id, opts.log); return; }
+      fix = v.fix;
+    }
+  } catch (e) {
+    writeFileSync(file, before);
+    throw e;
   }
+  // Nothing clean came out: the picture stays as it was, and the owner hears why.
+  if (why) {
+    writeFileSync(file, before);
+    throw new Error(`the picture was left as it was (${why})`);
+  }
+  dropDerived(dir, id, opts.log);
+}
+
+/** The pictures made from a shot's pose A: pose B (raw and stabilized) and the shut and open mouths of each. */
+const derivedOf = (id: string) => [`${id}-s`, `${id}-m`, `${id}-b`, `${id}-b2`, `${id}-b2-s`, `${id}-b2-m`];
+
+/** Pose A was drawn anew: what was made from it goes, to be made again. */
+function dropDerived(dir: string, id: string, log?: (s: string) => void): void {
+  for (const p of [...derivedOf(id), `${id}-s.raw`, `${id}-m.raw`, `${id}-b2-s.raw`, `${id}-b2-m.raw`, `${id}-mask`]) rmSync(join(dir, `${p}.png`), { force: true });
+  log?.(`${id}: second pose and mouths will be made again from the new picture`);
 }
 
 /**
- * The edited picture pasted onto the original only where `find` is (in either picture), grown and feathered,
- * so everything else stays pixel for pixel. Falls back to the whole edit when the thing is not found or
- * covers most of the frame.
+ * A detail fix changed one place of pose A: the same change is pasted into pose B and the mouth pictures,
+ * which share that place, instead of drawing them again (that cost minutes and could lose pose B). A picture
+ * where the place looks different (the character moved over it) is dropped, to be made again.
  */
-export async function pasteRegion(sam: Sam, before: Buffer, edited: Buffer, find: string, log?: (s: string) => void): Promise<Buffer> {
+export async function carryFix(dir: string, id: string, before: Buffer, after: Buffer, log?: (s: string) => void): Promise<{ carried: string[]; dropped: string[] }> {
+  const { w, h } = OUT;
+  const raw = async (b: Buffer) => new Uint8Array(await sharp(b).resize(w, h, { fit: "cover" }).removeAlpha().raw().toBuffer());
+  const a = await raw(before), b = await raw(after);
+  const changed = new Uint8Array(w * h).map((_, i) => (Math.abs(a[i * 3] - b[i * 3]) + Math.abs(a[i * 3 + 1] - b[i * 3 + 1]) + Math.abs(a[i * 3 + 2] - b[i * 3 + 2]) > 9 ? 1 : 0));
+  const out = { carried: [] as string[], dropped: [] as string[] };
+  if (!changed.some((v) => v)) return out;
+  const region = dilate(changed, w, h, 8);
+  const alpha = await sharp(Buffer.from(region.map((v) => v * 255)), { raw: { width: w, height: h, channels: 1 } }).blur(4).extractChannel(0).raw().toBuffer();
+  const rgba = Buffer.alloc(w * h * 4);
+  for (let i = 0; i < w * h; i++) { rgba[i * 4] = b[i * 3]; rgba[i * 4 + 1] = b[i * 3 + 1]; rgba[i * 4 + 2] = b[i * 3 + 2]; rgba[i * 4 + 3] = alpha[i]; }
+  // Raw pose B is only where its character comes from (stabilize puts it on pose A's background), so it
+  // is left as it is: dropping it had pose B drawn anew, a different pose.
+  for (const p of derivedOf(id).filter((x) => x !== `${id}-b`)) {
+    const f = join(dir, `${p}.png`);
+    if (!existsSync(f) || out.dropped.includes(p)) continue;
+    const q = await raw(readFileSync(f));
+    let n = 0, d = 0;
+    for (let i = 0; i < region.length; i++) if (region[i]) { n++; d += (Math.abs(q[i * 3] - a[i * 3]) + Math.abs(q[i * 3 + 1] - a[i * 3 + 1]) + Math.abs(q[i * 3 + 2] - a[i * 3 + 2])) / 3; }
+    if (n && d / n < 12) {
+      writeFileSync(f, await sharp(Buffer.from(q), { raw: { width: w, height: h, channels: 3 } }).composite([{ input: rgba, raw: { width: w, height: h, channels: 4 } }]).removeAlpha().png().toBuffer());
+      out.carried.push(p);
+    } else {
+      // Stabilized pose B gone takes its mouths with it; it is made again from raw pose B on the new pose A.
+      const gone = p === `${id}-b2` ? [p, `${id}-b2-s`, `${id}-b2-m`] : [p];
+      for (const g of gone) {
+        if (existsSync(join(dir, `${g}.png`)) && !out.dropped.includes(g)) out.dropped.push(g);
+        rmSync(join(dir, `${g}.png`), { force: true });
+        rmSync(join(dir, `${g}.raw.png`), { force: true });
+      }
+    }
+  }
+  log?.(`${id}: fix carried into ${out.carried.join(", ") || "nothing"}${out.dropped.length ? `; made again: ${out.dropped.join(", ")}` : ""}`);
+  return out;
+}
+
+/** Least squares plane v = k0 + k1·x + k2·y per channel over the selected pixels (x, y as shares of the frame). */
+function planeFit(img: Uint8Array, sel: Uint8Array, w: number): { k: number[][]; resid: number; n: number } {
+  const h = sel.length / w;
+  const M = [[0, 0, 0], [0, 0, 0], [0, 0, 0]], R = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+  let n = 0;
+  for (let i = 0; i < sel.length; i++) {
+    if (!sel[i]) continue;
+    n++;
+    const f = [1, (i % w) / w, Math.floor(i / w) / h];
+    for (let r = 0; r < 3; r++) { for (let c = 0; c < 3; c++) M[r][c] += f[r] * f[c]; for (let ch = 0; ch < 3; ch++) R[ch][r] += f[r] * img[i * 3 + ch]; }
+  }
+  const det = (m: number[][]) => m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1]) - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0]) + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0]);
+  const d = det(M);
+  const k = R.map((rhs) => {
+    if (Math.abs(d) < 1e-9) return [n ? rhs[0] / n : 0, 0, 0];
+    return [0, 1, 2].map((col) => det(M.map((row, r) => row.map((v, c) => (c === col ? rhs[r] : v)))) / d);
+  });
+  let sq = 0;
+  for (let i = 0; i < sel.length; i++) if (sel[i]) { const x = (i % w) / w, y = Math.floor(i / w) / h; for (let ch = 0; ch < 3; ch++) { const e = img[i * 3 + ch] - (k[ch][0] + k[ch][1] * x + k[ch][2] * y); sq += e * e; } }
+  return { k, resid: n ? Math.sqrt(sq / (n * 3)) : 0, n };
+}
+
+/**
+ * A removed thing leaves a plain patch that Muse draws a shade off the wall around it, and flat where the
+ * wall has a light gradient and grain. When the patch is plain, its own gradient is swapped for the
+ * original wall's gradient just around it (fitted as a plane), and grain is added to match the wall's.
+ * `weight` (0-255) is how much of that each pixel takes: full on the thing, fading to none at the paste's
+ * edge, where the edit already matches the wall (a full shift there would draw the paste's outline).
+ * Returns the edit with that done, or undefined when the patch is a drawn thing (not plain).
+ */
+export function flatPatchFit(a: Uint8Array, b: Uint8Array, core: Uint8Array, weight: Uint8Array, ring: Uint8Array, w: number, maxStd = 14): { image: Uint8Array; shift: number[] } | undefined {
+  const inside = planeFit(b, core, w), around = planeFit(a, ring, w);
+  if (!inside.n || !around.n || inside.resid > maxStd || around.resid > maxStd * 1.5) return undefined;
+  const h = weight.length / w;
+  const grain = Math.sqrt(Math.max(0, around.resid ** 2 - inside.resid ** 2));
+  let seed = 12345;
+  const rnd = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+  const out = b.slice();
+  const shift = [0, 0, 0];
+  let n = 0;
+  for (let i = 0; i < weight.length; i++) {
+    if (!weight[i]) continue;
+    const x = (i % w) / w, y = Math.floor(i / w) / h, k = weight[i] / 255;
+    const g = grain ? (rnd() + rnd() + rnd() - 1.5) * 2 * grain : 0;
+    if (core[i]) n++;
+    for (let c = 0; c < 3; c++) {
+      const d = around.k[c][0] + around.k[c][1] * x + around.k[c][2] * y - (inside.k[c][0] + inside.k[c][1] * x + inside.k[c][2] * y);
+      if (core[i]) shift[c] += d;
+      out[i * 3 + c] = Math.max(0, Math.min(255, Math.round(b[i * 3 + c] + k * (d + g))));
+    }
+  }
+  const mean = shift.map((s) => (n ? s / n : 0));
+  return { image: out, shift: mean };
+}
+
+/** The note takes something away (then the place left behind should look like what is around it). */
+export const isRemoval = (note: string) => /\b(remove|delete|erase|take (it )?(out|off|away)|get rid|without)\b|(^|\s)(bỏ|xoá|xóa|gỡ|cất)(?=\s|$|[,.])/i.test(note);
+
+/** A box as shares of the frame, x0 < x1 and y0 < y1, each 0 to 1. */
+export interface Box01 { x0: number; y0: number; x1: number; y1: number }
+
+/** The box, grown by `pad` (share of the frame), as a 0/1 mask. */
+export function boxMask(b: Box01, w: number, h: number, pad: number): Uint8Array {
+  const m = new Uint8Array(w * h);
+  const x0 = Math.max(0, Math.floor((b.x0 - pad) * w)), x1 = Math.min(w, Math.ceil((b.x1 + pad) * w));
+  const y0 = Math.max(0, Math.floor((b.y0 - pad) * h)), y1 = Math.min(h, Math.ceil((b.y1 + pad) * h));
+  for (let y = y0; y < y1; y++) m.fill(1, y * w + x0, y * w + x1);
+  return m;
+}
+
+const LOCATE = S.obj({ found: S.bool(), x0: S.num("left edge, share of width 0-1"), y0: S.num("top edge, share of height 0-1"), x1: S.num("right edge, share of width 0-1"), y1: S.num("bottom edge, share of height 0-1") });
+
+/** Muse Spark points at the thing to change in the picture, as a box; undefined when it does not see it. */
+export async function locateThing(ctx: StudioContext, png: Buffer, find: string): Promise<Box01 | undefined> {
+  const url = `data:image/jpeg;base64,${(await sharp(png).resize(540, 960, { fit: "cover" }).jpeg({ quality: 80 }).toBuffer()).toString("base64")}`;
+  const r = await ctx.spark.json<{ found: boolean } & Box01>("fix_locate", LOCATE, [{ role: "user", content: [{ type: "text", text: `In this cartoon frame, where is: "${find}"? Give a tight box around it as shares of the frame width and height (0 = left/top, 1 = right/bottom). found=false if it is not in the picture.` }, { type: "image_url", image_url: { url } }] }]);
+  const c = (n: number) => Math.min(1, Math.max(0, n));
+  const b = { x0: c(r.x0), y0: c(r.y0), x1: c(r.x1), y1: c(r.y1) };
+  return r.found && b.x1 - b.x0 > 0.01 && b.y1 - b.y0 > 0.005 && (b.x1 - b.x0) * (b.y1 - b.y0) < 0.4 ? b : undefined;
+}
+
+const COMPARE = S.obj({
+  done: S.bool(),
+  clean: S.bool(),
+  problem: S.str("short English: what is wrong, or empty"),
+});
+
+/** Muse Spark looks at the picture before and after a detail fix: is the asked change there, and nothing else touched? */
+export async function compareFix(ctx: StudioContext, before: Buffer, after: Buffer, note: string, box?: Box01): Promise<{ ok: boolean; problem: string }> {
+  const small = async (b: Buffer) => `data:image/jpeg;base64,${(await sharp(b).resize(540, 960, { fit: "cover" }).jpeg({ quality: 80 }).toBuffer()).toString("base64")}`;
+  // A small thing is hard to judge at 540 px: a close-up of the place, before and after, goes along.
+  const zoom = async (b: Buffer) => {
+    const { w, h } = OUT;
+    const img = await sharp(b).resize(w, h, { fit: "cover" }).png().toBuffer();
+    const g = 0.08, left = Math.max(0, Math.floor((box!.x0 - g) * w)), top = Math.max(0, Math.floor((box!.y0 - g) * h));
+    const width = Math.min(w, Math.ceil((box!.x1 + g) * w)) - left, height = Math.min(h, Math.ceil((box!.y1 + g) * h)) - top;
+    return `data:image/jpeg;base64,${(await sharp(await sharp(img).extract({ left, top, width, height }).png().toBuffer()).resize(512, 512, { fit: "inside" }).jpeg({ quality: 85 }).toBuffer()).toString("base64")}`;
+  };
+  const close = box ? [{ type: "text" as const, text: "Close-ups of the place, before then after:" }, { type: "image_url" as const, image_url: { url: await zoom(before) } }, { type: "image_url" as const, image_url: { url: await zoom(after) } }] : [];
+  const r = await ctx.spark.json<{ done: boolean; clean: boolean; problem: string }>("fix_compare", COMPARE, [{
+    role: "user",
+    content: [
+      { type: "text", text: `Two versions of one cartoon frame: the first before a fix, the second after. The fix asked for: "${note}". Answer done=true only if that change is clearly visible in the second (a thing to remove is fully gone). Answer clean=true only if everything else is the same: look hard for ghosted or doubled outlines, smears or stripes, and characters or props that moved or changed.` },
+      { type: "image_url", image_url: { url: await small(before) } },
+      { type: "image_url", image_url: { url: await small(after) } },
+      ...close,
+    ],
+  }]);
+  return r.done && r.clean ? { ok: true, problem: "" } : { ok: false, problem: r.problem || (!r.done ? "the change asked for is not in the new picture" : "other parts of the picture changed") };
+}
+
+/**
+ * The edited picture pasted onto the original only where `find` is, grown and feathered, so everything
+ * else stays pixel for pixel. The place comes from the original picture (what is to be changed is there);
+ * the edit's own find counts only near it. It refuses (a problem, the
+ * picture untouched) when the thing is not found, covers too much, the edit moved the picture around it
+ * (pasting would leave a ghost) or the edit did not change it at all.
+ */
+export async function pasteRegion(sam: Sam, before: Buffer, edited: Buffer, find: string, log?: (s: string) => void, box?: Box01, removal = false): Promise<{ image: Buffer; problem: string }> {
   const { w, h } = OUT;
   const a = new Uint8Array(await sharp(before).resize(w, h, { fit: "cover" }).removeAlpha().raw().toBuffer());
   const b = new Uint8Array(await sharp(edited).resize(w, h, { fit: "cover" }).removeAlpha().raw().toBuffer());
-  const m1 = await maskOf(sam, a, [find]), m2 = await maskOf(sam, b, [find]);
-  const mask = dilate(m1.map((v, i) => v | m2[i]), w, h, 24);
-  const share = mask.reduce((n, v) => n + v, 0) / mask.length;
-  if (!share || share > 0.45) {
-    log?.(`"${find}": ${share ? "covers most of the picture" : "not found"}, keeping the whole edit`);
-    return edited;
+  let m1 = await maskOf(sam, a, [find]);
+  const m2 = await maskOf(sam, b, [find]);
+  // Where Muse Spark sees the thing: SAM's finds count only there (SAM matched Rico for "wall clock"),
+  // and when SAM finds nothing there, the box itself is the place.
+  const inBox = box ? boxMask(box, w, h, 0.03) : undefined;
+  if (inBox) {
+    m1 = m1.map((v, i) => v & inBox[i]);
+    if (!m1.some((v) => v)) m1 = boxMask(box!, w, h, 0);
   }
-  log?.(`"${find}": changing ${(share * 100).toFixed(1)}% of the picture, the rest stays`);
-  const alpha = await sharp(Buffer.from(mask.map((v) => v * 255)), { raw: { width: w, height: h, channels: 1 } }).blur(8).raw().toBuffer();
+  // Found only in the edit, it may be anything that looks alike elsewhere (a phone for a clock): never pasted.
+  if (!m1.some((v) => v)) return { image: before, problem: `"${find}" not found in the picture` };
+  const near = dilate(m1, w, h, 60);
+  const core = m1.map((v, i) => v | (m2[i] & near[i] & (inBox ? inBox[i] : 1)));
+  const share = core.reduce((n, v) => n + v, 0) / core.length;
+  if (share > 0.3) return { image: before, problem: `"${find}" covers ${Math.round(share * 100)}% of the picture, too much for a detail fix` };
+  // A removal is grown further so the feather does not blend the thing's rim and drop shadow back in.
+  const mask = dilate(core, w, h, removal ? 56 : 24);
+  const ring = dilate(mask, w, h, 40).map((v, i) => v & (mask[i] ^ 1));
+  const diff = (sel: Uint8Array) => {
+    let n = 0, d = 0;
+    for (let i = 0; i < sel.length; i++) if (sel[i]) { n++; d += (Math.abs(a[i * 3] - b[i * 3]) + Math.abs(a[i * 3 + 1] - b[i * 3 + 1]) + Math.abs(a[i * 3 + 2] - b[i * 3 + 2])) / 3; }
+    return n ? d / n : 0;
+  };
+  const around = diff(ring), inside = diff(core);
+  log?.(`"${find}": ${(share * 100).toFixed(1)}% of the picture, change inside ${inside.toFixed(0)}, around ${around.toFixed(0)}`);
+  // A redraw drifts a little everywhere; only a clear shift around the thing would ghost once pasted.
+  if (around > 40) return { image: before, problem: `the edit moved the picture around "${find}" (would leave a ghost)` };
+  if (inside < 10 || inside < around * 2) return { image: before, problem: `the edit did not change "${find}"` };
+  // A removed thing leaves a plain patch that Muse often draws a shade off the wall around it (a dark oval
+  // where the clock was): when the patch is flat, its tone is moved to the original's tone just around it.
+  // Full correction on the thing and a little past it, fading out well inside the paste's edge.
+  const weight = removal ? new Uint8Array(await sharp(Buffer.from(dilate(core, w, h, 20).map((v) => v * 255)), { raw: { width: w, height: h, channels: 1 } }).blur(12).extractChannel(0).raw().toBuffer()) : undefined;
+  const fit = weight ? flatPatchFit(a, b, core, weight, ring, w) : undefined;
+  if (fit) {
+    log?.(`"${find}": plain patch, matched to the wall's gradient and grain (tone moved by ${fit.shift.map((x) => x.toFixed(0)).join(",")} on average)`);
+    b.set(fit.image);
+  }
+  const alpha = await sharp(Buffer.from(mask.map((v) => v * 255)), { raw: { width: w, height: h, channels: 1 } }).blur(fit ? 16 : 8).extractChannel(0).raw().toBuffer();
   const rgba = Buffer.alloc(w * h * 4);
   for (let i = 0; i < w * h; i++) { rgba[i * 4] = b[i * 3]; rgba[i * 4 + 1] = b[i * 3 + 1]; rgba[i * 4 + 2] = b[i * 3 + 2]; rgba[i * 4 + 3] = alpha[i]; }
-  return sharp(Buffer.from(a), { raw: { width: w, height: h, channels: 3 } }).composite([{ input: rgba, raw: { width: w, height: h, channels: 4 } }]).png().toBuffer();
+  return { image: await sharp(Buffer.from(a), { raw: { width: w, height: h, channels: 3 } }).composite([{ input: rgba, raw: { width: w, height: h, channels: 4 } }]).png().toBuffer(), problem: "" };
 }
 
 export async function drawPoses(ctx: StudioContext, plan: Plan, dir: string, opts: { only?: string[]; log?: (s: string) => void } = {}): Promise<void> {
@@ -698,7 +942,10 @@ export async function drawMouths(sam: Sam, ctx: StudioContext, plan: Plan, dir: 
       const made: Record<"shut" | "open", { img: Raster; size: number; box: Box; onFace: number; nearNose: number } | undefined> = { shut: undefined, open: undefined };
       for (const kind of ["shut", "open"] as const) {
         opts.log?.(`${pic}: drawing the mouth ${kind}`);
-        const res = await generateSoftly(ctx.image, { prompt: mouthPrompt(p.name, kind === "open"), size: `${w}x${h}`, references: [dataUrl(await writePng(base))] }, opts.log);
+        // A refused or failed mouth edit costs this picture its talking mouth, never the whole run.
+        const res = await generateSoftly(ctx.image, { prompt: mouthPrompt(p.name, kind === "open"), size: `${w}x${h}`, references: [dataUrl(await writePng(base))] }, opts.log)
+          .catch((e: Error) => { opts.log?.(`${pic}: mouth ${kind} not drawn (${e.message.slice(0, 120)})`); return undefined; });
+        if (!res) break;
         writeFileSync(join(dir, `${pic}-${kind === "open" ? "m" : "s"}.raw.png`), res.image);
         const editRgb = new Uint8Array(await sharp(res.image).resize(w, h, { fit: "cover" }).removeAlpha().raw().toBuffer());
         const found = await findMouth(editRgb);

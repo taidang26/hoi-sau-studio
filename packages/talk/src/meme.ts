@@ -37,10 +37,11 @@ export interface MemeSpec {
   scenes: string[];
   /** English prompt for MusicGen; empty for no music. */
   music: string;
+  /** Total length; 0 lets the reading time decide (memeTiming). */
   seconds: number;
 }
 
-export const MEME_SECONDS = { min: 10, max: 20, default: 14 };
+export const MEME_SECONDS = { min: 6, max: 20, default: 0 };
 /** Each beat of text stays readable on a phone: at most this many characters. */
 export const MEME_TEXT_MAX = 90;
 
@@ -50,14 +51,27 @@ export function memeProblems(spec: MemeSpec): string[] {
   if (!spec.top.trim()) out.push("Thiếu dòng chữ 1.");
   if (!spec.punch.trim()) out.push("Thiếu dòng chữ 2 (câu chốt).");
   if (spec.top.length > MEME_TEXT_MAX || spec.punch.length > MEME_TEXT_MAX) out.push(`Mỗi dòng chữ tối đa ${MEME_TEXT_MAX} ký tự.`);
-  if (!(spec.seconds >= MEME_SECONDS.min && spec.seconds <= MEME_SECONDS.max)) out.push(`Độ dài từ ${MEME_SECONDS.min} đến ${MEME_SECONDS.max} giây.`);
+  if (spec.seconds && !(spec.seconds >= MEME_SECONDS.min && spec.seconds <= MEME_SECONDS.max)) out.push(`Độ dài từ ${MEME_SECONDS.min} đến ${MEME_SECONDS.max} giây, hoặc để trống cho máy tự tính.`);
   if (spec.scenes.length < 1 || spec.scenes.length > 2) out.push("Một hoặc hai cảnh.");
   return out;
 }
 
-/** When the punchline comes in: the start of scene 2, or a little before the middle with one scene. */
-export function punchTime(seconds: number, scenes: number): number {
-  return +(scenes > 1 ? seconds * 0.45 : seconds * 0.4).toFixed(2);
+/** Seconds a viewer needs to read a line on a phone: about a second to start, then 0.28 s a word. */
+export function readTime(text: string): number {
+  const words = text.trim().split(/\s+/).filter(Boolean).length;
+  return 1 + words * 0.28;
+}
+
+/**
+ * When the punchline comes in and when the clip ends, from the reading time: the punchline follows as
+ * soon as the first line is read (the owner found a fixed 45% made him wait 1–2 s), then holds long
+ * enough to land. A set length only moves the end; the punchline still comes when the first line is read.
+ */
+export function memeTiming(spec: Pick<MemeSpec, "top" | "punch" | "seconds">): { punchAt: number; end: number } {
+  const punchAt = +Math.max(2, readTime(spec.top)).toFixed(2);
+  const auto = Math.max(MEME_SECONDS.min, punchAt + readTime(spec.punch) + 2.5);
+  const end = +(spec.seconds ? Math.max(spec.seconds, punchAt + readTime(spec.punch) + 1) : auto).toFixed(2);
+  return { punchAt, end };
 }
 
 const MEME_PLAN = S.obj({
@@ -93,10 +107,10 @@ export async function planMeme(ctx: StudioContext, slug: string, spec: MemeSpec)
     },
   ];
   const r = await ctx.spark.json<{ shots: Array<Pick<Shot, "act" | "pose" | "cast" | "moving">> }>("meme_plan", MEME_PLAN, messages);
-  const punchAt = punchTime(spec.seconds, spec.scenes.length);
+  const { punchAt, end } = memeTiming(spec);
   const lines: Line[] = [
     { text: spec.top.trim(), start: 0, end: punchAt },
-    { text: spec.punch.trim(), start: punchAt, end: spec.seconds },
+    { text: spec.punch.trim(), start: punchAt, end },
   ];
   const shots: Shot[] = spec.scenes.map((_, i) => ({
     id: `s${String(i + 1).padStart(2, "0")}`,
@@ -107,7 +121,7 @@ export async function planMeme(ctx: StudioContext, slug: string, spec: MemeSpec)
     cast: r.shots[i]?.cast ?? [],
     moving: r.shots[i]?.moving?.length ? r.shots[i].moving : undefined,
   }));
-  return { slug, clip: "", end: spec.seconds, lines, shots };
+  return { slug, clip: "", end, lines, shots };
 }
 
 /** Added to every meme picture: room for the text on top, and none of what went wrong in tests. */
@@ -281,6 +295,17 @@ export async function renderMeme(plan: Plan, dir: string, music: string | undefi
   if (r.status !== 0) throw new Error(`ffmpeg failed: ${r.stderr}`);
   log?.(`${out}: ${cache.size} distinct frames`);
   return out;
+}
+
+/** New timing on a plan already drawn: the two lines, the second scene and the end move; no picture changes. */
+export function retimeMeme(plan: Plan, spec: Pick<MemeSpec, "top" | "punch" | "seconds">): Plan {
+  const { punchAt, end } = memeTiming(spec);
+  const [top, punch] = plan.lines;
+  if (top) [top.start, top.end] = [0, punchAt];
+  if (punch) [punch.start, punch.end] = [punchAt, end];
+  if (plan.shots[1]) plan.shots[1].t = punchAt;
+  plan.end = end;
+  return plan;
 }
 
 export function readMeme(out: string): MemeSpec {

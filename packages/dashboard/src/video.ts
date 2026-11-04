@@ -22,7 +22,7 @@
  */
 
 import { spawn, spawnSync } from "node:child_process";
-import { copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { appendFileSync, copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { basename, extname, join } from "node:path";
 import sharp from "sharp";
 import { readApproval, type EpisodePost } from "@hoi-sau/channel";
@@ -93,6 +93,19 @@ interface Meta {
   drift?: Record<string, number>;
   ask?: Ask;
   done?: Done;
+  refused?: Refused;
+}
+
+/** What Muse Spark proposes to make from text or pictures (talk's IdeaPlan). */
+export interface IdeaPlan {
+  kind: "meme" | "comic";
+  reply: string;
+  read: string;
+  lead: string;
+  meme: { top: string; punch: string; scenes: string[] };
+  comic: { direction: string; with: string[]; headline?: string };
+  title: string;
+  caption?: string;
 }
 
 /** One edit Muse Spark proposes from the owner's note (talk's FixAction). */
@@ -124,6 +137,14 @@ interface Done {
   changed: Record<string, number>;
   /** Shots whose detail fix was meant to touch one thing only. */
   detail: string[];
+  /** Why the run stopped partway, when it did: the owner can still go back. */
+  failed?: string;
+}
+
+/** A fix where nothing could be done: the video is as it was, the owner reads why and writes again. */
+interface Refused {
+  note: string;
+  why: string;
 }
 
 export interface Shot {
@@ -235,9 +256,17 @@ export class Videos {
   }
 
   /** A new video from a sample clip (a path from samples()) or uploaded bytes; starts listening and planning. */
-  create(input: { kind?: VideoKind; slug: string; mouth: boolean; title?: string; sample?: string; upload?: { name: string; bytes: Uint8Array }; meme?: MemeInput }): string {
+  create(input: { kind?: VideoKind; slug: string; mouth: boolean; title?: string; sample?: string; upload?: { name: string; bytes: Uint8Array }; meme?: MemeInput; caption?: string }): string {
     if (!this.opts.cast().some((c) => c.slug === input.slug)) throw new Error(t("Chọn nhân vật chính."));
-    if (input.kind === "meme") return this.createMeme(input.slug, input.title ?? "", input.meme);
+    if (input.kind === "meme") {
+      const id = this.createMeme(input.slug, input.title ?? "", input.meme);
+      if (input.caption?.trim()) {
+        const m = this.meta(id);
+        m.caption = input.caption.trim().slice(0, CAPTION_MAX);
+        this.save(m);
+      }
+      return id;
+    }
     let source: string | undefined;
     if (input.sample) {
       source = this.samples().find((s) => s.path === input.sample)?.path;
@@ -264,13 +293,13 @@ export class Videos {
       punch: (meme?.punch ?? "").trim(),
       scenes: (meme?.scenes ?? [""]).map((s) => s.trim()).slice(0, 2),
       music: (meme?.music ?? "").trim(),
-      seconds: Number(meme?.seconds) || 14,
+      seconds: Number(meme?.seconds) || 0,
     };
     if (!spec.scenes.length) spec.scenes = [""];
     if (!spec.top) throw new Error(t("Viết dòng chữ 1."));
     if (!spec.punch) throw new Error(t("Viết dòng chữ 2 (câu chốt)."));
     if (spec.top.length > 90 || spec.punch.length > 90) throw new Error(t("Mỗi dòng chữ tối đa {n} ký tự.", { n: 90 }));
-    if (spec.seconds < 10 || spec.seconds > 20) throw new Error(t("Độ dài từ 10 đến 20 giây."));
+    if (spec.seconds && (spec.seconds < 6 || spec.seconds > 20)) throw new Error(t("Độ dài từ 6 đến 20 giây, hoặc để trống cho máy tự tính."));
     let id = `${slug}-${stamp()}`;
     for (let n = 2; existsSync(this.folder(id)); n++) id = `${slug}-${stamp()}-${n}`;
     mkdirSync(this.folder(id), { recursive: true });
@@ -282,8 +311,30 @@ export class Videos {
 
   kind = (id: string): VideoKind => this.meta(id).kind ?? "illustrate";
 
-  private talk(id: string, step: string, log: (s: string) => void, extra: string[] = []): Promise<string> {
+  /** One more try when a step dies on the network (a "fetch failed" once killed a whole run of poses). */
+  private async talk(id: string, step: string, log: (s: string) => void, extra: string[] = []): Promise<string> {
+    try {
+      return await this.talkOnce(id, step, log, extra);
+    } catch (e) {
+      if (!/fetch failed|ECONNRESET|ETIMEDOUT|ENOTFOUND|socket hang up|EAI_AGAIN/i.test(e instanceof Error ? e.message : String(e))) throw e;
+      log(t("Mạng chập chờn, chạy lại bước {step}…", { step }));
+      await new Promise((r) => setTimeout(r, this.opts.deploy ? 5000 : 10));
+      return this.talkOnce(id, step, log, extra);
+    }
+  }
+
+  private talkOnce(id: string, step: string, show: (s: string) => void, extra: string[] = []): Promise<string> {
     const m = this.meta(id);
+    // Every step's lines also go to log.txt in the video's folder, so a run can be read back afterwards.
+    const file = join(this.folder(id), "log.txt");
+    const log = (s: string) => {
+      show(s);
+      try {
+        appendFileSync(file, `${new Date().toISOString()} ${step}: ${s}\n`);
+      } catch {
+        /* the log is a help, never a reason to stop */
+      }
+    };
     if (m.kind === "meme") return this.opts.exec(TALK, ["meme", m.slug, "--out", this.folder(id), "--step", step, ...extra], log);
     return this.opts.exec(TALK, ["illustrate", m.slug, join(this.folder(id), m.clip), "--out", this.folder(id), "--step", step, ...extra], log);
   }
@@ -460,6 +511,34 @@ export class Videos {
     await this.fillGaps(id, log, [shot.id]);
   }
 
+  /**
+   * A shot for one line (a proposal's add_shot): it starts with the line the moment falls in, not at the
+   * paused second, and when it would run on over later lines, the picture before comes back after it.
+   */
+  private insertForLine(id: string, a: FixAction): Shot {
+    const plan = this.plan(id)!;
+    const line = plan.lines.find((l) => a.start >= l.start - 0.3 && a.start <= l.end + 0.1);
+    const taken = (x: number) => plan.shots.some((sh) => Math.abs(sh.t - x) < 0.3);
+    const snapped = line && Math.abs(line.start - a.start) < 2 && !taken(line.start) ? line.start : a.start;
+    const start = Math.max(0.3, snapped);
+    const end = a.end > start + 0.3 ? a.end : line && line.end > start + 0.3 ? line.end : -1;
+    const prev = [...plan.shots].reverse().find((x) => x.t <= start + 1e-6);
+    const shot = this.insertShot(id, { t: start.toFixed(2), act: a.what });
+    if (prev && end > 0) {
+      const after = this.plan(id)!;
+      const next = after.shots.find((x) => x.t > shot.t + 1e-6)?.t ?? after.end;
+      if (next - end > 0.8 && !after.shots.some((x) => Math.abs(x.t - end) < 0.3)) {
+        const ids = new Set(after.shots.map((x) => x.id));
+        let n = after.shots.length + 1;
+        while (ids.has(`s${String(n).padStart(2, "0")}`)) n++;
+        after.shots.push({ id: `s${String(n).padStart(2, "0")}`, t: Math.round(end * 100) / 100, act: prev.act, pose: "", bubble: "", cast: [], src: prev.src ?? prev.id });
+        after.shots.sort((x, y) => x.t - y.t);
+        this.savePlan(id, after);
+      }
+    }
+    return shot;
+  }
+
   private insertShot(id: string, form: { t: string; act: string; pose?: string; bubble?: string }): Shot {
     const plan = this.plan(id);
     if (!plan) throw new Error(t("Chưa có kế hoạch cảnh."));
@@ -533,7 +612,7 @@ export class Videos {
 
   /**
    * Changes only what the note says on pose A and keeps the rest of the picture (talk --step fix);
-   * pose B and the mouths are made again from the fixed picture.
+   * the change is carried into pose B and the mouths, and only what cannot take it is made again.
    */
   fixDetail(id: string, shot: string, note: string): void {
     const s = this.plan(id)?.shots.find((x) => x.id === shot && !x.src);
@@ -546,7 +625,9 @@ export class Videos {
 
   private async fixWork(id: string, s: Shot, note: string, find: string, log: (x: string) => void): Promise<void> {
     await this.talk(id, "fix", log, ["--only", s.id, "--note", note, ...(find.trim() ? ["--find", find.trim()] : [])]);
-    await this.afterNewA(id, s, log);
+    // talk carried the change into pose B and the mouths where it could and removed the rest: only that is made again.
+    if (s.pose && !existsSync(join(this.shotsDir(id), `${s.id}-b.png`))) await this.talk(id, "poses", log, ["--only", s.id]);
+    await this.fillGaps(id, log, [s.id]);
   }
 
   /** Puts back the picture from before the last detail fix. */
@@ -625,6 +706,52 @@ export class Videos {
     if (m.mouth) await this.talk(id, "render", log, ["--mouth"]);
   }
 
+  // ------------------------------------------------------------ from text or pictures
+
+  ideasDir = () => join(this.opts.dir, "_ideas");
+  ideaDir = (id: string) => join(this.ideasDir(), id);
+
+  /** What the owner dropped in (text, pictures or both); Muse Spark proposes a text clip or a one-panel comic. */
+  newIdea(text: string, files: Array<{ name: string; bytes: Uint8Array }>, want: "" | "meme" | "comic" = ""): string {
+    const pics = files.filter((f) => f.bytes.length && /\.(png|jpe?g|webp|gif)$/i.test(f.name)).slice(0, 4);
+    if (!text.trim() && !pics.length) throw new Error(t("Dán chữ hoặc thêm ít nhất một ảnh."));
+    let id = `y-${stamp()}`;
+    for (let n = 2; existsSync(this.ideaDir(id)); n++) id = `y-${stamp()}-${n}`;
+    const dir = this.ideaDir(id);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "input.txt"), text.trim());
+    pics.forEach((f, i) => writeFileSync(join(dir, `img-${i + 1}${extname(f.name).toLowerCase().replace(".jpeg", ".jpg")}`), f.bytes));
+    this.background(`idea:${id}`, async (log) => {
+      log(t("Máy đang đọc chữ và ảnh…"));
+      await this.opts.exec(TALK, ["idea", "--out", dir, ...(want ? ["--kind", want] : [])], log);
+    });
+    return id;
+  }
+
+  /** Reads the same drop-in again (a new answer from Muse Spark). */
+  rereadIdea(id: string): void {
+    const i = this.idea(id);
+    if (!i) throw new Error(t("Không thấy mục này."));
+    rmSync(join(this.ideaDir(id), "idea.json"), { force: true });
+    this.background(`idea:${id}`, async (log) => {
+      log(t("Máy đang đọc chữ và ảnh…"));
+      await this.opts.exec(TALK, ["idea", "--out", this.ideaDir(id)], log);
+    });
+  }
+
+  idea(id: string): { id: string; text: string; images: string[]; plan?: IdeaPlan; job?: Job } | undefined {
+    if (!/^y-[a-z0-9-]+$/.test(id) || !existsSync(this.ideaDir(id))) return undefined;
+    const dir = this.ideaDir(id);
+    const f = join(dir, "idea.json");
+    return {
+      id,
+      text: readFileSync(join(dir, "input.txt"), "utf8"),
+      images: readdirSync(dir).filter((x) => /^img-\d+\.(png|jpe?g|webp|gif)$/i.test(x)).sort(),
+      plan: existsSync(f) ? (JSON.parse(readFileSync(f, "utf8")) as IdeaPlan) : undefined,
+      job: this.jobs.get(`idea:${id}`),
+    };
+  }
+
   // ------------------------------------------------------------ fixing by note
 
   undoDir = (id: string) => join(this.folder(id), "undo");
@@ -654,6 +781,7 @@ export class Videos {
       const r = JSON.parse(readFileSync(out, "utf8")) as { reply: string; actions: FixAction[] };
       const after = this.meta(id);
       after.ask = { note: note.trim(), at: sec, reply: r.reply, actions: r.actions };
+      delete after.refused;
       this.save(after);
     });
   }
@@ -667,7 +795,7 @@ export class Videos {
   /** Copies what a fix can change (plan, pictures, renders, notes) so it can be put back. */
   private snapshot(id: string): void {
     const u = this.undoDir(id), f = this.folder(id);
-    rmSync(u, { recursive: true, force: true });
+    clearDir(u);
     mkdirSync(u, { recursive: true });
     for (const name of readdirSync(f)) if (/^(plan|meta|meme)\.json$|\.mp4$/.test(name)) copyFileSync(join(f, name), join(u, name));
     if (existsSync(this.shotsDir(id))) cpSync(this.shotsDir(id), join(u, "shots"), { recursive: true, filter: (src) => !/[\\/]frames([\\/]|$)/.test(src) });
@@ -696,7 +824,7 @@ export class Videos {
     for (const a of acts) if (a.do === "add_line" && a.text.trim() && a.end > a.start) plan.lines.push({ text: a.text.trim(), start: a.start, end: a.end });
     plan.lines.sort((a, b) => a.start - b.start);
     this.savePlan(id, plan);
-    const added = acts.filter((a) => a.do === "add_shot").map((a) => this.insertShot(id, { t: String(a.start), act: a.what }));
+    const added = acts.filter((a) => a.do === "add_shot").map((a) => this.insertForLine(id, a));
     for (const a of acts) {
       if (a.do === "one_pose") this.onePose(id, a.shot);
       if (a.do === "no_mouth") this.noMouth(id, a.shot);
@@ -707,18 +835,46 @@ export class Videos {
     delete after.ask;
     after.done = { note, says: acts.map((a) => a.say), changed: {}, detail: acts.filter((a) => a.do === "fix_detail").map((a) => a.shot) };
     this.save(after);
+    const changed = [...pictures.map((a) => a.shot), ...added.map((s) => s.id)];
     this.background(id, async (log) => {
       const fresh = this.plan(id)!;
+      // One edit failing does not stop the others; whatever failed is said, and Hoàn tác puts everything back.
+      const failed: string[] = [];
+      let done = 0;
+      const step = async (what: string, work: () => Promise<unknown>) => {
+        try {
+          await work();
+          done++;
+        } catch (e) {
+          const msg = (e instanceof Error ? e.message : String(e)).split("\n").filter(Boolean).pop() ?? "";
+          failed.push(`${what}: ${msg.replace(/^(Error: )?s\d+: /, "").slice(0, 200)}`);
+        }
+      };
       for (const a of pictures) {
         const s = fresh.shots.find((x) => x.id === a.shot)!;
-        if (a.do === "fix_detail") await this.fixWork(id, s, a.what.trim() || note, a.find, log);
-        if (a.do === "redraw") await this.redrawWork(id, s, log);
-        if (a.do === "redo_pose" && s.pose) await this.poseWork(id, s, log);
+        if (a.do === "fix_detail") await step(s.id, () => this.fixWork(id, s, a.what.trim() || note, a.find, log));
+        if (a.do === "redraw") await step(s.id, () => this.redrawWork(id, s, log));
+        if (a.do === "redo_pose" && s.pose) await step(s.id, () => this.poseWork(id, s, log));
       }
-      for (const s of added) await this.newShotWork(id, s, log);
+      for (const s of added) await step(s.id, () => this.newShotWork(id, s, log));
+      // Nothing came out (every picture edit refused, no text edit): no render, the copy from before goes back.
+      if (!done && !acts.some((a) => !["fix_detail", "redraw", "redo_pose", "add_shot"].includes(a.do))) {
+        copyFileSync(join(this.undoDir(id), "meta.json"), join(this.folder(id), "meta.json"));
+        clearDir(this.undoDir(id));
+        const m = this.meta(id);
+        m.refused = { note, why: failed.join(" · ") };
+        this.save(m);
+        throw new Error(failed.join(" · "));
+      }
       log(t("Dựng lại video…"));
-      await this.renderWork(id, this.meta(id), log);
-      await this.evidence(id, [...pictures.map((a) => a.shot), ...added.map((s) => s.id)]);
+      await step(t("dựng video"), () => this.renderWork(id, this.meta(id), log));
+      await this.evidence(id, changed).catch(() => undefined);
+      if (failed.length) {
+        const m = this.meta(id);
+        if (m.done) m.done.failed = failed.join(" · ");
+        this.save(m);
+        throw new Error(failed.join(" · "));
+      }
     });
   }
 
@@ -764,7 +920,7 @@ export class Videos {
     const m = this.meta(id);
     delete m.done;
     this.save(m);
-    rmSync(this.undoDir(id), { recursive: true, force: true });
+    clearDir(this.undoDir(id));
   }
 
   /** Puts everything back as it was before the last fix. */
@@ -774,11 +930,15 @@ export class Videos {
     if (this.jobs.get(id)?.running) throw new Error(t("Video này đang chạy."));
     for (const name of readdirSync(f)) if (/\.mp4$/.test(name)) rmSync(join(f, name), { force: true });
     for (const name of readdirSync(u)) if (/^(plan|meta|meme)\.json$|\.mp4$/.test(name)) copyFileSync(join(u, name), join(f, name));
-    if (existsSync(join(u, "shots"))) {
-      rmSync(this.shotsDir(id), { recursive: true, force: true });
-      cpSync(join(u, "shots"), this.shotsDir(id), { recursive: true });
+    // File by file, never removing the folder: on Windows a picture the page is showing can hold the folder.
+    const us = join(u, "shots"), sd = this.shotsDir(id);
+    if (existsSync(us)) {
+      const kept = new Set(readdirSync(us));
+      for (const name of existsSync(sd) ? readdirSync(sd) : []) if (/\.png$/.test(name) && !kept.has(name)) rmSync(join(sd, name), { force: true });
+      mkdirSync(sd, { recursive: true });
+      cpSync(us, sd, { recursive: true, force: true });
     }
-    rmSync(u, { recursive: true, force: true });
+    clearDir(u);
     const m = this.meta(id);
     delete m.done;
     delete m.ask;
@@ -956,6 +1116,68 @@ function stepsOf(v: Videos, m: Meta): Array<[string, boolean]> {
 
 const stepBar = (steps: Array<[string, boolean]>) => `<ol class="vsteps">${steps.map(([n, d]) => `<li class="${d ? "done" : ""}">${d ? "✓ " : ""}${esc(n)}</li>`).join("")}</ol>`;
 
+/** The one box for what the owner would otherwise hand to Claude: text, pictures, or both. */
+function ideaBox(v: Videos): string {
+  const recent = existsSync(v.ideasDir())
+    ? readdirSync(v.ideasDir()).filter((x) => x.startsWith("y-")).sort().reverse().slice(0, 5)
+    : [];
+  const list = recent.map((id) => {
+    const i = v.idea(id)!;
+    return `<li><a href="/video/idea/${esc(id)}">${esc(i.plan?.title || i.text.slice(0, 40) || t("{n} ảnh", { n: i.images.length }))}</a>${i.job?.running ? ` <span class="spinner"></span>` : ""}</li>`;
+  }).join("");
+  return `<section class="card ideabox"><h2>${esc(t("Làm từ chữ hoặc ảnh"))}</h2>
+<p class="muted small">${esc(t("Như gửi cho Claude: dán câu, ảnh chụp bài đăng, ảnh meme, hoặc cả chữ lẫn ảnh. Máy đọc rồi đề xuất làm clip chữ hay tranh, anh xem lại và sửa trước khi bấm làm."))}</p>
+<form class="form" method="post" action="/video/idea" enctype="multipart/form-data">
+<textarea name="text" rows="3" placeholder="${esc(t("vd: Đi làm đã mệt rồi còn phải ăn bữa cơm dở ẹc do mình tự nấu mang theo"))}"></textarea>
+<div class="row"><label>${esc(t("Ảnh (tối đa 4)"))}<input type="file" name="images" accept="image/*" multiple></label>
+<label>${esc(t("Làm thành"))}<select name="want"><option value="">${esc(t("Máy tự chọn"))}</option><option value="meme">${esc(t("Clip chữ (video)"))}</option><option value="comic">${esc(t("Tranh 1 khung"))}</option></select></label></div>
+<button class="btn on">${esc(t("Đọc và đề xuất"))}</button></form>${list ? `<ul class="small idealist">${list}</ul>` : ""}</section>`;
+}
+
+/** The proposal for one drop-in: what was read (evidence), then the clip and the comic forms, filled and editable. */
+export function ideaPage(v: Videos, id: string, studio: boolean, err?: string): string | undefined {
+  const i = v.idea(id);
+  if (!i) return undefined;
+  const cast = v.opts.cast();
+  const busy = Boolean(i.job?.running);
+  const pics = i.images.map((f) => `<a href="/video-media/_ideas/${esc(id)}/${esc(f)}" target="_blank"><img src="/video-media/_ideas/${esc(id)}/${esc(f)}" alt="" loading="lazy"></a>`).join("");
+  const input = `<section class="card"><h2>${esc(t("Anh đưa"))}</h2>${i.text ? `<p class="ideatext">${esc(i.text)}</p>` : ""}${pics ? `<div class="ideapics">${pics}</div>` : ""}</section>`;
+  if (busy || !i.plan) {
+    const bar = busy
+      ? `<div class="notice"><span class="spinner"></span>${esc(i.job?.step ?? t("Máy đang đọc chữ và ảnh…"))}</div><meta http-equiv="refresh" content="3">`
+      : `<div class="warn small">${esc(t("Chưa đọc được"))}: ${esc(i.job?.error ?? "")}</div>`;
+    return layout(t("Làm từ chữ hoặc ảnh"), "/video", `<header class="head"><a class="muted" href="/video">← ${esc(t("Video"))}</a><h1>${esc(t("Làm từ chữ hoặc ảnh"))}</h1></header>${bar}${input}`);
+  }
+  const p = i.plan;
+  const pick = (name: string, sel: string) => `<select name="${name}">${cast.map((c) => `<option value="${esc(c.slug)}"${c.slug === sel ? " selected" : ""}>${esc(c.name)}</option>`).join("")}</select>`;
+  const meme = `<form class="form" method="post" action="/video/new" enctype="multipart/form-data"><input type="hidden" name="kind" value="meme"><input type="hidden" name="scenes" value="${p.meme.scenes.length > 1 ? 2 : 1}">
+<label>${esc(t("Dòng chữ 1: câu dẫn"))}<input name="top" maxlength="90" required value="${esc(p.meme.top)}"></label>
+<label>${esc(t("Dòng chữ 2: câu chốt (hiện sau, chữ đỏ)"))}<input name="punch" maxlength="90" required value="${esc(p.meme.punch)}"></label>
+<label>${esc(t("Cảnh 1 vẽ gì"))}<input name="scene1" value="${esc(p.meme.scenes[0] ?? "")}"></label>
+${p.meme.scenes.length > 1 ? `<label>${esc(t("Cảnh 2 vẽ gì"))}<input name="scene2" value="${esc(p.meme.scenes[1] ?? "")}"></label>` : ""}
+<div class="row"><label>${esc(t("Nhân vật chính"))}${pick("slug", p.lead)}</label><label>${esc(t("Tên video"))}<input name="title" value="${esc(p.title)}"></label></div>
+<label>${esc(t("Chú thích (ngắn, tối đa 5 hashtag không dấu)"))}<input name="caption" maxlength="${CAPTION_MAX}" value="${esc(p.caption ?? "")}"></label>
+<input type="hidden" name="music" value="${esc(MEME_MUSIC)}">
+<p class="muted small">${esc(t("Chữ giữ nguyên văn. Câu chốt hiện ngay khi đọc xong dòng 1. Có nhạc nền."))}</p>
+<button class="btn on">▶ ${esc(t("Làm clip chữ"))}</button></form>`;
+  const comic = studio
+    ? `<form class="form" method="post" action="/studio/new"><input type="hidden" name="format" value="single"><input type="hidden" name="run" value="1">
+<div class="row"><label>${esc(t("Nhân vật chính"))}${pick("lead", p.lead)}</label></div>
+${cast.filter((c) => c.slug !== p.lead).length ? `<fieldset><legend>${esc(t("Cùng xuất hiện"))}</legend>${cast.filter((c) => c.slug !== p.lead).map((c) => `<label class="check"><input type="checkbox" name="with" value="${esc(c.slug)}"${p.comic.with.includes(c.slug) ? " checked" : ""}> ${esc(c.name)}</label>`).join("")}</fieldset>` : ""}
+<label>${esc(t("Câu in trên đầu tranh (nguyên văn)"))}<textarea name="headline" rows="2">${esc(p.comic.headline ?? "")}</textarea></label>
+<label>${esc(t("Tranh vẽ gì, ai nói gì"))}<textarea name="direction" rows="3" required>${esc(p.comic.direction)}</textarea></label>
+<button class="btn on">▶ ${esc(t("Làm tranh 1 khung"))}</button></form>`
+    : `<p class="muted small">${esc(t("Phần làm tranh chưa bật trên máy này."))}</p>`;
+  const first = p.kind === "comic" ? [t("Tranh 1 khung"), comic, t("Hoặc làm clip chữ"), meme] : [t("Clip chữ (video)"), meme, t("Hoặc làm tranh 1 khung"), comic];
+  const body = `<header class="head"><a class="muted" href="/video">← ${esc(t("Video"))}</a><h1>${esc(p.title || t("Làm từ chữ hoặc ảnh"))}</h1></header>${flash(undefined, err)}
+${input}
+<section class="card"><p><b>${esc(t("Máy hiểu"))}:</b> ${esc(p.reply)}</p>${p.read ? `<p class="small"><b>${esc(t("Chữ đọc được trong ảnh"))}:</b> “${esc(p.read)}”</p><p class="muted small">${esc(t("Đối chiếu với ảnh ở trên. Sai chữ nào thì sửa ngay trong ô bên dưới."))}</p>` : ""}</section>
+<section class="card"><h2>${esc(first[0])}</h2>${first[1]}</section>
+<details class="card"><summary>${esc(first[2])}</summary>${first[3]}</details>
+<form class="inline" method="post" action="/video/idea/${esc(id)}/again"><button class="btn">${esc(t("Đọc lại"))}</button></form>`;
+  return layout(p.title || t("Làm từ chữ hoặc ảnh"), "/video", body);
+}
+
 export function videosPage(v: Videos, err?: string, ok?: string): string {
   const cast = v.opts.cast();
   const samples = v.samples();
@@ -969,7 +1191,7 @@ export function videosPage(v: Videos, err?: string, ok?: string): string {
       return `<a class="card vcard" href="/video/${esc(m.id)}">${cover}<div><b>${esc(m.title)}</b><p class="muted small">${esc(cast.find((c) => c.slug === m.slug)?.name ?? m.slug)} · ${esc(when(m.createdAt))}</p>${job?.running ? `<span class="tag due"><span class="spinner"></span>${esc(t("đang chạy…"))}</span>` : `<span class="tag">${esc(next ? t("Tiếp: {s}", { s: next }) : t("Đã đăng"))}</span>`}</div></a>`;
     })
     .join("");
-  const form = `<section class="card"><h2>${esc(t("Làm video mới"))}</h2>
+  const form = `<section class="card"><h2>${esc(t("Làm video có lời từ clip mẫu"))}</h2>
 <form class="form" method="post" action="/video/new" enctype="multipart/form-data">
 <input type="hidden" name="kind" value="illustrate">
 <div class="row"><label>${esc(t("Clip mẫu"))}<select name="sample"><option value="">${esc(t("— tải clip lên ở dưới —"))}</option>${samples.map((s) => `<option value="${esc(s.path)}">${esc(s.label)}</option>`).join("")}</select></label>
@@ -979,21 +1201,21 @@ export function videosPage(v: Videos, err?: string, ok?: string): string {
 <label class="check"><input type="checkbox" name="mouth" value="1" checked> ${esc(t("Nhép miệng theo lời"))}</label>
 <p class="muted small">${esc(t("Giữ tiếng và nhịp cắt của clip mẫu. Máy tự chia cảnh, vẽ, vẽ tư thế 2 và miệng. Anh soát từng cảnh rồi mới dựng và đăng."))}</p>
 <button class="btn on">${esc(t("Bắt đầu"))}</button></form></section>`;
-  const meme = `<section class="card"><h2>${esc(t("Làm clip chữ (không lời)"))}</h2>
+  const meme = `<details class="card"><summary>${esc(t("Tự gõ clip chữ (không lời)"))}</summary>
 <form class="form" method="post" action="/video/new" enctype="multipart/form-data">
 <input type="hidden" name="kind" value="meme">
 <label>${esc(t("Dòng chữ 1: câu dẫn"))}<input name="top" maxlength="90" required placeholder="${esc(t("vd: Sếp bảo tăng ca là cơ hội phát triển"))}"></label>
 <label>${esc(t("Dòng chữ 2: câu chốt (hiện sau, chữ đỏ)"))}<input name="punch" maxlength="90" required placeholder="${esc(t("vd: Cơ hội để sếp về sớm"))}"></label>
 <div class="row"><label>${esc(t("Nhân vật chính"))}<select name="slug">${cast.map((c) => `<option value="${esc(c.slug)}"${c.slug === "cu-li" ? " selected" : ""}>${esc(c.name)}</option>`).join("")}</select></label>
 <label>${esc(t("Số cảnh"))}<select name="scenes"><option value="2">2</option><option value="1">1</option></select></label>
-<label>${esc(t("Độ dài (giây)"))}<input type="number" name="seconds" min="10" max="20" value="14"></label></div>
+<label>${esc(t("Độ dài (giây; để trống: theo thời gian đọc)"))}<input type="number" name="seconds" min="6" max="20" placeholder="${esc(t("tự tính"))}"></label></div>
 <label>${esc(t("Cảnh 1 vẽ gì (để trống: máy tự nghĩ)"))}<input name="scene1" placeholder="${esc(t("vd: Tũn ngồi bàn làm việc, mắt díp lại"))}"></label>
 <label>${esc(t("Cảnh 2 vẽ gì"))}<input name="scene2" placeholder="${esc(t("vd: Sếp Mực đếm tiền, tiền lật lật"))}"></label>
 <label>${esc(t("Nhạc nền (tiếng Anh cho MusicGen; để trống: không nhạc)"))}<input name="music" value="${esc(MEME_MUSIC)}"></label>
 <label>${esc(t("Tên video"))}<input name="title"></label>
 <p class="muted small">${esc(t("Bối cảnh mặc định là văn phòng Hồi Sau, nhân vật đúng trang phục. Máy vẽ từng cảnh và tư thế 2 trên nền đứng yên, làm nhạc, rồi anh soát từng cảnh trước khi dựng."))}</p>
-<button class="btn on">${esc(t("Bắt đầu"))}</button></form></section>`;
-  return layout(t("Video"), "/video", `<header class="head"><h1>${esc(t("Video"))}</h1></header>${flash(ok, err)}${meme}${form}${cards ? `<div class="vgrid">${cards}</div>` : `<p class="muted">${esc(t("Chưa có video nào."))}</p>`}`);
+<button class="btn on">${esc(t("Bắt đầu"))}</button></form></details>`;
+  return layout(t("Video"), "/video", `<header class="head"><h1>${esc(t("Video"))}</h1></header>${flash(ok, err)}${ideaBox(v)}${meme}${form}${cards ? `<div class="vgrid">${cards}</div>` : `<p class="muted">${esc(t("Chưa có video nào."))}</p>`}`);
 }
 
 function shotCard(v: Videos, m: Meta, plan: Plan, s: Shot, busy: boolean): string {
@@ -1054,7 +1276,7 @@ function evidenceOf(plan: Plan, a: FixAction): string {
     case "bubble": return `💬 <del>${q(s?.bubble ?? "")}</del> → <ins>${q(a.text)}</ins>`;
     case "fix_detail": return esc(t("Chỉ sửa đúng chỗ “{find}”, phần còn lại giữ nguyên.", { find: a.find || a.what }));
     case "redraw": return esc(t("Vẽ lại cả tranh."));
-    case "add_shot": return esc(t("Cảnh mới từ {t}s đến cảnh kế tiếp.", { t: a.start.toFixed(1) }));
+    case "add_shot": return esc(a.end > a.start ? t("Cảnh mới từ {t}s đến {e}s, sau đó về lại tranh trước.", { t: a.start.toFixed(1), e: a.end.toFixed(1) }) : t("Cảnh mới từ {t}s đến cảnh kế tiếp.", { t: a.start.toFixed(1) }));
     case "redo_pose": return esc(t("Vẽ lại tư thế 2."));
     case "one_pose": return esc(t("Giữ 1 tư thế, tranh đứng yên."));
     case "no_mouth": return esc(t("Miệng không nhép."));
@@ -1097,16 +1319,19 @@ function fixCard(v: Videos, m: Meta, plan: Plan, busy: boolean): string {
 <button class="btn on">${esc(t("Xem máy định sửa gì"))}</button></form>`;
   const proposal = ask && !busy
     ? ask.actions.length
-      ? `<div class="fixplan"><p><b>${esc(t("Máy hiểu"))}:</b> ${esc(ask.reply)}</p><p class="muted small">${esc(t("Anh viết"))}: “${esc(ask.note)}”</p>
+      ? `<div class="fixplan"><p><b>${esc(t("Máy định làm"))}:</b> ${esc(ask.reply)}</p><p class="muted small">${esc(t("Anh viết"))}: “${esc(ask.note)}”</p>
 <form method="post" action="/video/${esc(id)}/apply">${ask.actions.map((a, i) => `<label class="fixrow"><input type="checkbox" name="pick" value="${i}" checked>${thumb(id, shotFor(plan, a))}<span><b>${esc(a.say)}</b><br><span class="small">${evidenceOf(plan, a)}</span></span></label>`).join("")}
 <div class="vactions"><button class="btn on">${esc(t("Làm"))}</button></div></form>
 <form class="inline" method="post" action="/video/${esc(id)}/askdrop"><button class="btn">${esc(t("Bỏ, viết lại"))}</button></form>
 <p class="muted small">${esc(t("Chưa đúng ý thì viết lại ở ô trên cho rõ hơn. Bỏ chọn việc nào không muốn làm."))}</p></div>`
       : `<div class="warn small">${esc(ask.reply || t("Máy chưa hiểu, anh viết rõ hơn giúp: cảnh nào, chữ nào, sai thế nào."))}</div>`
     : "";
+  const refused = !busy && !m.done && m.refused
+    ? `<div class="warn small"><b>${esc(t("Không sửa được, tranh và video vẫn như cũ"))}:</b> “${esc(m.refused.note)}”<br>${esc(m.refused.why)}<br>${esc(t("Viết lại cho cụ thể hơn, hoặc dùng Vẽ lại cảnh trong Sửa tay."))}</div>`
+    : "";
   const done = m.done;
   const result = done
-    ? `<div class="fixdone"><p><b>${esc(busy ? t("Đang sửa") : t("Đã sửa"))}:</b> “${esc(done.note)}”</p><ul>${done.says.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>
+    ? `<div class="fixdone"><p><b>${esc(busy ? t("Đang sửa") : done.failed ? t("Sửa chưa xong") : t("Đã sửa"))}:</b> “${esc(done.note)}”</p>${!busy && done.failed ? `<div class="warn small">${esc(t("Có việc không làm được, tranh đó giữ như cũ: {why}. Bấm Hoàn tác để về đúng bản trước khi sửa.", { why: done.failed }))}</div>` : ""}<ul>${done.says.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>
 ${busy ? "" : Object.entries(done.changed).map(([s, share]) => {
   const u = (f: string) => `/video-media/${esc(id)}/undo/${esc(f)}`;
   const isNew = share === 1 && !existsSync(join(v.undoDir(id), "shots", `${s}.png`));
@@ -1131,7 +1356,7 @@ document.querySelectorAll("[data-seek]").forEach(function(b){b.addEventListener(
 document.querySelectorAll("[data-fill]").forEach(function(a){a.addEventListener("click",function(){if(!note)return;if(a.dataset.at)seek(+a.dataset.at);note.value=a.dataset.fill;setTimeout(function(){note.focus();note.setSelectionRange(note.value.length,note.value.length)},50)})});
 if(at&&at.value)set(+at.value)})()</script>`;
   return `<section class="card" id="fix"><h2>${esc(t("Sửa bằng lời"))}</h2><p class="muted small">${esc(t("Xem video, dừng đúng chỗ lỗi rồi viết như nhắn tin. Máy tự lấy giây và cảnh đang dừng, cho anh xem trước sẽ sửa gì, bấm Làm mới sửa."))}</p>
-${bar}${warn}${result}${proposal}${form}</section>${script}`;
+${bar}${warn}${refused}${result}${proposal}${form}</section>${script}`;
 }
 
 export function videoPage(v: Videos, id: string, err?: string, ok?: string): string | undefined {
@@ -1204,6 +1429,18 @@ ${plan ? approve : ""}`;
  * plan, plain placeholder pictures, a second pose that does not paste on
  * s02 and a mouth that is not found on s02, a short render, fake post links.
  */
+/**
+ * Removes a folder, waiting out Windows' short locks (a picture being served, a shell standing in it);
+ * when it stays locked it is moved aside, so the next fix still starts from an empty folder.
+ */
+function clearDir(dir: string): void {
+  try {
+    rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+  } catch {
+    renameSync(dir, `${dir}-old-${Date.now()}`);
+  }
+}
+
 export function mockExec(): Exec {
   const picture = (file: string, label: string, hue: number) =>
     sharp({ create: { width: 1080, height: 1920, channels: 3, background: `hsl(${hue}, 45%, 82%)` } })
@@ -1220,12 +1457,34 @@ export function mockExec(): Exec {
       log(`cover: ${at("--quote")}`);
       return `${file}\n`;
     }
+    if (args[0] === "idea") {
+      const out = at("--out");
+      const text = readFileSync(join(out, "input.txt"), "utf8").trim();
+      const pics = readdirSync(out).filter((f) => f.startsWith("img-"));
+      const words = text || "Ai cũng xứng đáng có một công việc ổn định. Trừ tôi, tôi xứng đáng trúng số rồi nghỉ việc";
+      const cut = words.indexOf(". ");
+      const plan: IdeaPlan = {
+        kind: (at("--kind") as "meme" | "comic") || (pics.length || /\. /.test(words) ? "meme" : "comic"),
+        reply: pics.length ? "Ảnh là một câu than, làm clip chữ 2 nhịp." : "Làm clip chữ từ câu anh gõ.",
+        read: pics.length ? words : "",
+        lead: "cu-li",
+        meme: { top: cut > 0 ? words.slice(0, cut + 1) : words, punch: cut > 0 ? words.slice(cut + 2) : "", scenes: ["Tũn vỗ vai đồng nghiệp", "Tũn ôm vé số mơ màng"] },
+        comic: { direction: `Tũn ở văn phòng: ${words}`, with: [], headline: words },
+        title: "Trúng số nghỉ việc",
+        caption: "Ổn định là cho người khác #danvanphong #HoiSau",
+      };
+      writeFileSync(join(out, "idea.json"), JSON.stringify(plan, null, 2));
+      return "";
+    }
     if (args[0] === "meme" && at("--step") === "plan") {
       const out = at("--out");
       const spec = JSON.parse(readFileSync(join(out, "meme.json"), "utf8")) as MemeInput;
-      const punchAt = +(spec.seconds * (spec.scenes.length > 1 ? 0.45 : 0.4)).toFixed(2);
+      // Same pacing as talk's memeTiming: the punchline once the first line is read.
+      const read = (x: string) => 1 + x.trim().split(/\s+/).length * 0.28;
+      const punchAt = +Math.max(2, read(spec.top)).toFixed(2);
+      const end = +(spec.seconds || Math.max(6, punchAt + read(spec.punch) + 2.5)).toFixed(2);
       const shots: Shot[] = spec.scenes.map((note, i) => ({ id: `s0${i + 1}`, t: i ? punchAt : 0, act: note || "the lead at the office desk", pose: "blinks and moves a hand", bubble: "", cast: [] }));
-      writeFileSync(join(out, "plan.json"), JSON.stringify({ slug: args[1], clip: "", end: spec.seconds, lines: [{ text: spec.top, start: 0, end: punchAt }, { text: spec.punch, start: punchAt, end: spec.seconds }], shots }, null, 2) + "\n");
+      writeFileSync(join(out, "plan.json"), JSON.stringify({ slug: args[1], clip: "", end, lines: [{ text: spec.top, start: 0, end: punchAt }, { text: spec.punch, start: punchAt, end }], shots }, null, 2) + "\n");
       return "";
     }
     if (script === CHANNEL) {
@@ -1266,6 +1525,8 @@ export function mockExec(): Exec {
       if (/Mẹ/.test(note)) acts.push({ ...base, do: "line_text", line: 0, text: plan.lines[0].text.replace(/^\S+/, "Mẹ"), say: "Câu 1: đổi chữ đầu thành Mẹ" });
       if (/ghim/.test(note)) acts.push({ ...base, do: "fix_detail", shot: "s01", what: "remove the star pin on his back", find: "star pin", say: "Cảnh s01: bỏ ghim sao" });
       if (/thiếu tranh/.test(note)) acts.push({ ...base, do: "add_shot", start: 5, what: "the lead walks home at dusk", say: "Thêm cảnh từ 5s" });
+      if (/Taeyang/.test(note)) acts.push({ ...base, do: "add_shot", start: 4.5, end: 5.0, what: "a stage far away with tiny faceless silhouettes", say: "Thêm cảnh sân khấu" });
+      if (/đồng hồ/.test(note)) acts.push({ ...base, do: "fix_detail", shot: "s02", what: "remove the wall clock", find: "wall clock", say: "Cảnh s02: bỏ đồng hồ" });
       writeFileSync(join(out, "fixes.json"), JSON.stringify({ reply: acts.length ? "Sửa như anh nói" : "Anh muốn sửa cảnh nào?", actions: acts }));
       return "";
     }
@@ -1275,6 +1536,8 @@ export function mockExec(): Exec {
           copyFileSync(join(dir, `${s.id}.png`), join(dir, `${s.id}-prev.png`));
           log(`${s.id}: fixing (${at("--note")})`);
           await picture(join(dir, `${s.id}.png`), `${s.id} A fixed`, hue(i) + 5);
+          // Like talk: a fix found by --find is carried into pose B and the mouths; a whole new picture drops them.
+          if (!at("--find")) for (const p of [`${s.id}-s`, `${s.id}-m`, `${s.id}-b`, `${s.id}-b2`, `${s.id}-b2-s`, `${s.id}-b2-m`]) rmSync(join(dir, `${p}.png`), { force: true });
         }
     if (step === "poses")
       for (const [i, s] of plan.shots.entries()) if (s.pose && pick(s) && (only || !existsSync(join(dir, `${s.id}-b.png`)))) (log(`${s.id}: second pose`), await picture(join(dir, `${s.id}-b.png`), `${s.id} B`, hue(i) + 20));

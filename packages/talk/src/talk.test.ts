@@ -6,7 +6,7 @@ import { mockScript, PACE, scriptProblems, syllables } from "./script.js";
 import { blinkTrack, chunkWords, wordTimes } from "./timeline.js";
 import { hummedLine, joinLines, mouthTrack, RATE, ttsArg, ttsEnv, voiceShape, wavBytes } from "./voice.js";
 import { setPrompt, SETS } from "./sets.js";
-import { alignBackground, dilate, flatBands, frameProblem, gateToWords, ghostShare, groupLines, leadFeatures, leadMouth, leadOr, mouthIn, overlapShare, parseCuts, pasteMouth, poseBProblem, popScale, poseAt, shotSpans, timeWords } from "./illustrate.js";
+import { alignBackground, dilate, flatBands, frameProblem, gateToWords, ghostShare, groupLines, leadFeatures, leadMouth, leadOr, mouthIn, overlapShare, parseCuts, pasteMouth, pasteRegion, poseBProblem, popScale, poseAt, shotSpans, timeWords } from "./illustrate.js";
 
 test("words share the line's time, with a pause after punctuation", () => {
   const w = wordTimes("Dạ, em đang làm", 1, 3);
@@ -365,4 +365,110 @@ test("illustrate: a grin's corner beyond the new mouth is painted over", () => {
   const curl = (46 * w + 50) * 3;
   assert.equal(pasteMouth(base, edit, grin, small, 0, 0, 3).data[curl], 200);
   assert.ok(pasteMouth(base, edit, grin, small, 0, 0, 3, undefined, 8).data[curl] < 200);
+});
+
+test("illustrate: fast talk is cut into lines of at most 3.5 s, and a long stretch with no cut is split at a line", () => {
+  const words = Array.from({ length: 30 }, (_, i) => ({ text: `w${i}`, start: i * 0.5, end: i * 0.5 + 0.4 }));
+  const lines = groupLines(words);
+  assert.ok(lines.length >= 4 && lines.every((l) => l.end - l.start <= 3.5));
+  const spans = shotSpans(lines, [], 15);
+  assert.ok(spans.length >= 3 && spans.every((s) => s.end - s.t <= 6.01), JSON.stringify(spans.map((s) => [s.t, s.end])));
+  assert.ok(spans.slice(1).every((s) => lines.some((l) => l.start === s.t)), "splits fall on line starts");
+});
+
+test("illustrate: a detail fix is never pasted where the thing was not in the picture, or when nothing changed", async () => {
+  const { w, h } = { w: 1080, h: 1920 };
+  const png = (c: string) => sharp({ create: { width: w, height: h, channels: 3, background: c } }).png().toBuffer();
+  const box = (x0: number, y0: number, x1: number, y1: number) => { const m = new Uint8Array(w * h); for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) m[y * w + x] = 1; return m; };
+  const before = await png("#ddd");
+  const edited = await sharp(before).composite([{ input: await sharp({ create: { width: 200, height: 200, channels: 3, background: "#222" } }).png().toBuffer(), left: 400, top: 400 }]).png().toBuffer();
+  let call = 0;
+  // The clock is found only in the edit (the model drew a lookalike elsewhere): refused.
+  const onlyInEdit = { segment: async () => (call++ % 2 ? [{ objectId: "1", width: w, height: h, mask: box(400, 400, 600, 600), area: 1 }] : []) } as never;
+  const r1 = await pasteRegion(onlyInEdit, before, edited, "wall clock");
+  assert.match(r1.problem, /not found/);
+  // Found in the picture but the edit left it as it was: refused.
+  const there = { segment: async () => [{ objectId: "1", width: w, height: h, mask: box(100, 100, 300, 300), area: 1 }] } as never;
+  assert.match((await pasteRegion(there, before, edited, "wall clock")).problem, /did not change/);
+  // Found and changed there: pasted, and the rest is untouched.
+  const changed = { segment: async () => [{ objectId: "1", width: w, height: h, mask: box(420, 420, 580, 580), area: 1 }] } as never;
+  const ok = await pasteRegion(changed, before, edited, "wall clock");
+  assert.equal(ok.problem, "");
+  const px = await sharp(ok.image).raw().toBuffer();
+  assert.equal(px[(1500 * w + 100) * 3], 0xdd);
+});
+
+test("illustrate: a detail fix is refused when Muse Spark sees the change missing or something else touched", async () => {
+  const { compareFix } = await import("./illustrate.js");
+  const png = await sharp({ create: { width: 60, height: 100, channels: 3, background: "#ccc" } }).png().toBuffer();
+  const ctx = (r: object) => ({ spark: { json: async () => r } }) as never;
+  assert.deepEqual(await compareFix(ctx({ done: true, clean: true, problem: "" }), png, png, "remove the clock"), { ok: true, problem: "" });
+  assert.match((await compareFix(ctx({ done: false, clean: true, problem: "" }), png, png, "remove the clock")).problem, /not in the new picture/);
+  assert.match((await compareFix(ctx({ done: true, clean: false, problem: "Rico is doubled" }), png, png, "remove the clock")).problem, /doubled/);
+});
+
+test("illustrate: where Muse Spark points, a SAM find elsewhere is ignored and the box itself is pasted", async () => {
+  const { w, h } = { w: 1080, h: 1920 };
+  const before = await sharp({ create: { width: w, height: h, channels: 3, background: "#ddd" } }).png().toBuffer();
+  const edited = await sharp(before).composite([{ input: await sharp({ create: { width: 200, height: 200, channels: 3, background: "#222" } }).png().toBuffer(), left: 400, top: 400 }]).png().toBuffer();
+  const box = (x0: number, y0: number, x1: number, y1: number) => { const m = new Uint8Array(w * h); for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) m[y * w + x] = 1; return m; };
+  // SAM "finds" the thing far away (on the character); Spark's box is where it really is.
+  const wrong = { segment: async () => [{ objectId: "1", width: w, height: h, mask: box(100, 1500, 300, 1800), area: 1 }] } as never;
+  const r = await pasteRegion(wrong, before, edited, "wall clock", undefined, { x0: 400 / w, y0: 400 / h, x1: 600 / w, y1: 600 / h });
+  assert.equal(r.problem, "");
+  const px = await sharp(r.image).removeAlpha().raw().toBuffer();
+  assert.equal(px[(500 * w + 500) * 3], 0x22, "the box was pasted");
+  assert.equal(px[(1600 * w + 200) * 3], 0xdd, "the wrong find was not");
+});
+
+test("illustrate: a flat patch left by a removal takes the wall's gradient; a recoloured object keeps its colour", async () => {
+  const { flatPatchFit } = await import("./illustrate.js");
+  const w = 20, hh = 20, n = w * hh;
+  // The wall gets lighter from top (180) to bottom (218); the patch Muse left is flat 170.
+  const wall = new Uint8Array(n * 3).map((_, j) => 180 + 2 * Math.floor(Math.floor(j / 3) / w));
+  const core = new Uint8Array(n).map((_, i) => { const x = i % w, y = Math.floor(i / w); return x >= 6 && x < 14 && y >= 6 && y < 14 ? 1 : 0; });
+  const ring = core.map((v) => v ^ 1), mask = core.map((v) => v * 255);
+  const patch = wall.slice();
+  for (let i = 0; i < n; i++) if (core[i]) patch.fill(170, i * 3, i * 3 + 3);
+  const r = flatPatchFit(wall, patch, core, mask, ring, w);
+  assert.ok(r);
+  for (const i of [6 * w + 8, 13 * w + 8]) assert.ok(Math.abs(r!.image[i * 3] - wall[i * 3]) <= 3, `row ${Math.floor(i / w)} follows the wall's gradient`);
+  const bottle = wall.slice();
+  for (let i = 0; i < n; i++) if (core[i]) bottle.set(i % 2 ? [40, 200, 60] : [20, 150, 40], i * 3);
+  assert.equal(flatPatchFit(wall, bottle, core, mask, ring, w), undefined, "a drawn object is not flattened");
+});
+
+test("illustrate: a detail fix is carried into pose B and the mouths, not drawn again", async () => {
+  const { carryFix } = await import("./illustrate.js");
+  const { mkdtempSync, readFileSync, writeFileSync, existsSync } = await import("node:fs");
+  const { join } = await import("node:path");
+  const { tmpdir } = await import("node:os");
+  const sharp = (await import("sharp")).default;
+  const w = 1080, h = 1920;
+  const dir = mkdtempSync(join(tmpdir(), "carry-"));
+  const pic = (bg: number, boxes: [number, number, number, number, number][]) => {
+    const px = Buffer.alloc(w * h * 3, bg);
+    for (const [x0, y0, x1, y1, v] of boxes) for (let y = y0; y < y1; y++) px.fill(v, (y * w + x0) * 3, (y * w + x1) * 3);
+    return sharp(px, { raw: { width: w, height: h, channels: 3 } }).png().toBuffer();
+  };
+  const clock: [number, number, number, number, number] = [800, 300, 1000, 500, 30];
+  const before = await pic(200, [clock]), after = await pic(200, []);
+  writeFileSync(join(dir, "s01-m.png"), await pic(200, [clock, [400, 900, 500, 950, 90]])); // the mouth is elsewhere
+  writeFileSync(join(dir, "s01-b.png"), await pic(180, [[300, 1000, 700, 1800, 120]])); // raw pose B: its own background
+  writeFileSync(join(dir, "s01-b2.png"), await pic(200, [[780, 280, 1020, 520, 120]])); // pose B stands over the clock
+  writeFileSync(join(dir, "s01-b2-m.png"), await pic(200, [clock]));
+  const r = await carryFix(dir, "s01", before, after);
+  assert.deepEqual(r.carried.sort(), ["s01-m"]);
+  assert.deepEqual(r.dropped.sort(), ["s01-b2", "s01-b2-m"], "stabilized pose B over the place goes with its mouths");
+  assert.ok(existsSync(join(dir, "s01-b.png")), "raw pose B stays: pose B is made again from it, not drawn anew");
+  const m = await sharp(readFileSync(join(dir, "s01-m.png"))).raw().toBuffer();
+  assert.equal(m[(400 * w + 900) * 3], 200, "the clock is gone from the mouth picture");
+  assert.equal(m[(920 * w + 450) * 3], 90, "the mouth is kept");
+});
+
+test("illustrate: removal notes are told apart from recolours", async () => {
+  const { isRemoval } = await import("./illustrate.js");
+  assert.ok(isRemoval("remove the wall clock, leave plain wall"));
+  assert.ok(isRemoval("bỏ cái đồng hồ treo tường"));
+  assert.ok(!isRemoval("change the water bottle to light green"));
 });

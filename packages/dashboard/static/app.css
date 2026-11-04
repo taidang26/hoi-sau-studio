@@ -717,3 +717,9 @@ details summary { cursor: pointer; font-size: 13px; color: var(--accent-2); marg
 details.vmanual > summary { cursor: pointer; color: var(--muted); font-size: 14px; margin-top: 6px; }
 .vline label { flex: 1 1 auto; } .vline label:has(input[size]) { flex: 0 0 90px; }
 @media (max-width: 640px) { .vpics img { width: 150px; } .vactions input { min-width: 0; width: 100%; } }
+/* Make from text or pictures */
+.ideabox textarea { width: 100%; font: inherit; font-size: 15px; }
+.ideapics { display: flex; flex-wrap: wrap; gap: 8px; }
+.ideapics img { max-width: 220px; max-height: 280px; border-radius: 10px; object-fit: contain; background: #fff; }
+.ideatext { white-space: pre-wrap; font-size: 15px; }
+.idealist { margin: 10px 0 0; padding-left: 18px; }

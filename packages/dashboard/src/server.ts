@@ -18,7 +18,7 @@ import { isSignedIn, passwordMatches, sessionCookie } from "./auth.js";
 import { pickLang, t, withLang, type Lang } from "./i18n.js";
 import { characterNotes, compareSection, inspirationField, researchPage, type IdeaKind, IDEA_KINDS, type Research } from "./research.js";
 import { episodeStudioPage, friendly, Studio, studioPage, stylePage } from "./studio.js";
-import { videoPage, videosPage, type Videos } from "./video.js";
+import { ideaPage, videoPage, videosPage, type Videos } from "./video.js";
 import { CHARACTERS_DIR, loadProfile, readStep, SERIES_DIR, type EpisodeStep } from "@hoi-sau/studio";
 import {
   automationPage,
@@ -108,7 +108,12 @@ const redirect = (res: ServerResponse, to: string) => {
 };
 
 /** `to` with ?ok= or ?err= added, for the one-line result on the next page. */
-const withNote = (to: string, key: "ok" | "err", text: string) => `${to}${to.includes("?") ? "&" : "?"}${key}=${encodeURIComponent(text)}`;
+/** Adds ?ok= or ?err= to a link, before its #part: after the hash the page never sees it. */
+export const withNote = (to: string, key: "ok" | "err", text: string) => {
+  const h = to.indexOf("#");
+  const [path, hash] = h < 0 ? [to, ""] : [to.slice(0, h), to.slice(h)];
+  return `${path}${path.includes("?") ? "&" : "?"}${key}=${encodeURIComponent(text)}${hash}`;
+};
 
 function send(res: ServerResponse, status: number, body: string, type = "text/html; charset=utf-8"): void {
   // no-cache, not no-store: the page is still fetched fresh, but Back can restore it instantly.
@@ -518,6 +523,32 @@ export function handler(opts: DashboardOptions) {
 
     const st = opts.studio;
     const vd = opts.videos;
+    if (vd && req.method === "POST" && path === "/video/idea") {
+      try {
+        const form = await readUpload(req, 60 * 1024 * 1024);
+        const files = await Promise.all(form.getAll("images").filter((f): f is File => f instanceof File && f.size > 0).map(async (f) => ({ name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) })));
+        const want = String(form.get("want") ?? "");
+        const id = vd.newIdea(String(form.get("text") ?? ""), files, want === "meme" || want === "comic" ? want : "");
+        return redirect(res, `/video/idea/${id}`);
+      } catch (e) {
+        return fail("/video", e);
+      }
+    }
+    const vi = vd ? path.match(/^\/video\/idea\/(y-[a-z0-9-]+)(\/again)?$/) : null;
+    if (vi && vd) {
+      if (req.method === "POST" && vi[2]) {
+        try {
+          vd.rereadIdea(vi[1]);
+        } catch (e) {
+          return fail(`/video/idea/${vi[1]}`, e);
+        }
+        return redirect(res, `/video/idea/${vi[1]}`);
+      }
+      if (req.method === "GET") {
+        const html = ideaPage(vd, vi[1], Boolean(opts.studio), err);
+        return html ? page(res, 200, html) : page(res, 404, notFoundPage());
+      }
+    }
     if (vd && req.method === "POST" && path === "/video/new") {
       try {
         const form = await readUpload(req, 300 * 1024 * 1024);
@@ -525,9 +556,9 @@ export function handler(opts: DashboardOptions) {
         const upload = file instanceof File && file.size ? { name: file.name, bytes: new Uint8Array(await file.arrayBuffer()) } : undefined;
         const field = (k: string) => String(form.get(k) ?? "");
         const meme = field("kind") === "meme"
-          ? { top: field("top"), punch: field("punch"), scenes: field("scenes") === "1" ? [field("scene1")] : [field("scene1"), field("scene2")], music: field("music"), seconds: Number(field("seconds")) || 14 }
+          ? { top: field("top"), punch: field("punch"), scenes: field("scenes") === "1" ? [field("scene1")] : [field("scene1"), field("scene2")], music: field("music"), seconds: Number(field("seconds")) || 0 }
           : undefined;
-        const id = vd.create({ kind: meme ? "meme" : "illustrate", slug: field("slug"), mouth: form.get("mouth") === "1", title: field("title"), sample: field("sample") || undefined, upload, meme });
+        const id = vd.create({ kind: meme ? "meme" : "illustrate", slug: field("slug"), mouth: form.get("mouth") === "1", title: field("title"), sample: field("sample") || undefined, upload, meme, caption: field("caption") });
         return redirect(res, `/video/${id}`);
       } catch (e) {
         return fail("/video", e);
@@ -674,6 +705,8 @@ export function handler(opts: DashboardOptions) {
           if (rs && ideas.length && form.get("direction")?.trim()) form.set("direction", `${form.get("direction")!.trim()}${rs.recipes(ideas)}`);
           const id = st.newEpisode(form);
           rs?.attach(ideas, id);
+          // From "Làm từ chữ hoặc ảnh": the owner already checked the idea, so the episode starts at once.
+          if (form.get("run") === "1") st.run(id, {});
           return redirect(res, `/studio/${id}`);
         } catch (e) {
           return fail("/studio", e);

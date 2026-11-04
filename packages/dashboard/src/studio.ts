@@ -207,7 +207,8 @@ export class Studio {
     const direction = (form.get("direction") ?? "").trim();
     if (!direction) throw new Error(t("Hãy viết hướng truyện."));
     const format = (form.get("format") || "strip3") as EpisodeFormat;
-    const ep = createEpisode({ id: (form.get("id") ?? "").trim() || this.nextId(lead), lead, characters: form.getAll("with"), direction, credits, format }, this.opts.episodesDir);
+    const headline = (form.get("headline") ?? "").trim();
+    const ep = createEpisode({ id: (form.get("id") ?? "").trim() || this.nextId(lead), lead, characters: form.getAll("with"), direction, credits, format, ...(headline ? { headline } : {}) }, this.opts.episodesDir);
     return ep.id;
   }
 

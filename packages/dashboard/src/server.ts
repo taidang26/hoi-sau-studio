@@ -3,9 +3,10 @@
  * whatever the channel or studio CLIs just wrote shows up on refresh.
  */
 
+import { siteUrl } from "./phone.js";
 import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import { extname, join, resolve, sep } from "node:path";
+import { basename, extname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import sharp from "sharp";
 import { BOLD_FONT_PATH, DEFAULT_FONT_PATH } from "@hoi-sau/svg-text";
@@ -18,7 +19,7 @@ import { isSignedIn, passwordMatches, sessionCookie } from "./auth.js";
 import { pickLang, t, withLang, type Lang } from "./i18n.js";
 import { characterNotes, compareSection, inspirationField, researchPage, type IdeaKind, IDEA_KINDS, type Research } from "./research.js";
 import { episodeStudioPage, friendly, Studio, studioPage, stylePage } from "./studio.js";
-import { ideaPage, videoPage, videosPage, type Videos } from "./video.js";
+import { ideaPage, leadFromText, videoPage, videosPage, type Videos } from "./video.js";
 import { CHARACTERS_DIR, loadProfile, readStep, SERIES_DIR, type EpisodeStep } from "@hoi-sau/studio";
 import {
   automationPage,
@@ -214,6 +215,8 @@ async function sendFile(req: IncomingMessage, res: ServerResponse, file: string,
   }
   const type = TYPES[ext] ?? "application/octet-stream";
   const size = st.size;
+  // ?dl=1: save the file instead of playing it (phones and browsers otherwise only play an mp4).
+  if (q.get("dl") === "1") res.setHeader("Content-Disposition", `attachment; filename="${basename(file).replace(/[^\w.-]/g, "_")}"`);
   const m = req.headers.range?.match(/^bytes=(\d*)-(\d*)$/);
   if (m && (m[1] || m[2])) {
     const start = m[1] ? Number(m[1]) : Math.max(0, size - Number(m[2]));
@@ -447,7 +450,7 @@ export function handler(opts: DashboardOptions) {
     if (ttd && acc && !opts.demo) {
       try {
         const link = ((await readForm(req)).get("url") ?? "").trim();
-        if (!isOwnMedia(link)) throw new Error(t("Chỉ gửi được video trên trang Hồi Sau (link https://hoisau.web.app/media/…)."));
+        if (!isOwnMedia(link)) throw new Error(t("Chỉ gửi được video trên trang Hồi Sau (link {site}/media/…).", { site: siteUrl() }));
         await acc.sendTikTokDraft(ttd[1], { url: link });
         return redirect(res, withNote(`/channels/${ttd[1]}`, "ok", t("Đã gửi vào hộp nháp TikTok. Mở app TikTok, thêm chú thích và nhạc rồi đăng.")));
       } catch (e) {
@@ -577,10 +580,22 @@ export function handler(opts: DashboardOptions) {
     const vd = opts.videos;
     if (vd && req.method === "POST" && path === "/video/idea") {
       try {
-        const form = await readUpload(req, 60 * 1024 * 1024);
-        const files = await Promise.all(form.getAll("images").filter((f): f is File => f instanceof File && f.size > 0).map(async (f) => ({ name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) })));
+        const form = await readUpload(req, 300 * 1024 * 1024);
+        const text = String(form.get("text") ?? "");
+        const all = [...form.getAll("files"), ...form.getAll("images")].filter((f): f is File => f instanceof File && f.size > 0);
+        const isVideo = (f: File) => f.type.startsWith("video/") || /\.(mp4|mov|m4v|webm|mkv)$/i.test(f.name);
+        const clip = all.find(isVideo);
+        const sample = String(form.get("sample") ?? "");
+        // A clip (uploaded or a sample) becomes a talking video at once: lead from the note, Tũn otherwise.
+        if (clip || sample) {
+          const upload = clip ? { name: clip.name, bytes: new Uint8Array(await clip.arrayBuffer()) } : undefined;
+          const title = text.trim().split(/\r?\n/)[0].slice(0, 40) || (clip?.name ?? sample.split(/[\\/]/).pop() ?? "").replace(/\.[a-z0-9]+$/i, "") || t("Clip mới");
+          const id = vd.create({ kind: "illustrate", slug: leadFromText(text, vd.opts.cast()), mouth: true, title, sample: clip ? undefined : sample, upload });
+          return redirect(res, `/video/${id}`);
+        }
+        const images = await Promise.all(all.filter((f) => !isVideo(f)).slice(0, 4).map(async (f) => ({ name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) })));
         const want = String(form.get("want") ?? "");
-        const id = vd.newIdea(String(form.get("text") ?? ""), files, want === "meme" || want === "comic" ? want : "");
+        const id = vd.newIdea(text, images, want === "meme" || want === "comic" ? want : "");
         return redirect(res, `/video/idea/${id}`);
       } catch (e) {
         return fail("/video", e);
@@ -616,7 +631,7 @@ export function handler(opts: DashboardOptions) {
         return fail("/video", e);
       }
     }
-    const va = vd && req.method === "POST" ? path.match(/^\/video\/([a-z0-9-]+)\/(continue|render|approve|publish|addshot|ask|askdrop|apply|keep|undo)$/) : null;
+    const va = vd && req.method === "POST" ? path.match(/^\/video\/([a-z0-9-]+)\/(continue|render|okall|approve|publish|addshot|ask|askdrop|apply|keep|undo)$/) : null;
     if (va && vd) {
       const [, id, act] = va;
       try {
@@ -644,6 +659,10 @@ export function handler(opts: DashboardOptions) {
         }
         if (act === "continue") vd.continue(id);
         if (act === "render") vd.render(id);
+        if (act === "okall") {
+          for (const shot of vd.unchecked(id)) vd.tick(id, shot);
+          vd.render(id);
+        }
         if (act === "publish") {
           if (opts.demo) throw new Error(t("Đang xem dữ liệu mẫu nên không đăng thật."));
           vd.publish(id);
@@ -912,7 +931,11 @@ export function handler(opts: DashboardOptions) {
       return page(res, 200, overviewPage(state, opts.channel(), abilities(), ok, err, { upcoming, diskFreeGb, toReview }));
     }
     if (path === "/schedule" && opts.schedule)
-      return page(res, 200, schedulePage(state, opts.schedule.list(), ok, err, (vd?.scheduled() ?? []).map((m) => ({ id: m.id, title: m.title, at: m.when!, caption: m.caption, cover: vd!.coverFile && existsSync(vd!.coverFile(m.id)) ? `/studio-media/${vd!.epId(m.id)}/cover.jpg` : undefined }))));
+      return page(res, 200, schedulePage(state, opts.schedule.list(), ok, err, (vd?.scheduled() ?? []).map((m) => ({ id: m.id, title: m.title, at: m.when!, caption: m.caption, cover: vd!.coverFile && existsSync(vd!.coverFile(m.id)) ? `/studio-media/${vd!.epId(m.id)}/cover.jpg` : undefined })), (id) => {
+        const dir = st ? inside(st.opts.episodesDir, id) : null;
+        const at = (f: string) => (dir && existsSync(join(dir, f)) ? `/studio-media/${id}/${f}` : undefined);
+        return { video: at("video.mp4"), cover: at("cover.jpg") };
+      }));
     if (path === "/rules") return page(res, 200, rulesPage(undefined, ok, err));
     if (path === "/channels") return page(res, 200, channelsPage(state));
     const br = path.match(/^\/channels\/([a-z0-9-]+)$/);
@@ -998,7 +1021,8 @@ function isOwnMedia(link: string): boolean {
   } catch {
     return false;
   }
-  const own = new Set(["hoisau.web.app", "hoisau.dangtrantai.com"]);
+  // The same Firebase site answers on all three names.
+  const own = new Set([new URL(siteUrl()).host, "hoisau.web.app", "hoisau.firebaseapp.com", "hoisau.dangtrantai.com"]);
   try {
     if (process.env.MEDIA_BASE_URL) own.add(new URL(process.env.MEDIA_BASE_URL).host);
   } catch {

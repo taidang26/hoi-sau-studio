@@ -1,5 +1,5 @@
 /**
- * hoisau.web.app/tai: the owner's phone page for posting to TikTok by hand.
+ * hoisau.dangtrantai.com/tai: the owner's phone page for posting to TikTok by hand.
  * Built from what was approved: every episode folder with an approval.json
  * whose post still matches it. Videos (reels) and photo posts (carousel or a
  * single picture) get save buttons, the cover when there is one, and the
@@ -72,7 +72,7 @@ function card(item: TaiItem): string {
   const { media, cover } = taiUrls(item);
   const coverHtml = cover ? `<img src="${cover}" alt="Ảnh bìa" loading="lazy"><button class="btn ghost" onclick="share(this,['${cover}'],'image/jpeg')">Lưu ảnh bìa</button>` : "";
   if (item.kind === "video") {
-    return `<section class="card"><h2>${esc(item.title)}</h2>
+    return `<section class="card" id="${esc(item.id)}"><h2>${esc(item.title)}</h2>
 <video src="${media[0]}" controls playsinline preload="metadata"></video>
 <button class="btn" onclick="share(this,${js(media)},'video/mp4')">Lưu video vào Ảnh</button>
 <a class="btn ghost" href="${media[0]}" download="${item.id}.mp4">Tải file video</a>
@@ -80,7 +80,7 @@ ${coverHtml}
 ${copyBox("Caption TikTok", item.caption, 3)}</section>`;
   }
   const grid = media.map((u, i) => `<figure><img src="${u}" alt="Ảnh ${i + 1}" loading="lazy"><a class="mini" href="${u}" download>Tải ảnh ${i + 1}</a></figure>`).join("");
-  return `<section class="card"><h2>${esc(item.title)} · ${media.length} ảnh</h2>
+  return `<section class="card" id="${esc(item.id)}"><h2>${esc(item.title)} · ${media.length} ảnh</h2>
 <div class="grid">${grid}</div>
 <button class="btn" onclick="share(this,${js(media)},'image/jpeg')">Lưu cả bộ ${media.length} ảnh vào Ảnh</button>
 ${coverHtml}

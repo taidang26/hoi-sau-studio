@@ -786,3 +786,20 @@ table.perf th.num, table.perf td.num { text-align: right; }
 
 /* Sửa bằng lời on a comic: a small copy of the panel next to each proposed fix */
 .fixthumb { width: 64px; height: 80px; object-fit: cover; border-radius: 10px; flex: none; }
+
+/* Mở trên điện thoại: a QR code that opens the clip on the site's /tai page */
+.phone-box { display: inline-block; position: relative; }
+.phone-box > summary { list-style: none; cursor: pointer; }
+.phone-box > summary::-webkit-details-marker { display: none; }
+.phone-pop { position: absolute; z-index: 20; margin-top: 8px; right: 0; width: 220px; padding: 14px; background: var(--card, #fff); border: 1px solid var(--hairline); border-radius: 16px; box-shadow: 0 12px 30px rgba(0,0,0,.12); display: grid; gap: 8px; justify-items: center; text-align: center; }
+.phone-pop .qr { border-radius: 8px; }
+.phone-pop a { word-break: break-all; }
+
+.slot-more { grid-column: 1 / -1; }
+.slot-more > summary { cursor: pointer; font-size: 13px; color: var(--accent); width: max-content; }
+.slot-detail { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 16px; padding: 10px 0 6px; }
+.slot-detail video, .slot-detail .ph { width: 200px; aspect-ratio: 9 / 16; border-radius: 12px; background: #111; display: block; }
+.slot-detail-body { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.slot-detail textarea { width: 100%; font: inherit; }
+.slot-bia { width: 120px; border-radius: 10px; }
+@media (max-width: 640px) { .slot-detail { grid-template-columns: 1fr; } .slot-detail video { width: 100%; max-width: 280px; } }

@@ -7,7 +7,7 @@ import { after, before, test } from "node:test";
 import sharp from "sharp";
 import { writeDemoData } from "./seed.js";
 import { startDashboard } from "./server.js";
-import { DRIFT_WARN, edgeDrift, mockExec, videoPage, Videos, type Exec } from "./video.js";
+import { DRIFT_WARN, edgeDrift, leadFromText, mockExec, videoPage, Videos, type Exec } from "./video.js";
 
 const root = mkdtempSync(join(tmpdir(), "hoisau-video-"));
 const calls: string[][] = [];
@@ -155,7 +155,8 @@ after(() => close());
 test("the dashboard lists videos, serves their pictures and takes the shot buttons", async () => {
   const id = v.list()[0].id;
   const list = await (await fetch(`${base}/video`)).text();
-  assert.match(list, /Làm video có lời từ clip mẫu/);
+  assert.match(list, /Muốn làm gì, cứ viết như nhắn tin/);
+  assert.doesNotMatch(list, /name="top"|name="punch"/, "one box, no form to fill on the first screen");
   assert.match(list, new RegExp(`/video/${id}`));
   assert.equal((await fetch(`${base}/video-media/${id}/shots/s01.png`)).headers.get("content-type"), "image/png");
   assert.equal((await fetch(`${base}/video-media/${id}/meta.json`)).status, 404);
@@ -201,9 +202,7 @@ test("a second pose that moves the room is measured and flagged", async () => {
   assert.match(videoPage(v, id)!, /Nền lệch giữa 2 tư thế/);
 });
 
-test("the Video screen offers the text meme form and takes it", async () => {
-  const list = await (await fetch(`${base}/video`)).text();
-  assert.match(list, /Tự gõ clip chữ/);
+test("a text meme posted straight to the form is still made", async () => {
   const form = new FormData();
   for (const [k, val] of Object.entries({ kind: "meme", top: "Lương về", punch: "Lương đi", slug: "cu-li", scenes: "1", seconds: "", scene1: "", music: "" })) form.append(k, val);
   const res = await fetch(`${base}/video/new`, { method: "POST", body: form, redirect: "manual" });
@@ -350,7 +349,7 @@ test("fixing by note: the proposal shows evidence first, Làm does it and render
 
 test("text or pictures in, a proposal with what was read, then the clip is made from the checked form", async () => {
   const list = await (await fetch(`${base}/video`)).text();
-  assert.match(list, /Làm từ chữ hoặc ảnh/);
+  assert.match(list, /name="files"/);
   const empty = await fetch(`${base}/video/idea`, { method: "POST", body: new FormData(), redirect: "manual" });
   assert.match(decodeURIComponent(empty.headers.get("location")!), /Dán chữ hoặc thêm/);
 
@@ -358,7 +357,7 @@ test("text or pictures in, a proposal with what was read, then the clip is made 
   const png = await sharp({ create: { width: 400, height: 300, channels: 3, background: "#eee" } }).png().toBuffer();
   const form = new FormData();
   form.append("text", "");
-  form.append("images", new Blob([new Uint8Array(png)], { type: "image/png" }), "IMG_0895.png");
+  form.append("files", new Blob([new Uint8Array(png)], { type: "image/png" }), "IMG_0895.png");
   const res = await fetch(`${base}/video/idea`, { method: "POST", body: form, redirect: "manual" });
   assert.equal(res.status, 303);
   const id = res.headers.get("location")!.split("/").pop()!;
@@ -383,6 +382,39 @@ test("text or pictures in, a proposal with what was read, then the clip is made 
   assert.ok(h2.indexOf("<h2>Tranh 1 khung</h2>") > 0 && h2.indexOf("<h2>Tranh 1 khung</h2>") < h2.indexOf("Hoặc làm clip chữ"));
   assert.equal(v.idea(id2)!.plan!.kind, "comic");
   assert.equal(v.idea(id2)!.plan!.comic.headline, "Sếp gọi lên phòng lúc 5 giờ chiều thứ Sáu", "the words go on the panel as they are");
+});
+
+test("a sample clip picked in the one box starts a talking video right away", async () => {
+  const form = new FormData();
+  form.append("text", "Lolo nghe sếp nói tăng lương");
+  form.append("sample", v.samples()[0].path);
+  const res = await fetch(`${base}/video/idea`, { method: "POST", body: form, redirect: "manual" });
+  assert.equal(res.status, 303);
+  const id = res.headers.get("location")!.split("/").pop()!;
+  assert.ok(!id.startsWith("y-"), "a video, not a proposal");
+  await v.settle(id);
+  assert.equal(v.meta(id).slug, "cu-li");
+  assert.equal(v.meta(id).title, "Lolo nghe sếp nói tăng lương");
+  const cast = [{ slug: "cu-li", name: "Tũn" }, { slug: "te-te", name: "Tê" }];
+  assert.equal(leadFromText("Tê nghe sếp nói tăng lương", cast), "te-te");
+  assert.equal(leadFromText("Tết này sếp thưởng", cast), "cu-li", "a name inside another word is not a mention");
+});
+
+test("one next step at the top: look at the scenes, then one button ticks them all and makes the video", async () => {
+  const id = v.create({ slug: "cu-li", mouth: true, sample: v.samples()[0].path });
+  await v.settle(id);
+  const page1 = videoPage(v, id)!;
+  assert.match(page1, /Bước tiếp: xem \d+ cảnh bên dưới/);
+  assert.doesNotMatch(page1, /id="approve"/, "no approval form while scenes are unseen");
+  const res = await fetch(`${base}/video/${id}/okall`, { method: "POST", redirect: "manual" });
+  assert.equal(res.status, 303);
+  await v.settle(id);
+  assert.deepEqual(v.unchecked(id), []);
+  assert.ok(!v.stale(id, "mouth"), "rendered");
+  const page2 = videoPage(v, id)!;
+  assert.match(page2, /Bước tiếp: xem video rồi duyệt/);
+  assert.match(page2, /id="approve"/);
+  assert.match(page2, /<details class="vmore">/, "version, cover and Threads are tucked away");
 });
 
 test("a step that dies on the network runs once more; a real failure does not", async () => {

@@ -7,6 +7,7 @@
  * Off Windows (tests, the cloud, sample data) the plan file stands in for the tasks.
  */
 
+import { phoneBox } from "./phone.js";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -196,24 +197,40 @@ export interface DashClip {
   cover?: string;
 }
 
-export function schedulePage(s: Pick<State, "episodes" | "clipFiles">, l: Listing, ok?: string, err?: string, dash: DashClip[] = []): string {
+/** The clip's own files on this computer, served by the dashboard (video and TikTok cover), when there. */
+export type ClipLocal = (id: string) => { video?: string; cover?: string };
+
+/** One post opened up: the video to watch, the whole caption to copy, and the files to save. */
+function postDetail(s: Pick<State, "clipFiles">, id: string, files: ClipLocal): string {
+  const c = s.clipFiles.get(id);
+  const f = files(id);
+  const video = f.video ?? c?.video;
+  const dl = (u: string) => `${u}${u.includes("?") ? "&" : "?"}dl=1`;
+  return `<details class="slot-more"><summary>${esc(t("Xem bài"))}</summary><div class="slot-detail">
+${video ? `<video controls preload="metadata" playsinline src="${esc(video)}"></video>` : `<span class="ph"></span>`}
+<div class="slot-detail-body"><label class="small">${esc(t("Chú thích sẽ đăng"))}<textarea readonly rows="5">${esc(c?.caption ?? "")}</textarea></label>
+<div class="vactions">${f.video ? `<a class="btn" href="${esc(dl(f.video))}">⬇ ${esc(t("Tải video"))}</a>` : video ? `<a class="btn" href="${esc(video)}" target="_blank" rel="noopener">⬇ ${esc(t("Tải video"))}</a>` : ""}${f.cover ? `<a class="btn" href="${esc(dl(f.cover))}">⬇ ${esc(t("Tải ảnh bìa"))}</a>` : ""}${phoneBox(id)}</div>
+${f.cover ? `<img class="slot-bia" src="${esc(f.cover)}?w=320" alt="${esc(t("Ảnh bìa TikTok"))}" loading="lazy">` : ""}</div></div></details>`;
+}
+
+export function schedulePage(s: Pick<State, "episodes" | "clipFiles">, l: Listing, ok?: string, err?: string, dash: DashClip[] = [], files: ClipLocal = () => ({})): string {
   const waiting = waitingClips(s, l.slots);
   const days = new Map<string, Slot[]>();
   for (const x of l.slots) days.set(planTime(x.at).slice(0, 10), [...(days.get(planTime(x.at).slice(0, 10)) ?? []), x]);
   const row = (x: Slot) => `<li class="slot"><span class="slot-cover">${cover(s, x.id)}</span><div class="slot-body"><b>${esc(clipLabel(x.id))}</b><small class="muted">${caption(s, x.id)}</small></div>
 <label class="slot-time"><span class="sr">${esc(t("Giờ đăng"))}</span><input type="datetime-local" name="at:${esc(x.id)}" value="${local(x.at)}"></label>
-<label class="slot-drop"><input type="checkbox" name="drop" value="${esc(x.id)}"> ${esc(t("Bỏ"))}</label></li>`;
+<label class="slot-drop"><input type="checkbox" name="drop" value="${esc(x.id)}"> ${esc(t("Bỏ"))}</label>${postDetail(s, x.id, files)}</li>`;
   const list = l.slots.length
     ? [...days.entries()].map(([d, xs]) => `<h3 class="day">${esc(dayName(xs[0].at))} <span class="muted small">${esc(t("{n} bài", { n: xs.length }))}</span></h3><ul class="slots">${xs.map(row).join("")}</ul>`).join("")
     : `<div class="empty"><p>${esc(t("Chưa có bài nào hẹn giờ."))}</p></div>`;
   const wait = waiting.length
     ? `<section class="card"><h2>${esc(t("Đã duyệt, chưa xếp lịch"))} <span class="muted">${waiting.length}</span></h2><ul class="slots">${waiting
-        .map((id) => `<li class="slot"><span class="slot-cover">${cover(s, id)}</span><div class="slot-body"><b>${esc(clipLabel(id))}</b><small class="muted">${caption(s, id)}</small></div><label class="slot-drop"><input type="checkbox" name="add" value="${esc(id)}" checked> ${esc(t("Xếp vào lịch"))}</label></li>`)
+        .map((id) => `<li class="slot"><span class="slot-cover">${cover(s, id)}</span><div class="slot-body"><b>${esc(clipLabel(id))}</b><small class="muted">${caption(s, id)}</small></div><label class="slot-drop"><input type="checkbox" name="add" value="${esc(id)}" checked> ${esc(t("Xếp vào lịch"))}</label>${postDetail(s, id, files)}</li>`)
         .join("")}</ul></section>`
     : "";
   const stock = l.slots.length ? t("Còn {n} bài trong lịch, đủ tới {d}.", { n: l.slots.length, d: when(l.slots[l.slots.length - 1].at) }) : "";
   const warnUnknown = l.unknown.length ? `<div class="warn small">${esc(t("Có {n} lịch không đọc được trên máy, nên trang này chỉ xem, không sửa được.", { n: l.unknown.length }))}</div>` : "";
-  const body = `<header class="page-head"><div><h1>${esc(t("Lịch đăng"))}</h1><p class="muted">${esc(t("Máy tự đăng đúng giờ lên Facebook, Instagram, Threads và gửi bản nháp TikTok. Cho máy ngủ được, chỉ đừng tắt hẳn."))}</p></div></header>
+  const body = `<header class="page-head"><div><h1>${esc(t("Lịch đăng"))}</h1><p class="muted">${esc(t("Máy tự đăng đúng giờ lên Facebook, Instagram, Threads và gửi bản nháp TikTok. Cho máy ngủ được, chỉ đừng tắt hẳn."))}</p></div>${phoneBox(undefined, t("Trang tải trên điện thoại"))}</header>
 ${flash(ok, err ?? l.error)}${warnUnknown}
 ${stock ? `<p class="notice">${esc(stock)}</p>` : ""}
 <form method="post" action="/schedule" class="schedule">

@@ -21,6 +21,7 @@
  * dashboard's own notes), plan.json, words.json, shots/ and the rendered mp4s.
  */
 
+import { phoneBox } from "./phone.js";
 import { spawn, spawnSync } from "node:child_process";
 import { appendFileSync, copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { basename, extname, join } from "node:path";
@@ -1419,7 +1420,7 @@ export function videoPage(v: Videos, id: string, err?: string, ok?: string): str
   const publish = m.posted
     ? `<div class="notice ok-note">${esc(t("Đã đăng lúc {at}", { at: when(m.posted.at) }))}</div><pre class="small">${esc(m.posted.log)}</pre>`
     : approved && !busy
-      ? `<div class="vactions">${button(`/video/${id}/publish`, esc(t("Đăng ngay")), "btn on")}${m.when ? `<span class="tag due">${esc(t("Hẹn đăng {at}", { at: when(m.when) }))}</span>` : ""}</div>`
+      ? `<div class="vactions">${button(`/video/${id}/publish`, esc(t("Đăng ngay")), "btn on")}${phoneBox(v.epId(id))}${m.when ? `<span class="tag due">${esc(t("Hẹn đăng {at}", { at: when(m.when) }))}</span>` : ""}</div>`
       : "";
   const approve = `<section class="card" id="approve"><h2>${esc(t("Duyệt và đăng"))}</h2>${left.length ? `<div class="warn small">${esc(t("Còn {n} cảnh chưa soát: {list}.", { n: left.length, list: left.join(", ") }))}</div>` : ""}
 <form class="form" method="post" action="/video/${esc(id)}/approve">

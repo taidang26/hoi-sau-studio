@@ -85,3 +85,14 @@ test("house rules: add, dedupe, prompt block, remove", () => {
   removeHouseRule(r.id, file);
   assert.deepEqual(loadHouseRules(file).map((x) => x.area), ["art"]);
 });
+
+test("one site address: /tai links follow MEDIA_BASE_URL, and the QR code is plain SVG", async () => {
+  const { siteUrl, taiUrl, qrSvg, mediaBaseUrl, SITE_DEFAULT } = await import("./phone.js");
+  assert.equal(siteUrl({}), SITE_DEFAULT);
+  assert.equal(mediaBaseUrl({}), `${SITE_DEFAULT}/media/`);
+  assert.equal(siteUrl({ MEDIA_BASE_URL: "https://x.example/media" }), "https://x.example");
+  assert.equal(taiUrl("v-abc", {}), `${SITE_DEFAULT}/tai#v-abc`);
+  const svg = qrSvg(taiUrl("v-abc", {}));
+  assert.match(svg, /^<svg class="qr"[^>]+viewBox="0 0 \d+ \d+"/);
+  assert.doesNotMatch(svg, /<script/);
+});

@@ -617,7 +617,7 @@ export const EN: Record<string, string> = {
   "TikTok chưa cho phép: {m}": "TikTok did not allow it: {m}",
   "Đã kết nối TikTok {name}, nhưng thiếu quyền {m}. Bấm Kết nối lại và cho phép hết.": "Connected TikTok {name}, but {m} was not allowed. Click Reconnect and allow everything.",
   "Đã kết nối TikTok {name}.": "Connected TikTok {name}.",
-  "Chỉ gửi được video trên trang Hồi Sau (link https://hoisau.web.app/media/…).": "Only videos on the Hồi Sau site can be sent (https://hoisau.web.app/media/… links).",
+  "Chỉ gửi được video trên trang Hồi Sau (link {site}/media/…).": "Only videos on the Hồi Sau site can be sent (links {site}/media/…).",
   "Đã gửi vào hộp nháp TikTok. Mở app TikTok, thêm chú thích và nhạc rồi đăng.": "Sent to the TikTok inbox. Open TikTok, add the caption and sound, then post.",
   "Tập này chưa có video.": "This episode has no video yet.",
   "Video này đã ở hộp nháp TikTok rồi.": "This video is already in the TikTok inbox.",
@@ -952,4 +952,8 @@ export const EN: Record<string, string> = {
   "Mấy clip này do dashboard tự đăng đúng giờ, nên để dashboard mở (máy ngủ được, đừng tắt).": "The dashboard posts these on time itself, so keep it open (the computer may sleep, just don't shut it down).",
   "Bỏ hẹn": "Unschedule",
   "Đã đổi giờ {n} clip làm trong dashboard.": "Changed the time of {n} dashboard clips.",
+  "Mã QR": "QR code",
+  "Mở trên điện thoại": "Open on your phone",
+  "Trang tải trên điện thoại": "Phone download page",
+  "Quét bằng camera điện thoại: lưu video, ảnh bìa và chép caption để đăng TikTok.": "Scan with the phone camera to save the video and cover and copy the caption for TikTok.",
 };

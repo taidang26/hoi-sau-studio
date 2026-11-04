@@ -786,3 +786,11 @@ table.perf th.num, table.perf td.num { text-align: right; }
 
 /* Sửa bằng lời on a comic: a small copy of the panel next to each proposed fix */
 .fixthumb { width: 64px; height: 80px; object-fit: cover; border-radius: 10px; flex: none; }
+
+/* Mở trên điện thoại: a QR code that opens the clip on the site's /tai page */
+.phone-box { display: inline-block; position: relative; }
+.phone-box > summary { list-style: none; cursor: pointer; }
+.phone-box > summary::-webkit-details-marker { display: none; }
+.phone-pop { position: absolute; z-index: 20; margin-top: 8px; right: 0; width: 220px; padding: 14px; background: var(--card, #fff); border: 1px solid var(--hairline); border-radius: 16px; box-shadow: 0 12px 30px rgba(0,0,0,.12); display: grid; gap: 8px; justify-items: center; text-align: center; }
+.phone-pop .qr { border-radius: 8px; }
+.phone-pop a { word-break: break-all; }

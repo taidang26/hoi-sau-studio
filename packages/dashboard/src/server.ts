@@ -3,6 +3,7 @@
  * whatever the channel or studio CLIs just wrote shows up on refresh.
  */
 
+import { siteUrl } from "./phone.js";
 import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { extname, join, resolve, sep } from "node:path";
@@ -447,7 +448,7 @@ export function handler(opts: DashboardOptions) {
     if (ttd && acc && !opts.demo) {
       try {
         const link = ((await readForm(req)).get("url") ?? "").trim();
-        if (!isOwnMedia(link)) throw new Error(t("Chỉ gửi được video trên trang Hồi Sau (link https://hoisau.web.app/media/…)."));
+        if (!isOwnMedia(link)) throw new Error(t("Chỉ gửi được video trên trang Hồi Sau (link {site}/media/…).", { site: siteUrl() }));
         await acc.sendTikTokDraft(ttd[1], { url: link });
         return redirect(res, withNote(`/channels/${ttd[1]}`, "ok", t("Đã gửi vào hộp nháp TikTok. Mở app TikTok, thêm chú thích và nhạc rồi đăng.")));
       } catch (e) {
@@ -998,7 +999,8 @@ function isOwnMedia(link: string): boolean {
   } catch {
     return false;
   }
-  const own = new Set(["hoisau.web.app", "hoisau.dangtrantai.com"]);
+  // The same Firebase site answers on all three names.
+  const own = new Set([new URL(siteUrl()).host, "hoisau.web.app", "hoisau.firebaseapp.com", "hoisau.dangtrantai.com"]);
   try {
     if (process.env.MEDIA_BASE_URL) own.add(new URL(process.env.MEDIA_BASE_URL).host);
   } catch {

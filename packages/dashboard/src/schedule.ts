@@ -7,6 +7,7 @@
  * Off Windows (tests, the cloud, sample data) the plan file stands in for the tasks.
  */
 
+import { phoneBox } from "./phone.js";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -213,7 +214,7 @@ export function schedulePage(s: Pick<State, "episodes" | "clipFiles">, l: Listin
     : "";
   const stock = l.slots.length ? t("Còn {n} bài trong lịch, đủ tới {d}.", { n: l.slots.length, d: when(l.slots[l.slots.length - 1].at) }) : "";
   const warnUnknown = l.unknown.length ? `<div class="warn small">${esc(t("Có {n} lịch không đọc được trên máy, nên trang này chỉ xem, không sửa được.", { n: l.unknown.length }))}</div>` : "";
-  const body = `<header class="page-head"><div><h1>${esc(t("Lịch đăng"))}</h1><p class="muted">${esc(t("Máy tự đăng đúng giờ lên Facebook, Instagram, Threads và gửi bản nháp TikTok. Cho máy ngủ được, chỉ đừng tắt hẳn."))}</p></div></header>
+  const body = `<header class="page-head"><div><h1>${esc(t("Lịch đăng"))}</h1><p class="muted">${esc(t("Máy tự đăng đúng giờ lên Facebook, Instagram, Threads và gửi bản nháp TikTok. Cho máy ngủ được, chỉ đừng tắt hẳn."))}</p></div>${phoneBox(undefined, t("Trang tải trên điện thoại"))}</header>
 ${flash(ok, err ?? l.error)}${warnUnknown}
 ${stock ? `<p class="notice">${esc(stock)}</p>` : ""}
 <form method="post" action="/schedule" class="schedule">

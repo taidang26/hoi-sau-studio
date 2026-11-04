@@ -8,7 +8,7 @@ Meta Global AI Developer Hackathon 2026 · Indie Developer track · *Build for Y
 
 | | |
 | --- | --- |
-| Demo video | *link added on 4 Nov* |
+| Demo video | [youtu.be/WrNiN2R5GcI](https://youtu.be/WrNiN2R5GcI) (2:34; the description has timestamps and the Meta model behind each scene) |
 | Live series | [Facebook](https://www.facebook.com/profile.php?id=61595845893958) · [Instagram @hoisau.comic](https://www.instagram.com/hoisau.comic/) · [Threads @hoisau.comic](https://www.threads.net/@hoisau.comic) · [TikTok @hoisau.comic](https://www.tiktok.com/@hoisau.comic) · [X @hoisaucomic](https://x.com/hoisaucomic) · episodes at [hoisau.dangtrantai.com](https://hoisau.dangtrantai.com) |
 | How it is built | [docs/architecture.md](docs/architecture.md) · [docs/studio-pipeline.md](docs/studio-pipeline.md) |
 | Where each Meta tool is used | [docs/meta-tools.md](docs/meta-tools.md) |
@@ -99,7 +99,7 @@ npm run channel -- publish post.json --brand poppy instagram   # one brand and p
 
 Every call by step, with its command and file: [docs/meta-tools.md](docs/meta-tools.md).
 
-**Meta models only.** Every model the product calls is Meta's: the Muse models and SAM 3.1 through the Meta Model API, and Meta open weights (Muse Spark Open, MMS-1B, MMS-TTS, SeamlessM4T v2, MusicGen) on our own machine or on Baseten/Modal. No third-party AI service is used. Tools that are not models (ffmpeg, open-licensed fonts) are listed in [docs/meta-tools.md](docs/meta-tools.md).
+**Meta models only.** Every model the product calls is Meta's: the Muse models and SAM 3.1 through the Meta Model API, and Meta open weights (Muse Spark Open, MMS-1B, MMS-TTS, SeamlessM4T v2, MusicGen) on our own machine or on Baseten/Modal. No third-party AI service is used in the product. The one exception is outside the product: the English voice-over of the demo video was made with ElevenLabs. Tools that are not models (ffmpeg, open-licensed fonts) are listed in [docs/meta-tools.md](docs/meta-tools.md).
 
 ### Vietnamese text layer
 

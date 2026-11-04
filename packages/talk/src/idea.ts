@@ -12,7 +12,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { extname, join } from "node:path";
 import sharp from "sharp";
-import { S, type ChatMessage, type StudioContext } from "@hoi-sau/studio";
+import { houseRulesPrompt, S, type ChatMessage, type StudioContext } from "@hoi-sau/studio";
 import { MEME_TEXT_MAX } from "./meme.js";
 
 export type IdeaKind = "meme" | "comic";
@@ -92,6 +92,7 @@ export async function readIdea(ctx: StudioContext, text: string, images: string[
     "- Never credit or name the page the picture came from.",
     "- Fill both meme and comic so the owner can switch; put your recommendation in kind.",
     want ? `He asked for kind=${want}.` : "",
+    houseRulesPrompt(["caption", "art", "dialogue", "video"]),
   ].filter(Boolean).join("\n");
   const r = await ctx.spark.json<IdeaPlan>("idea_plan", PLAN, [{ role: "user", content: [{ type: "text", text: prompt }, ...pics] }]);
   if (want) r.kind = want;

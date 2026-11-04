@@ -170,6 +170,45 @@ export interface State {
   lessonsAt?: string;
   /** Days in a row, ending today or yesterday (Hanoi), with at least one published post. */
   streak: number;
+  /** Approved clips (data/posts/<id>.json) from every data folder: caption, video and the Threads still. */
+  clipFiles: Map<string, ClipFile>;
+}
+
+export interface ClipFile {
+  id: string;
+  caption: string;
+  /** Public URL of the vertical video. */
+  video?: string;
+  /** Public URL of the still posted to Threads; doubles as the clip's cover. */
+  still?: string;
+}
+
+/** Every approved clip post file, keyed by the clip id (the "-still" file folds into its clip). */
+export function readClipFiles(paths: Pick<Paths, "dataDir" | "extraDataDirs">): Map<string, ClipFile> {
+  const out = new Map<string, ClipFile>();
+  for (const dir of [...(paths.extraDataDirs ?? []), paths.dataDir]) {
+    const posts = join(dir, "posts");
+    if (!existsSync(posts)) continue;
+    for (const f of readdirSync(posts).filter((x) => x.endsWith(".json")).sort()) {
+      let p: { episodeId?: string; caption?: string; mediaUrls?: string[]; format?: string };
+      try {
+        p = JSON.parse(readFileSync(join(posts, f), "utf8"));
+      } catch {
+        continue;
+      }
+      const file = f.slice(0, -5);
+      const id = file.replace(/-still$/, "");
+      const c = out.get(id) ?? { id, caption: "" };
+      const url = p.mediaUrls?.[0];
+      if (file.endsWith("-still")) c.still = url;
+      else {
+        c.video = url;
+        c.caption = p.caption ?? c.caption;
+      }
+      out.set(id, c);
+    }
+  }
+  return out;
 }
 
 export const brandArtDir = (paths: Paths) => paths.brandArtDir ?? join(paths.runsDir, "..", "brand-art");
@@ -281,7 +320,7 @@ export function loadState(paths: Paths): State {
       art: artOf(brand.id),
     };
   });
-  return { brands, comics: loadComics(paths.episodesDir), characters, episodes, comments, directions, inbox, byPost, runs, stats, metrics, lessons: memory.lessons, lessonsAt: memory.lessonsAt, streak: postingStreak(episodes) };
+  return { brands, comics: loadComics(paths.episodesDir), characters, episodes, comments, directions, inbox, byPost, runs, stats, metrics, lessons: memory.lessons, lessonsAt: memory.lessonsAt, streak: postingStreak(episodes), clipFiles: readClipFiles(paths) };
 }
 
 /** Pick or unpick a comment as the next direction. Returns the new list. */

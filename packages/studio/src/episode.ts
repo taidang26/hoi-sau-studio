@@ -16,6 +16,7 @@
  * that `channel publish` checks.
  */
 
+import { houseRulesPrompt } from "./house-rules.js";
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -356,6 +357,7 @@ function writerMessages(ctx: StudioContext, ep: EpisodeSpec, task: string, earli
         namesRule(ctx),
         BANNED_RULE(safetyOf(ctx)),
         AUDIENCE_DATA_RULE,
+        houseRulesPrompt(["dialogue", "art", "caption"]),
       ]
         .filter(Boolean)
         .join("\n\n"),

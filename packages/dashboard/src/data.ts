@@ -29,6 +29,25 @@ export interface Paths {
   brandsFile?: string;
   /** Where to look up the .env names in channels.yaml. Only whether each is set is shown. */
   env?: Record<string, string | undefined>;
+  /**
+   * Other data folders whose publish journal and pulled numbers are shown too: the short clips go out
+   * from a second checkout (hoi-sau-story), and without it the dashboard never saw them.
+   */
+  extraDataDirs?: string[];
+}
+
+/** One post's numbers as `channel insights` writes them (a superset of the coach's PostInsights). */
+export interface Metrics {
+  postId: string;
+  platform: Platform;
+  reach?: number;
+  reactions?: number;
+  comments?: number;
+  shares?: number;
+  saves?: number;
+  views?: number;
+  fetchedAt?: string;
+  missing?: string[];
 }
 
 export interface Episode {
@@ -145,6 +164,8 @@ export interface State {
   runs: Run[];
   /** Published episodes scored by the story coach, best first. */
   stats: EpisodeStats[];
+  /** Numbers per post as last pulled, from every data folder. */
+  metrics: Metrics[];
   lessons: Lesson[];
   lessonsAt?: string;
   /** Days in a row, ending today or yesterday (Hanoi), with at least one published post. */
@@ -196,8 +217,25 @@ export function parseJournal(journal: Record<string, JournalEntry>, brands: Bran
 /** The profile as the page shows it: the Vietnamese name in Vietnamese, the global name in English. */
 const shownProfile = (p: Profile): Profile => (lang() === "vi" ? { ...p, name: nameVi(p) } : p);
 
+/** Published posts from the dashboard's own data folder and the extra ones; its own wins on the same key. */
+export function readJournals(paths: Paths): Record<string, JournalEntry> {
+  const extra = (paths.extraDataDirs ?? []).map((d) => readJson<Record<string, JournalEntry>>(join(d, "publish-journal.json"), {}));
+  return Object.assign({}, ...extra, readJson<Record<string, JournalEntry>>(join(paths.dataDir, "publish-journal.json"), {}));
+}
+
+/** Pulled numbers from every data folder; the newest pull of a post wins. */
+export function readMetrics(paths: Paths): Metrics[] {
+  const byId = new Map<string, Metrics>();
+  for (const dir of [...(paths.extraDataDirs ?? []), paths.dataDir])
+    for (const m of readJson<Metrics[]>(join(dir, "insights.json"), [])) {
+      const had = byId.get(m.postId);
+      if (!had || (m.fetchedAt ?? "") >= (had.fetchedAt ?? "")) byId.set(m.postId, m);
+    }
+  return [...byId.values()];
+}
+
 export function loadState(paths: Paths): State {
-  const journal = readJson<Record<string, JournalEntry>>(join(paths.dataDir, "publish-journal.json"), {});
+  const journal = readJournals(paths);
   let brandList: Brand[] = [];
   try {
     brandList = loadBrands(paths.brandsFile);
@@ -221,7 +259,8 @@ export function loadState(paths: Paths): State {
   });
   const runs = readJson<Run[]>(join(paths.dataDir, "pipeline", "runs.json"), []).sort((a, b) => b.startedAt.localeCompare(a.startedAt));
   const memory = { ...emptyMemory(), ...readJson<Partial<StoryMemory>>(memoryFile(paths.seriesDir ?? SERIES_DIR), {}) };
-  const insights = readJson<PostInsights[]>(join(paths.dataDir, "insights.json"), []);
+  const metrics = readMetrics(paths);
+  const insights: PostInsights[] = metrics;
   const stats = measureEpisodes({ journal, comments, insights, memory });
   const env = paths.env ?? process.env;
   const artDir = brandArtDir(paths);
@@ -242,7 +281,7 @@ export function loadState(paths: Paths): State {
       art: artOf(brand.id),
     };
   });
-  return { brands, comics: loadComics(paths.episodesDir), characters, episodes, comments, directions, inbox, byPost, runs, stats, lessons: memory.lessons, lessonsAt: memory.lessonsAt, streak: postingStreak(episodes) };
+  return { brands, comics: loadComics(paths.episodesDir), characters, episodes, comments, directions, inbox, byPost, runs, stats, metrics, lessons: memory.lessons, lessonsAt: memory.lessonsAt, streak: postingStreak(episodes) };
 }
 
 /** Pick or unpick a comment as the next direction. Returns the new list. */

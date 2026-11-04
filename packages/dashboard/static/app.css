@@ -723,3 +723,15 @@ details.vmanual > summary { cursor: pointer; color: var(--muted); font-size: 14p
 .ideapics img { max-width: 220px; max-height: 280px; border-radius: 10px; object-fit: contain; background: #fff; }
 .ideatext { white-space: pre-wrap; font-size: 15px; }
 .idealist { margin: 10px 0 0; padding-left: 18px; }
+
+/* Hiệu suất: views by posting hour (one series, so one hue) and the per-clip table. */
+.hour-chart { width: 100%; height: auto; display: block; margin-top: 8px; }
+.hour-chart .grid { stroke: var(--hairline); stroke-width: 1; }
+.hour-chart .base { stroke: rgba(70, 50, 90, 0.28); stroke-width: 1; }
+.hour-chart .axis { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.hour-chart .val { fill: var(--ink); font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.hour-chart .bar path { fill: var(--accent-2); }
+.hour-chart .bar .hit { fill: transparent; }
+.hour-chart .bar:hover path { fill: #5446e8; }
+.hour-chart .bar:hover .hit { fill: rgba(108, 92, 255, 0.06); }
+table.perf th.num, table.perf td.num { text-align: right; }

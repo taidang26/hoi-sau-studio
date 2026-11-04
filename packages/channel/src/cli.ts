@@ -29,6 +29,7 @@ import {
   exchangeLongLivedUserToken,
   exchangeThreadsLongLived,
   facebookInsights,
+  facebookReelInsights,
   fetchConversations,
   fetchFacebookComments,
   fetchInstagramComments,
@@ -567,12 +568,18 @@ async function pullInsights() {
 
   const fresh: PostMetrics[] = [];
   const gaps = new Map<string, number>();
-  for (const [key, post] of await journal().publishedByKey()) {
+  // Posts another checkout made (the short clips go out from a second folder) are measured too.
+  const extra = (process.env.CHANNEL_EXTRA_DATA_DIRS ?? "").split(";").map((d) => d.trim()).filter(Boolean);
+  const posts = new Map(await journal().publishedByKey());
+  for (const dir of extra) for (const [key, post] of await new FileJournal(journalPath(dir)).publishedByKey()) if (!posts.has(key)) posts.set(key, post);
+  for (const [key, post] of posts) {
     const { format } = parseJournalKey(key);
     const t = targetsOf(findBrand(brands(), post.brand ?? MAIN_BRAND));
     const numbers =
       post.platform === "facebook"
-        ? await facebookInsights(t.page, post.postId, reachMetrics)
+        ? format === "reels-9x16"
+          ? await facebookReelInsights(t.page, post.postId)
+          : await facebookInsights(t.page, post.postId, reachMetrics)
         : post.platform === "instagram"
           ? await instagramInsights(t.page, post.postId, format === "reels-9x16")
           : post.platform === "threads" && t.threads

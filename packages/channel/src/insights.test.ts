@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { DEMO } from "./demo.js";
 import { createMockGraph, graphError } from "./mock.js";
-import { GraphClient, GraphError, facebookInsights, instagramInsights, mergeInsights, threadsInsights, type PostMetrics } from "./index.js";
+import { GraphClient, GraphError, facebookInsights, facebookReelInsights, instagramInsights, mergeInsights, threadsInsights, type PostMetrics } from "./index.js";
 import { demoTargets } from "./testkit.js";
 
 const post = `${DEMO.pageId}_42`;
@@ -62,4 +62,11 @@ test("merge replaces rows by post and keeps the others", () => {
   const row = (postId: string, shares: number): PostMetrics => ({ postId, platform: "facebook", shares, fetchedAt: "2026-10-28T00:00:00Z" });
   const merged = mergeInsights([row("b", 1), row("a", 1)], [row("b", 5), row("c", 2)]);
   assert.deepEqual(merged.map((r) => [r.postId, r.shares]), [["a", 1], ["b", 5], ["c", 2]]);
+});
+
+test("Facebook Reels: plays, reach and likes/comments/shares come from video insights", async () => {
+  const { mock, targets } = demoTargets();
+  const got = await facebookReelInsights(targets.page, "9001");
+  assert.deepEqual(got, { missing: [], views: 3400, reach: 2600, reactions: 120, comments: 14, shares: 9 });
+  assert.ok(mock.calls.every((c) => c.path.endsWith("/video_insights")));
 });

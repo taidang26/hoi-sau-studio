@@ -214,6 +214,11 @@ export function demoGraph(opts: { containerPolls?: number } = {}) {
 
     // Insights per post
     "GET :post/insights": (c, a) => insights(c, a.post),
+    "GET :post/video_insights": (c) => {
+      const table: Record<string, unknown> = { blue_reels_play_count: 3400, post_impressions_unique: 2600, post_video_social_actions: { like: 120, comment: 14, share: 9 } };
+      const m = c.params.metric ?? "";
+      return m in table ? { data: [{ name: m, period: "lifetime", values: [{ value: table[m] }] }] } : graphError(400, 100, `(#100) Invalid metric: ${m}`);
+    },
 
     // Inbox
     "GET :page/conversations": (c) => ({ data: conversations(c.params.platform) }),

@@ -8,7 +8,7 @@
  * dashboard can post to the Pages and spend API credits.
  */
 
-import { cpSync, existsSync, readFileSync } from "node:fs";
+import { cpSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { addCharacterBrand, BRANDS_FILE, DEFAULT_GRAPH_VERSION, GraphClient, sendReply } from "@hoi-sau/channel";
@@ -21,6 +21,7 @@ import { t } from "./i18n.js";
 import { seedLessons, writeDemoData } from "./seed.js";
 import { Studio } from "./studio.js";
 import { mockExec, nodeExec, Videos } from "./video.js";
+import { Insights } from "./performance.js";
 import { defaultPaths, startDashboard } from "./server.js";
 
 const ROOT = fileURLToPath(new URL("../../..", import.meta.url));
@@ -149,6 +150,25 @@ if (!demo && !password && !["127.0.0.1", "localhost", "::1"].includes(host)) {
   console.error(`Refusing to serve real data on ${host} without DASHBOARD_PASSWORD.`);
   process.exit(1);
 }
+// The short clips go out from the hoi-sau-story checkout next to this one: its journal and numbers are shown too.
+if (!demo) {
+  const story = join(ROOT, "..", "hoi-sau-story", "data");
+  paths.extraDataDirs = process.env.EXTRA_DATA_DIRS ? process.env.EXTRA_DATA_DIRS.split(";").filter(Boolean) : existsSync(story) ? [story] : [];
+}
+// "Cập nhật số liệu" on Hiệu suất: channel insights over every journal; the demo only touches the pull time.
+const insights = new Insights({
+  exec: demo
+    ? async () => {
+        const file = join(paths.dataDir, "insights.json");
+        const rows = JSON.parse(readFileSync(file, "utf8")) as { fetchedAt?: string }[];
+        writeFileSync(file, JSON.stringify(rows.map((r) => ({ ...r, fetchedAt: new Date().toISOString() })), null, 2) + "\n");
+        return "";
+      }
+    : nodeExec(ROOT),
+  script: "packages/channel/dist/cli.js",
+  env: { CHANNEL_DATA_DIR: paths.dataDir, CHANNEL_EXTRA_DATA_DIRS: (paths.extraDataDirs ?? []).join(";") },
+});
+
 // Real data only: what is not in git gets copied every 6 hours (Settings shows it and can run it now).
 const backup = demo
   ? undefined
@@ -168,6 +188,7 @@ await startDashboard(
     accounts,
     research,
     videos,
+    insights,
     demo,
     banner: demo ? "Đang xem dữ liệu mẫu. Bài đăng, bình luận và tin nhắn ở đây là bịa, chỉ để thử giao diện." : undefined,
     channel: () => ({

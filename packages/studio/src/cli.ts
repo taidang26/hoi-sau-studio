@@ -224,7 +224,7 @@ async function main(argv: string[]): Promise<void> {
     console.log(`${file}: ${items.length} posts. Deploy with: npm run site -- deploy`);
     // The home page's "latest" strip: the same files, only what is already live.
     const extra = (process.env.CHANNEL_EXTRA_DATA_DIRS ?? "").split(";").map((d) => d.trim()).filter(Boolean);
-    const home = writeHomeFeed(join(ROOT, "site", "public"), items, [process.env.CHANNEL_DATA_DIR || join(ROOT, "data"), ...extra]);
+    const home = await writeHomeFeed(join(ROOT, "site", "public"), items, [process.env.CHANNEL_DATA_DIR || join(ROOT, "data"), ...extra]);
     console.log(`${home.file}: ${home.feed.length} published posts for the home page.`);
     return;
   }

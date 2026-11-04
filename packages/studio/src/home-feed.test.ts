@@ -24,3 +24,29 @@ test("home feed: only approved posts that went live, newest first, with each pla
   assert.equal(feed[1].image, "/media/dl/ep-7-01.jpg");
   assert.equal(feed[1].count, 2);
 });
+
+test("home feed: writes a small 3:4 picture per card and points the card at it", async () => {
+  const { mkdtempSync, rmSync, existsSync, readFileSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const sharp = (await import("sharp")).default;
+  const { writeHomeFeed } = await import("./home-feed.js");
+  const root = mkdtempSync(join(tmpdir(), "hoisau-home-"));
+  try {
+    const cover = join(root, "cover.jpg");
+    await sharp({ create: { width: 1080, height: 1920, channels: 3, background: "#fc0" } }).jpeg().toFile(cover);
+    const data = join(root, "data");
+    (await import("node:fs")).mkdirSync(data);
+    (await import("node:fs")).writeFileSync(join(data, "publish-journal.json"), JSON.stringify({
+      "clip-1:instagram:reels-9x16": { state: "published", platform: "instagram", postId: "1", permalink: "https://ig/1", publishedAt: "2026-11-03T05:00:00Z" },
+    }));
+    const { feed } = await writeHomeFeed(root, [item("clip-1", "video", { cover })], [data]);
+    assert.equal(feed[0].image, "/media/home/clip-1.webp");
+    const meta = await sharp(join(root, "media", "home", "clip-1.webp")).metadata();
+    assert.deepEqual([meta.width, meta.height], [432, 576]);
+    assert.ok(existsSync(join(root, "feed.json")));
+    assert.equal(JSON.parse(readFileSync(join(root, "feed.json"), "utf8")).items.length, 1);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

@@ -5,8 +5,9 @@
  * shows up early. Written next to /tai before every site deploy.
  */
 
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import sharp from "sharp";
 import { journalPath, parseJournalKey, type JournalEntry, type Platform } from "@hoi-sau/channel";
 import { taiUrls, type TaiItem } from "./tai.js";
 
@@ -70,8 +71,28 @@ export function homeFeed(items: TaiItem[], journal: [string, JournalEntry][], li
   return feed.sort((a, b) => b.publishedAt.localeCompare(a.publishedAt)).slice(0, limit);
 }
 
-export function writeHomeFeed(site: string, items: TaiItem[], dataDirs: string[]): { file: string; feed: FeedItem[] } {
+/** Where each card's small picture is written, under the site folder. */
+export const thumbUrl = (id: string) => `/media/home/${id}.webp`;
+
+/**
+ * Writes feed.json, plus a small 3:4 WebP per card (the middle of a 9:16 cover
+ * or the first comic page), so the home page does not pull full-size covers.
+ */
+export async function writeHomeFeed(site: string, items: TaiItem[], dataDirs: string[]): Promise<{ file: string; feed: FeedItem[] }> {
   const feed = homeFeed(items, readJournals(dataDirs));
+  const byId = new Map(items.map((i) => [i.id, i]));
+  mkdirSync(join(site, "media", "home"), { recursive: true });
+  for (const f of feed) {
+    const item = byId.get(f.id)!;
+    const src = item.cover ?? (item.kind === "photos" ? item.media[0] : undefined);
+    if (!src) continue;
+    try {
+      await sharp(src).resize(432, 576, { fit: "cover", position: "centre" }).webp({ quality: 78 }).toFile(join(site, thumbUrl(f.id)));
+      f.image = thumbUrl(f.id);
+    } catch {
+      /* keep the full-size picture if the thumbnail cannot be made */
+    }
+  }
   const file = join(site, "feed.json");
   writeFileSync(file, JSON.stringify({ updatedAt: new Date().toISOString(), items: feed }, null, 1));
   return { file, feed };

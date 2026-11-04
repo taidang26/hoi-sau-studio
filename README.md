@@ -101,7 +101,7 @@ Every call by step, with its command and file: [docs/meta-tools.md](docs/meta-to
 
 Image models distort Vietnamese diacritics, so Muse Image draws panels **with no text** and the dialogue (and, if needed, the bubble itself) is composited on top as an SVG layer with an open-licensed font, Be Vietnam Pro. Lines break only between syllables and are fitted to the bubble shape with the font's real metrics. Editing a line never requires redrawing a panel, and an English edition is a text swap. See [packages/svg-text](packages/svg-text).
 
-![Sample panel lettered by svg-text](docs/images/svg-text-demo.png)
+![The same Muse Image panel: left, text drawn by the image model; right, the svg-text layer](docs/images/lettering-before-after.png)
 
 ## Repository layout
 
@@ -136,7 +136,7 @@ Six lesser-known Vietnamese animals share one office. Each has a want, a fear, a
 
 Each character also has a placeholder portrait (`characters/<slug>/portrait.svg`, flat 2D drawn by hand for this repo). Offline runs draw their panels and sheets from these portraits, and the dashboard shows them until a Muse Image model sheet is locked. Real runs never use them.
 
-![Dashboard overview](docs/images/overview.png)
+![The cast as locked by Muse Image model sheets](docs/images/cast.jpg)
 
 ## Getting started
 

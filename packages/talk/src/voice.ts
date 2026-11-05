@@ -1,5 +1,5 @@
 /**
- * The voice track. Lines are spoken one by one (Meta's SeamlessM4T v2 or MMS-TTS, or recordings
+ * The voice track. Lines are spoken one by one (Meta's SeamlessM4T v2 or MMS-TTS, ElevenLabs, or recordings
  * named 01.wav, 02.wav... in the same order), trimmed, pitched for the
  * character, and joined with short pauses. The mouth opens and closes with
  * the loudness of that track.
@@ -26,13 +26,15 @@ export interface Voice {
  * fallback, or `mms-hn`: MMS-TTS fine-tuned on our own Hà Nội recordings, read
  * from the folder in TALK_HN_MODEL (weights are not in the repo).
  */
-export type Tts = "seamless" | "mms" | "mms-hn";
+export type Tts = "seamless" | "mms" | "mms-hn" | "elevenlabs";
 const MMS = fileURLToPath(new URL("../tts/tts.py", import.meta.url));
 const TTS: Record<Tts, { script: string; name: string; pitch: number; tempo: number }> = {
   seamless: { script: fileURLToPath(new URL("../tts/seamless.py", import.meta.url)), name: "SeamlessM4T v2", pitch: 1.12, tempo: 1.05 },
   mms: { script: MMS, name: "MMS-TTS", pitch: 1.12, tempo: 1 },
   // Our own voice is kept as recorded: the ×1.12 cartoon pitch is what made Seamless sound warped.
   "mms-hn": { script: MMS, name: "MMS-TTS (Hà Nội fine-tune)", pitch: 1, tempo: 1 },
+  // A cloud voice, kept as it speaks. Not a Meta model; used for dialogue videos from 5 November 2026.
+  elevenlabs: { script: "", name: "ElevenLabs eleven_v3", pitch: 1, tempo: 1 },
 };
 const TTS_IDS = Object.keys(TTS) as Tts[];
 
@@ -50,6 +52,39 @@ export function ttsEnv(tts: Tts, env: NodeJS.ProcessEnv = process.env): NodeJS.P
   return { ...env, TALK_TTS_MODEL: dir };
 }
 
+/** ElevenLabs: eleven_v3 speaks Vietnamese (multilingual_v2 refuses it). Long Bling, a northern male voice, unless ELEVENLABS_VOICE_ID says otherwise. */
+export const ELEVEN_MODEL = "eleven_v3";
+export const ELEVEN_VOICE = "hNqI13qZhltY4utMKOCw";
+
+/** The ElevenLabs key: ELEVENLABS_API_KEY, or the ELEVENLABS_API_KEY=... line of the file in ELEVENLABS_KEY_FILE. Never logged. */
+export function elevenKey(env: NodeJS.ProcessEnv = process.env): string {
+  if (env.ELEVENLABS_API_KEY?.trim()) return env.ELEVENLABS_API_KEY.trim();
+  const file = env.ELEVENLABS_KEY_FILE;
+  const key = file && existsSync(file) ? readFileSync(file, "utf8").match(/^ELEVENLABS_API_KEY=\s*"?([^"\r\n]+)/m)?.[1]?.trim() : undefined;
+  if (!key) throw new Error("--tts elevenlabs needs ELEVENLABS_API_KEY, or ELEVENLABS_KEY_FILE pointing at a file with an ELEVENLABS_API_KEY=... line.");
+  return key;
+}
+
+/** ElevenLabs speaks every line into `dir`/<01..>.wav (mp3 from the API, turned into wav by ffmpeg). */
+export async function speakEleven(texts: string[], dir: string, opts: { voice?: string; env?: NodeJS.ProcessEnv; fetch?: typeof fetch } = {}): Promise<void> {
+  const env = opts.env ?? process.env;
+  const key = elevenKey(env);
+  const voice = opts.voice ?? env.ELEVENLABS_VOICE_ID ?? ELEVEN_VOICE;
+  const get = opts.fetch ?? fetch;
+  mkdirSync(dir, { recursive: true });
+  for (const [i, text] of texts.entries()) {
+    const r = await get(`https://api.elevenlabs.io/v1/text-to-speech/${voice}?output_format=mp3_44100_128`, {
+      method: "POST",
+      headers: { "xi-api-key": key, "content-type": "application/json", accept: "audio/mpeg" },
+      body: JSON.stringify({ text, model_id: ELEVEN_MODEL }),
+    });
+    if (!r.ok) throw new Error(`ElevenLabs ${r.status} on line ${i + 1}: ${(await r.text()).slice(0, 200)}`);
+    const mp3 = join(dir, `${lineId(i)}.mp3`);
+    writeFileSync(mp3, Buffer.from(await r.arrayBuffer()));
+    await ffmpeg(["-i", mp3, "-ac", "1", "-ar", "44100", join(dir, `${lineId(i)}.wav`)]);
+  }
+}
+
 /** The cartoon voice: pitch and speed applied to a generated line (a recording keeps its own). */
 export function voiceShape(tts: Tts, opts: { pitch?: number; tempo?: number } = {}): { pitch: number; tempo: number } {
   return { pitch: opts.pitch ?? TTS[tts].pitch, tempo: opts.tempo ?? TTS[tts].tempo };
@@ -63,6 +98,7 @@ export function python(): string {
 
 /** SeamlessM4T v2 or MMS-TTS speaks every line into `dir`/<01..>.wav. */
 export async function speakLines(texts: string[], dir: string, opts: { rate?: number; tts?: Tts } = {}): Promise<void> {
+  if (opts.tts === "elevenlabs") return speakEleven(texts, dir);
   const tts = TTS[opts.tts ?? "seamless"];
   const env = ttsEnv(opts.tts ?? "seamless");
   mkdirSync(dir, { recursive: true });

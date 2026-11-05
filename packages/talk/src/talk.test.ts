@@ -1,10 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import sharp from "sharp";
 import { align, fillHoles, pasteOval, type Raster } from "./patch.js";
 import { mockScript, PACE, scriptProblems, syllables } from "./script.js";
 import { blinkTrack, chunkWords, wordTimes } from "./timeline.js";
-import { hummedLine, joinLines, mouthTrack, RATE, ttsArg, ttsEnv, voiceShape, wavBytes } from "./voice.js";
+import { elevenKey, hummedLine, joinLines, mouthTrack, RATE, speakEleven, ttsArg, ttsEnv, voiceShape, wavBytes } from "./voice.js";
 import { setPrompt, SETS } from "./sets.js";
 import { alignBackground, dilate, flatBands, frameProblem, gateToWords, ghostShare, groupLines, leadFeatures, leadMouth, leadOr, mouthIn, overlapShare, parseCuts, pasteMouth, pasteRegion, poseBProblem, popScale, poseAt, shotSpans, timeWords } from "./illustrate.js";
 
@@ -192,7 +195,7 @@ test("depth of field: the near ground and side walls stay sharp, the end of the 
 test("--tts defaults to SeamlessM4T with the cartoon pitch and speed", () => {
   assert.equal(ttsArg(undefined), "seamless");
   assert.equal(ttsArg("mms"), "mms");
-  assert.throws(() => ttsArg("elevenlabs"), /seamless, mms, mms-hn/);
+  assert.throws(() => ttsArg("bark"), /seamless, mms, mms-hn, elevenlabs/);
   assert.deepEqual(voiceShape("seamless"), { pitch: 1.12, tempo: 1.05 });
   assert.deepEqual(voiceShape("mms"), { pitch: 1.12, tempo: 1 });
   assert.deepEqual(voiceShape("seamless", { tempo: 1 }), { pitch: 1.12, tempo: 1 });
@@ -233,6 +236,27 @@ test("--tts mms-hn reads the fine-tuned voice's folder from TALK_HN_MODEL", () =
   assert.equal(ttsEnv("mms-hn", { TALK_HN_MODEL: "C:/dv/vits-hn-out" }).TALK_TTS_MODEL, "C:/dv/vits-hn-out");
   assert.equal(ttsEnv("mms", { X: "1" }).TALK_TTS_MODEL, undefined);
   assert.deepEqual(voiceShape("mms-hn"), { pitch: 1, tempo: 1 });
+});
+
+test("--tts elevenlabs: the key comes from the environment or a key file, and a refused line stops the run", async () => {
+  assert.equal(ttsArg("elevenlabs"), "elevenlabs");
+  assert.deepEqual(voiceShape("elevenlabs"), { pitch: 1, tempo: 1 });
+  assert.equal(PACE.elevenlabs, 4.2);
+  assert.throws(() => elevenKey({}), /ELEVENLABS_API_KEY/);
+  assert.equal(elevenKey({ ELEVENLABS_API_KEY: " k1 " }), "k1");
+  const dir = mkdtempSync(join(tmpdir(), "el-"));
+  const file = join(dir, ".env.local");
+  writeFileSync(file, "OTHER=1\nELEVENLABS_API_KEY=\"k2\"\n");
+  assert.equal(elevenKey({ ELEVENLABS_KEY_FILE: file }), "k2");
+  const seen: Array<{ url: string; key: string; body: { text: string; model_id: string } }> = [];
+  const refuse = (async (url: string, init: RequestInit) => {
+    seen.push({ url, key: (init.headers as Record<string, string>)["xi-api-key"], body: JSON.parse(init.body as string) });
+    return new Response("quota_exceeded", { status: 401 });
+  }) as unknown as typeof fetch;
+  await assert.rejects(speakEleven(["Dạ em chào sếp"], dir, { env: { ELEVENLABS_API_KEY: "k3" }, fetch: refuse }), /ElevenLabs 401 on line 1: quota_exceeded/);
+  assert.match(seen[0].url, /text-to-speech\/hNqI13qZhltY4utMKOCw\?/);
+  assert.equal(seen[0].key, "k3");
+  assert.deepEqual(seen[0].body, { text: "Dạ em chào sếp", model_id: "eleven_v3" });
 });
 
 test("illustrate: the voice splits into lines at pauses, and lines go to the shot they start in", () => {

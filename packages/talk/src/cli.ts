@@ -9,7 +9,7 @@
  *   npm run talk -- cut <slug> [--phrase "cartoon character"] [--keep desk|none] [--force]  SAM 3.1 cuts the character (and desk) out
  *   npm run talk -- sets [--only office,cafe] [--force]                    Muse Image draws empty background sets in series/sets/
  *                    make/sync take --bg plain[:#hex], office|pantry|phong-tro|cafe, or photo.jpg: the cut-out character stands in front of it
- *   npm run talk -- illustrate <slug> <clip.mp4> [--vocals stem.wav] [--lines lines.json] [--end s] [--step plan|draw|fix|ask|gaps|poses|stabilize|mouths|render|all] [--find <thing>] [--at <s>] [--only s01] [--note <what to change>] [--mouth] [--only s01,s02] [--out dir]
+ *   npm run talk -- illustrate <slug> <clip.mp4> [--vocals stem.wav] [--lines lines.json (corrected lines; also lets the plan run without the speech recogniser)] [--end s] [--step plan|draw|fix|ask|gaps|poses|stabilize|mouths|render|all] [--find <thing>] [--at <s>] [--only s01] [--note <what to change>] [--mouth] [--only s01,s02] [--out dir]
  *                    the clip's voice and cuts, one picture per shot of <slug> acting it out (Muse Image, checked by Muse Spark), two poses on one background (SAM 3.1)
  *   npm run talk -- cover <slug> --out <illustrate dir> --quote "“line|line *key*.”" [--shot s08] [--episode <id>]
  *                    TikTok cover: the line on a white badge (key words red) + "Hồi Sau" tag over a shot, inside the grid's safe zone and off the faces (SAM 3.1)
@@ -263,7 +263,13 @@ async function main() {
       const planFile = join(out, "plan.json"), wordsFile = join(out, "words.json"), shots = join(out, "shots");
       const run = (s: string) => step === "all" || step === s;
       if (run("plan") && (step === "plan" || !existsSync(planFile))) {
-        const heard = await hearWords(opt.vocals ? fromCwd(opt.vocals as string) : fromCwd(clip), wordsFile);
+        // With corrected --lines the recogniser only refines word times: when it cannot run (no Python, no model), words are spread over each line instead.
+        const heard = await hearWords(opt.vocals ? fromCwd(opt.vocals as string) : fromCwd(clip), wordsFile).catch((e: Error) => {
+          if (!opt.lines) throw e;
+          log(`Word times not heard (${e.message}); spreading the words over each line of --lines`);
+          writeFileSync(wordsFile, "[]\n");
+          return [];
+        });
         // Corrected lines (text, start, end) when given; otherwise the recogniser's words split at pauses.
         const lines: Line[] = opt.lines ? JSON.parse(readFileSync(fromCwd(opt.lines as string), "utf8")) : groupLines(heard);
         const end = opt.end ? Number(opt.end) : (await probeVideo(fromCwd(clip))).duration;

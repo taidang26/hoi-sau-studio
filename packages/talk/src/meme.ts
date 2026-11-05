@@ -77,7 +77,7 @@ export function memeTiming(spec: Pick<MemeSpec, "top" | "punch" | "seconds">): {
 const MEME_PLAN = S.obj({
   shots: S.arr(
     S.obj({
-      act: S.str("English, one or two sentences: what the picture shows, with the lead character big and on-model, in the Hồi Sau office unless the note says otherwise, 1-3 simple props"),
+      act: S.str("English, one or two sentences: what the picture shows, with the lead character on-model at medium size (about a third of the frame's height, room around him, never a giant close-up), in the Hồi Sau office unless the note says otherwise, 1-3 simple props"),
       pose: S.str("English: the next moment of the same picture, a small real movement (a blink, a hand moving, money being flicked, a head turn); same place, same props"),
       cast: S.arr(S.str("slug of another cast member, only if the joke needs one"), 0, 2),
       moving: S.arr(S.str("English noun for SAM: what moves between the two poses (the character, what it holds)"), 1, 4),
@@ -125,7 +125,7 @@ export async function planMeme(ctx: StudioContext, slug: string, spec: MemeSpec)
 }
 
 /** Added to every meme picture: room for the text on top, and none of what went wrong in tests. */
-export const MEME_FRAME = "The top third of the frame is plain empty office wall with nothing on it (big text goes there); the characters sit in the lower two thirds. No clocks.";
+export const MEME_FRAME = "The top third of the frame is plain empty office wall with nothing on it (big text goes there); the characters sit in the lower two thirds at medium size with space around them, not filling the width. No clocks.";
 
 const MUSICGEN = fileURLToPath(new URL("../scripts/musicgen.py", import.meta.url));
 

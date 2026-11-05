@@ -337,14 +337,24 @@ export async function checkPicture(ctx: StudioContext, slug: string, act: string
   return ctx.spark.json("frame_check", CHECK, [{ role: "user", content }]);
 }
 
+/**
+ * Runs `fn` on each shot with a few at a time (TALK_PARALLEL, default 3): every shot writes only its own
+ * files and waits mostly on Muse and SAM, so four shots take about the time of one or two.
+ */
+export async function eachShot<T>(items: T[], fn: (item: T) => Promise<void>, limit = Math.max(1, Number(process.env.TALK_PARALLEL) || 3)): Promise<void> {
+  let next = 0;
+  const worker = async () => { while (next < items.length) await fn(items[next++]); };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+}
+
 export async function drawShots(ctx: StudioContext, plan: Plan, dir: string, opts: { only?: string[]; tries?: number; log?: (s: string) => void } = {}): Promise<void> {
   mkdirSync(dir, { recursive: true });
   const p = ctx.profiles.get(plan.slug)!;
   const lead = `${p.name}: ${p.look.description.replace(/\s+/g, " ")} Exactly as in the character reference sheet`;
   const style = styleReference(ctx.style);
-  for (const s of plan.shots) {
+  await eachShot(plan.shots, async (s) => {
     const file = join(dir, `${s.id}.png`);
-    if (s.src || (opts.only ? !opts.only.includes(s.id) : existsSync(file))) continue;
+    if (s.src || (opts.only ? !opts.only.includes(s.id) : existsSync(file))) return;
     const refs = [...characterRefs(ctx, plan.slug), ...s.cast.flatMap((c) => characterRefs(ctx, c)), ...(style ? [style] : [])];
     const prompt = `Full-frame vertical illustration for a short comedy video, one scene. ${lead}. Scene: ${s.act}. ${LOOK} ${ctx.style ? `Style: ${styleText(ctx.style)}` : ""} Draw ${p.name} exactly once.`;
     let fix = "";
@@ -358,7 +368,7 @@ export async function drawShots(ctx: StudioContext, plan: Plan, dir: string, opt
       if (v.pass) break;
       fix = v.fix;
     }
-  }
+  });
 }
 
 /**
@@ -643,9 +653,9 @@ export async function pasteRegion(sam: Sam, before: Buffer, edited: Buffer, find
 
 export async function drawPoses(ctx: StudioContext, plan: Plan, dir: string, opts: { only?: string[]; log?: (s: string) => void } = {}): Promise<void> {
   const p = ctx.profiles.get(plan.slug)!;
-  for (const s of plan.shots) {
+  await eachShot(plan.shots, async (s) => {
     const base = join(dir, `${s.id}.png`), file = join(dir, `${s.id}-b.png`);
-    if (s.src || !s.pose || !existsSync(base) || (opts.only ? !opts.only.includes(s.id) : existsSync(file))) continue;
+    if (s.src || !s.pose || !existsSync(base) || (opts.only ? !opts.only.includes(s.id) : existsSync(file))) return;
     const prompt = `Edit the attached picture into the next moment of the same animation: ${s.pose}. Keep exactly the same framing, camera, background, colours, line style, props and the same character design (${p.name}); only the pose and expression change, the body stays in the same place and size. ${LOOK}`;
     for (let attempt = 0; attempt < 2; attempt++) {
       opts.log?.(`${s.id}: second pose`);
@@ -655,7 +665,7 @@ export async function drawPoses(ctx: StudioContext, plan: Plan, dir: string, opt
       opts.log?.(`${s.id}-b: ${v.pass ? "check passed" : `check failed: ${v.problems.join("; ")}`}`);
       if (v.pass) break;
     }
-  }
+  });
 }
 
 const rgbOf = async (file: string) => new Uint8Array(await sharp(file).resize(OUT.w, OUT.h, { fit: "cover" }).removeAlpha().raw().toBuffer());
@@ -748,9 +758,9 @@ export async function stabilizePoses(sam: Sam, ctx: StudioContext, plan: Plan, d
   const { w, h } = OUT;
   const phrase = (slug: string) => `cartoon ${ctx.profiles.get(slug)?.species.split("(")[0].trim() ?? slug}`;
   const report: Array<{ id: string; ok: boolean; problem: string; tries: number }> = [];
-  for (const s of plan.shots) {
+  await eachShot(plan.shots, async (s) => {
     const fb = join(dir, `${s.id}-b.png`), fb2 = join(dir, `${s.id}-b2.png`);
-    if (s.src || !existsSync(fb) || (opts.only && !opts.only.includes(s.id))) continue;
+    if (s.src || !existsSync(fb) || (opts.only && !opts.only.includes(s.id))) return;
     const a = await rgbOf(join(dir, `${s.id}.png`));
     const phrases = s.moving?.length ? s.moving : [plan.slug, ...s.cast].map(phrase);
     let r: PoseB | undefined, tries = 0;
@@ -772,7 +782,7 @@ export async function stabilizePoses(sam: Sam, ctx: StudioContext, plan: Plan, d
       opts.log?.(`${s.id}: keeps one pose (${r?.problem ?? "no pose B"})`);
     }
     report.push({ id: s.id, ok: !!r?.ok, problem: r?.problem ?? "no pose B", tries: Math.min(tries + 1, (opts.retries ?? 2) + 1) });
-  }
+  });
   return report;
 }
 
@@ -924,8 +934,8 @@ export async function drawMouths(sam: Sam, ctx: StudioContext, plan: Plan, dir: 
     }
     return { keep: dilate(keep, w, h, 3), nearNose: dilate(nose, w, h, NOSE_GAP) };
   };
-  for (const s of plan.shots) {
-    if (s.src) continue;
+  await eachShot(plan.shots, async (s) => {
+    if (s.src) return;
     for (const pic of [s.id, `${s.id}-b2`]) {
       // --only takes a shot (s06: both its pictures) or one picture (s06-b2).
       if (opts.only && !opts.only.includes(s.id) && !opts.only.includes(pic)) continue;
@@ -968,7 +978,7 @@ export async function drawMouths(sam: Sam, ctx: StudioContext, plan: Plan, dir: 
       await sharp(made.open!.img.data, { raw: { width: w, height: h, channels: 3 } }).png().toFile(openFile);
       opts.log?.(`${pic}: mouth pair ready (open ${made.open!.size} px, shut ${made.shut!.size} px)`);
     }
-  }
+  });
   return report;
 }
 

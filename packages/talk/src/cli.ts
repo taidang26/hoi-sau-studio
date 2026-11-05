@@ -288,10 +288,17 @@ async function main() {
       }
       if (run("draw")) await drawShots(ctx, plan, shots, { only, log });
       if (run("poses")) await drawPoses(ctx, plan, shots, { only, log });
-      if (run("stabilize")) writeFileSync(join(out, "stabilize.json"), JSON.stringify(await stabilizePoses(Sam.fromEnv(), ctx, plan, shots, { only, log }), null, 1));
+      // With --only a report keeps the other shots' rows, so separate --only runs never wipe each other's.
+      const report = <T extends Record<string, unknown>>(name: string, key: keyof T, rows: T[]) => {
+        const file = join(out, name);
+        const old: T[] = only && existsSync(file) ? JSON.parse(readFileSync(file, "utf8")) : [];
+        const mine = new Set(rows.map((r) => r[key]));
+        writeFileSync(file, JSON.stringify([...old.filter((r) => !mine.has(r[key])), ...rows], null, 1));
+      };
+      if (run("stabilize")) report("stabilize.json", "id", await stabilizePoses(Sam.fromEnv(), ctx, plan, shots, { only, log }));
       // --mouth: the lead talks; without it the clip renders as before.
       const mouth = !!opt.mouth || step === "mouths";
-      if (mouth && run("mouths")) writeFileSync(join(out, "mouths.json"), JSON.stringify(await drawMouths(Sam.fromEnv(), ctx, plan, shots, { only, log }), null, 1));
+      if (mouth && run("mouths")) report("mouths.json", "pic", await drawMouths(Sam.fromEnv(), ctx, plan, shots, { only, log }));
       if (run("render") || step === "gaps") {
         const pcm = await readSound(opt.vocals ? fromCwd(opt.vocals as string) : plan.clip, join(out, "voice.m4a"));
         writeFileSync(join(out, "gaps.json"), JSON.stringify(speechGaps(pcm, plan.lines)));
@@ -348,7 +355,14 @@ async function main() {
       }
       if (run("draw")) await drawShots(ctx, plan, shots, { only, log });
       if (run("poses")) await drawPoses(ctx, plan, shots, { only, log });
-      if (run("stabilize")) writeFileSync(join(out, "stabilize.json"), JSON.stringify(await stabilizePoses(Sam.fromEnv(), ctx, plan, shots, { only, log }), null, 1));
+      // With --only a report keeps the other shots' rows, so separate --only runs never wipe each other's.
+      const report = <T extends Record<string, unknown>>(name: string, key: keyof T, rows: T[]) => {
+        const file = join(out, name);
+        const old: T[] = only && existsSync(file) ? JSON.parse(readFileSync(file, "utf8")) : [];
+        const mine = new Set(rows.map((r) => r[key]));
+        writeFileSync(file, JSON.stringify([...old.filter((r) => !mine.has(r[key])), ...rows], null, 1));
+      };
+      if (run("stabilize")) report("stabilize.json", "id", await stabilizePoses(Sam.fromEnv(), ctx, plan, shots, { only, log }));
       // Music once per prompt: a new prompt (or --step music) makes it again.
       const promptFile = join(out, "music.prompt");
       const fresh = existsSync(music) && existsSync(promptFile) && readFileSync(promptFile, "utf8") === spec.music;

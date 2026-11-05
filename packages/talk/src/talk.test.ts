@@ -472,3 +472,21 @@ test("illustrate: removal notes are told apart from recolours", async () => {
   assert.ok(isRemoval("bỏ cái đồng hồ treo tường"));
   assert.ok(!isRemoval("change the water bottle to light green"));
 });
+
+test("illustrate: caption chunks break at every line, and odd-shaped pictures are not zoomed in", async () => {
+  const { lineChunks, fitPlate } = await import("./illustrate.js");
+  const lines = [{ text: "Giọt nước mắt vương trên laptop", start: 1, end: 3 }, { text: "Giờ này tôi", start: 3, end: 4 }];
+  const words = ["Giọt", "nước", "mắt", "vương", "trên", "laptop"].map((t, k) => ({ text: t, start: 1 + k / 3, end: 1 + (k + 1) / 3 }))
+    .concat(["Giờ", "này", "tôi"].map((t, k) => ({ text: t, start: 3 + k / 3, end: 3 + (k + 1) / 3 })));
+  const chunks = lineChunks(lines, words);
+  assert.ok(chunks.every((c) => c.words.every((w) => w.start < 3) || c.words.every((w) => w.start >= 3)), "no chunk spans two lines");
+  assert.equal(chunks.at(-1)!.words.map((w) => w.text).join(" "), "Giờ này tôi");
+  const dir = (await import("node:fs")).mkdtempSync((await import("node:path")).join((await import("node:os")).tmpdir(), "plate-"));
+  const f = `${dir}/p.png`;
+  await sharp({ create: { width: 1024, height: 1536, channels: 3, background: "#ff0000" } }).png().toFile(f);
+  const out = await sharp(await fitPlate(f)).raw().toBuffer({ resolveWithObject: true });
+  assert.deepEqual([out.info.width, out.info.height], [1080, 1920]);
+  const px = (x: number, y: number) => out.data[(y * 1080 + x) * out.info.channels];
+  assert.ok(px(540, 960) > 240, "picture in the middle");
+  assert.ok(px(540, 50) < px(540, 960) - 30, "fill above the fitted picture is darkened, not the picture zoomed");
+});

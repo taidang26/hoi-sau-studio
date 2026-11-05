@@ -994,11 +994,38 @@ function bubbleSvg(text: string): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${OUT.w}" height="${Math.ceil(bh + 110)}"><path d="${tail}" fill="#FFFFFF" stroke="#1A1A1A" stroke-width="6" stroke-linejoin="round"/><rect x="${x}" y="${y}" width="${bw}" height="${bh}" rx="${bh / 2.2}" fill="#FFFFFF" stroke="#1A1A1A" stroke-width="6"/><path d="${tail}" fill="#FFFFFF"/>${texts}</svg>`;
 }
 
+/** Caption chunks that never run across two sung or spoken lines ("laptop Giờ này"): each line is chunked on its own. */
+export function lineChunks(lines: Line[], words: Word[]): ReturnType<typeof chunkWords> {
+  if (!lines.length) return chunkWords(words, 3, 16);
+  const owner = (w: Word) => {
+    const k = lines.findIndex((l) => w.start >= l.start - 0.05 && w.start < l.end);
+    return k < 0 ? lines.reduce((b, l, i) => (Math.abs(l.start - w.start) < Math.abs(lines[b].start - w.start) ? i : b), 0) : k;
+  };
+  const groups = new Map<number, Word[]>();
+  for (const w of words) groups.set(owner(w), [...(groups.get(owner(w)) ?? []), w]);
+  return [...groups.keys()].sort((a, b) => a - b).flatMap((k) => chunkWords(groups.get(k)!, 3, 16));
+}
+
+/**
+ * The picture as a 1080x1920 plate without zooming in: a 9:16 picture is only resized; any other shape
+ * (Muse now and then returns 2:3) is fitted whole over a blurred, darkened fill of itself, so the
+ * character keeps the size it was drawn at instead of being blown up by a "cover" crop.
+ */
+export async function fitPlate(file: string): Promise<Buffer> {
+  const { width = OUT.w, height = OUT.h } = await sharp(file).metadata();
+  if (Math.abs(width / height - OUT.w / OUT.h) <= 0.02) return sharp(file).resize(OUT.w, OUT.h, { fit: "cover" }).png().toBuffer();
+  const fill = await sharp(file).resize(OUT.w, OUT.h, { fit: "cover" }).blur(30).modulate({ brightness: 0.7 }).png().toBuffer();
+  const pic = await sharp(file).resize(OUT.w, OUT.h, { fit: "inside" }).png().toBuffer();
+  const m = await sharp(pic).metadata();
+  return sharp(fill).composite([{ input: pic, left: Math.round((OUT.w - (m.width ?? OUT.w)) / 2), top: Math.round((OUT.h - (m.height ?? OUT.h)) / 2) }]).png().toBuffer();
+}
+
 /** Frames only where something changes (a cut, a pose, the bubble pop, a word), then ffmpeg with the clip's audio. */
 export async function renderIllustrated(plan: Plan, words: Word[], dir: string, out: string, opts: { mouth?: boolean[]; log?: (s: string) => void } = {}): Promise<string> {
-  const chunks = chunkWords(words, 3, 16);
-  const bubbleTop = SAFE.top + 10, capTop = SAFE.bottom - 190;
-  const plate = (f: string) => sharp(f).resize(OUT.w, OUT.h, { fit: "cover" }).png().toBuffer();
+  const chunks = lineChunks(plan.lines, words);
+  // Captions sit in the calm top fifth when the shot has no bubble (the lead stands lower, at medium size); under a bubble they keep to the bottom.
+  const bubbleTop = SAFE.top + 10, capBottom = SAFE.bottom - 190, capHigh = SAFE.top + 20;
+  const plate = (f: string) => fitPlate(f);
   // Each pose, and its mouth-open copy when there is one and the mouth is asked for.
   const plates: Record<string, Array<{ shut: Buffer; open?: Buffer }>> = {};
   // With --mouth a picture that has a mouth pair talks on it: shut between words, open on the voice.
@@ -1050,7 +1077,7 @@ export async function renderIllustrated(plan: Plan, words: Word[], dir: string, 
     if (!file) {
       const layers: sharp.OverlayOptions[] = [];
       if (pop && shot.bubble) { const b = bubbles[shot.id][pop]; layers.push({ input: b.input, top: bubbleTop + b.dy, left: b.left }); }
-      if (ci >= 0) layers.push({ input: svgToPng(captionSvg(chunks[ci], wi)), top: capTop, left: 0 });
+      if (ci >= 0) layers.push({ input: svgToPng(captionSvg(chunks[ci], wi)), top: shot.bubble ? capBottom : capHigh, left: 0 });
       file = join(fdir, `f${String(cache.size).padStart(4, "0")}.png`).replace(/\\/g, "/");
       await sharp(open ? pl.open! : pl.shut).composite(layers).png().toFile(file);
       cache.set(key, file);

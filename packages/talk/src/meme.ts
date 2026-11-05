@@ -163,12 +163,16 @@ function balance(text: string, size: number, maxW: number): string[] {
   return wrap(text, size, hi);
 }
 
-/** The largest size (92 down to 60) at which a beat fits in three lines, lines balanced. */
+/**
+ * The largest size (68 down to 52) at which a beat fits in three lines, lines balanced. The owner found
+ * 92 px too big on a phone (3-4 words a line); 68 px gives about 5-6 words a line.
+ */
+export const MEME_TEXT_SIZE = { max: 68, min: 52 };
 export function fitText(text: string, maxW = OUT.w - 100): { size: number; lines: string[] } {
-  for (let size = 92; size >= 60; size -= 4) {
+  for (let size = MEME_TEXT_SIZE.max; size >= MEME_TEXT_SIZE.min; size -= 4) {
     if (wrap(text, size, maxW).length <= 3) return { size, lines: balance(text, size, maxW) };
   }
-  return { size: 60, lines: balance(text, 60, maxW) };
+  return { size: MEME_TEXT_SIZE.min, lines: balance(text, MEME_TEXT_SIZE.min, maxW) };
 }
 
 /** One beat of text: dark letters with a thick white outline; the punchline in red. */
@@ -207,6 +211,12 @@ export function memeLower(textBottom: number, faceTop?: number): number {
   return Math.max(0, Math.min(faceTop === undefined ? 300 : 520, Math.round(want)));
 }
 
+/**
+ * Pictures are never moved down: the owner wants every picture full-frame, and moving it left a
+ * stretched band of wall at the top. memeLower now only says how far the faces sit under the text,
+ * so a picture that needs it is drawn again with the characters lower.
+ */
+
 /** Where the two beats of text end, in pixels from the top. */
 export function memeTextBottom(plan: Plan): number {
   const [top, punch] = plan.lines;
@@ -233,9 +243,9 @@ export async function renderMeme(plan: Plan, dir: string, music: string | undefi
   const plates: Record<string, Buffer[]> = {}, blinks: Record<string, boolean> = {};
   for (const s of plan.shots) {
     const id = s.src ?? s.id;
-    const dy = memeLower(textBottom, faceTop[id]);
-    log?.(`${s.id}: lowered ${dy}px`);
-    const plate = (f: string) => lowerPicture(f, dy);
+    const overlap = memeLower(textBottom, faceTop[id]);
+    if (overlap > 0 && faceTop[id] !== undefined) log?.(`${s.id}: faces at y ${faceTop[id]} are under the text (${overlap}px); draw again with the characters lower (--step fix --note "characters lower, top third empty wall")`);
+    const plate = (f: string) => lowerPicture(f, 0);
     plates[s.id] = [await plate(join(dir, `${id}.png`))];
     if (existsSync(join(dir, `${id}-b2.png`))) plates[s.id].push(await plate(join(dir, `${id}-b2.png`)));
     else if (existsSync(join(dir, `${id}-blink.png`))) (plates[s.id].push(await plate(join(dir, `${id}-blink.png`))), (blinks[s.id] = true));

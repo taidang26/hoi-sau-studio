@@ -37,7 +37,7 @@ test("the punchline comes as soon as the first line is read, then holds; poses a
   assert.equal(memePose(1.6, 1), 0);
 });
 
-test("a one-pose shot blinks briefly; the pictures move down under the text", () => {
+test("a one-pose shot blinks briefly; how far faces sit under the text", () => {
   assert.equal(blinkShut(1), false);
   assert.equal(blinkShut(1.85), true);
   assert.equal(blinkShut(2.1), false);
@@ -50,9 +50,11 @@ test("a one-pose shot blinks briefly; the pictures move down under the text", ()
   assert.match(MEME_FRAME, /No clocks/);
 });
 
-test("text stays big, and the last line is never one lonely word", () => {
+test("text is phone-sized (about 5-6 words a line), and the last line is never one lonely word", () => {
   const punch = fitText("Cơ hội để sếp về sớm");
-  assert.ok(punch.size >= 60);
+  assert.ok(punch.size >= 52 && punch.size <= 68);
+  const long = fitText("Sắp cưới. Cưới xong sắp bầu. Đẻ rồi lại sợ đẻ đứa nữa");
+  assert.ok(long.lines.length <= 3 && long.lines.every((l) => l.split(" ").length >= 4), long.lines.join(" / "));
   assert.ok(punch.lines.every((l) => l.split(" ").length > 1), punch.lines.join(" / "));
 });
 

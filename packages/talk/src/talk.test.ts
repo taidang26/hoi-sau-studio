@@ -490,3 +490,16 @@ test("illustrate: caption chunks break at every line, and odd-shaped pictures ar
   assert.ok(px(540, 960) > 240, "picture in the middle");
   assert.ok(px(540, 50) < px(540, 960) - 30, "fill above the fitted picture is darkened, not the picture zoomed");
 });
+
+test("illustrate: shots run a few at a time, each one once", async () => {
+  const { eachShot } = await import("./illustrate.js");
+  let live = 0, most = 0;
+  const done: number[] = [];
+  await eachShot([1, 2, 3, 4, 5, 6, 7], async (n) => {
+    live++; most = Math.max(most, live);
+    await new Promise((r) => setTimeout(r, 10));
+    done.push(n); live--;
+  }, 3);
+  assert.equal(most, 3);
+  assert.deepEqual([...done].sort((a, b) => a - b), [1, 2, 3, 4, 5, 6, 7]);
+});

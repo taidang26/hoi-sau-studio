@@ -503,3 +503,46 @@ test("illustrate: shots run a few at a time, each one once", async () => {
   assert.equal(most, 3);
   assert.deepEqual([...done].sort((a, b) => a - b), [1, 2, 3, 4, 5, 6, 7]);
 });
+
+test("beats: a click track at 120 bpm is heard as 120 bpm, beats half a second apart", async () => {
+  const { detectBeats } = await import("./beats.js");
+  const rate = 48000, pcm = new Int16Array(rate * 8);
+  for (let b = 0.25; b < 8; b += 0.5) for (let i = 0; i < 600; i++) pcm[Math.round(b * rate) + i] = Math.round(20000 * Math.sin(i / 3) * Math.exp(-i / 150));
+  const { bpm, beats } = detectBeats(pcm, rate);
+  assert.ok(Math.abs(bpm - 120) < 4, `bpm ${bpm}`);
+  assert.ok(beats.length >= 12, `beats ${beats.length}`);
+  const gaps = beats.slice(1).map((b, i) => b - beats[i]);
+  assert.ok(gaps.every((g) => Math.abs(g - 0.5) < 0.05), JSON.stringify(gaps));
+  assert.ok(beats.every((b) => Math.abs(((b - 0.25) / 0.5) - Math.round((b - 0.25) / 0.5)) < 0.1), JSON.stringify(beats));
+});
+
+test("beats: cuts snap to a nearby beat (a little early rather than late), pose changes land on beats", async () => {
+  const { snapShots, poseSwitches, snapTo } = await import("./beats.js");
+  const beats = [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5];
+  assert.equal(snapTo(1.2, beats), 1);
+  assert.equal(snapTo(1.4, beats), 1.5);
+  assert.equal(snapTo(1.25, [1.45]), undefined, "never more than 0.15 s late... of the singing");
+  const shots = snapShots([{ id: "a", t: 0 }, { id: "b", t: 2.1 }, { id: "c", t: 3.9 }], beats);
+  assert.deepEqual(shots.map((s) => s.t), [0, 2, 4]);
+  assert.deepEqual(poseSwitches(0, 4, [0.1, 2.2], beats), [2]);
+  assert.deepEqual(poseSwitches(0, 3, [0.1], beats), [1.5], "one line: the beat nearest the middle");
+  assert.deepEqual(poseSwitches(0, 1.2, [0.1], beats), [], "too short to change pose");
+});
+
+test("illustrate: a whole sung line is one caption, held to the next; a too-short line joins a neighbour", async () => {
+  const { lineChunks } = await import("./illustrate.js");
+  const { captionSvg } = await import("./captions.js");
+  const mk = (text: string, start: number, end: number) => {
+    const t = text.split(" ");
+    return t.map((x, k) => ({ text: x, start: start + ((end - start) * k) / t.length, end: start + ((end - start) * (k + 1)) / t.length }));
+  };
+  const lines = [{ text: "Ông sếp này chối ác", start: 26.9, end: 27.9 }, { text: "Họ đâu biết em là ai", start: 27.9, end: 28.5 }, { text: "Tiếc thay bản nhạc tình vương", start: 30, end: 32 }];
+  const words = [...mk(lines[0].text, 26.9, 27.9), ...mk(lines[1].text, 27.9, 28.5), ...mk(lines[2].text, 30, 32)];
+  const chunks = lineChunks(lines, words);
+  assert.deepEqual(chunks.map((c) => c.words.map((w) => w.text).join(" ")), ["Ông sếp này chối ác Họ đâu biết em là ai", "Tiếc thay bản nhạc tình vương"]);
+  assert.ok(Math.abs(chunks[0].end - 29.3) < 1e-6, `held ${chunks[0].end}`);
+  const svg = captionSvg(chunks[0], 2, { sweep: true });
+  assert.equal((svg.match(/<text /g) ?? []).length, 11);
+  assert.equal((svg.match(/#FFE14D/g) ?? []).length, 3, "the sung words stay lit");
+  assert.equal(new Set([...svg.matchAll(/ y="([0-9.]+)"/g)].map((m) => m[1])).size, 2, "two rows");
+});

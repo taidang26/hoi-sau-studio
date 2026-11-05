@@ -31,20 +31,41 @@ async function rgba(svg: string, top: number): Promise<Overlay> {
   return { data, width: info.width, height: info.height, top };
 }
 
-export function captionSvg(chunk: Chunk, current: number): string {
+/**
+ * One caption: the words of a chunk, the word being sung in yellow. With `sweep` the words already sung stay
+ * yellow too (a karaoke fill), and a chunk too wide for one row at a readable size breaks into two balanced rows,
+ * so a whole lyric line can stay up for as long as it is sung.
+ */
+export function captionSvg(chunk: Chunk, current: number, opts: { sweep?: boolean } = {}): string {
   const font = loadFont(BOLD_FONT_PATH);
   const words = chunk.words.map((w) => w.text.replace(/[,;:.!?…]+$/, "")).filter(Boolean);
-  let size = 66;
-  const space = () => size * 0.28;
-  const width = () => words.reduce((n, w) => n + measure(font, w, size), 0) + space() * (words.length - 1);
-  while (width() > TEXT_W && size > 40) size -= 2;
-  const total = width();
-  let x = SAFE_CX - total / 2;
-  const cy = 110;
-  const spans = words.map((w, i) => {
-    const t = `<text x="${x.toFixed(1)}" y="${(cy + size * 0.36).toFixed(1)}" font-family="${FONT()}" font-weight="700" font-size="${size}" fill="${i === current ? "#FFE14D" : "#FFFFFF"}" stroke="#111111" stroke-width="${(size * 0.14).toFixed(1)}" stroke-linejoin="round" paint-order="stroke">${escapeXml(w)}</text>`;
-    x += measure(font, w, size) + space();
-    return t;
+  const gap = (size: number) => size * 0.28;
+  const rowWidth = (row: string[], size: number) => row.reduce((n, w) => n + measure(font, w, size), 0) + gap(size) * (row.length - 1);
+  // A whole lyric line is smaller than CapCut's few big words: subtitles stay small on a phone.
+  let size = opts.sweep ? 54 : 66;
+  let rows = [words];
+  if (opts.sweep && words.length > 1 && rowWidth(words, size) > TEXT_W) {
+    // Two rows of about equal width; the font only shrinks if even the wider row does not fit.
+    let best = 1, widest = Infinity;
+    for (let i = 1; i < words.length; i++) {
+      const w = Math.max(rowWidth(words.slice(0, i), size), rowWidth(words.slice(i), size));
+      if (w < widest) (widest = w), (best = i);
+    }
+    rows = [words.slice(0, best), words.slice(best)];
+  }
+  while (Math.max(...rows.map((r) => rowWidth(r, size))) > TEXT_W && size > 40) size -= 2;
+  const lh = size * 1.22;
+  const cy0 = 110 - (lh * (rows.length - 1)) / 2;
+  let k = 0;
+  const spans = rows.flatMap((row, r) => {
+    let x = SAFE_CX - rowWidth(row, size) / 2;
+    return row.map((w) => {
+      const i = k++;
+      const lit = opts.sweep ? i <= current : i === current;
+      const t = `<text x="${x.toFixed(1)}" y="${(cy0 + lh * r + size * 0.36).toFixed(1)}" font-family="${FONT()}" font-weight="700" font-size="${size}" fill="${lit ? "#FFE14D" : "#FFFFFF"}" stroke="#111111" stroke-width="${(size * 0.14).toFixed(1)}" stroke-linejoin="round" paint-order="stroke">${escapeXml(w)}</text>`;
+      x += measure(font, w, size) + gap(size);
+      return t;
+    });
   });
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${OUT.w}" height="220">${spans.join("")}</svg>`;
 }

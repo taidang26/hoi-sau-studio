@@ -9,7 +9,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { channelStates, loadBrands, parseJournalKey, type Brand, type ChannelState, type Comment, type Conversation, type JournalEntry, type Platform } from "@hoi-sau/channel";
-import { listCharacters, loadProfile, nameVi, type ConsistencyRun, type Profile } from "@hoi-sau/studio";
+import { CHARACTERS_DIR, listCharacters, loadProfile, nameVi, type ConsistencyRun, type Profile } from "@hoi-sau/studio";
 import { lang } from "./i18n.js";
 import { emptyMemory, measureEpisodes, memoryFile, SERIES_DIR, type EpisodeStats, type Lesson, type PostInsights, type StoryMemory } from "@hoi-sau/story";
 
@@ -29,6 +29,25 @@ export interface Paths {
   brandsFile?: string;
   /** Where to look up the .env names in channels.yaml. Only whether each is set is shown. */
   env?: Record<string, string | undefined>;
+  /**
+   * Other data folders whose publish journal and pulled numbers are shown too: the short clips go out
+   * from a second checkout (hoi-sau-story), and without it the dashboard never saw them.
+   */
+  extraDataDirs?: string[];
+}
+
+/** One post's numbers as `channel insights` writes them (a superset of the coach's PostInsights). */
+export interface Metrics {
+  postId: string;
+  platform: Platform;
+  reach?: number;
+  reactions?: number;
+  comments?: number;
+  shares?: number;
+  saves?: number;
+  views?: number;
+  fetchedAt?: string;
+  missing?: string[];
 }
 
 export interface Episode {
@@ -145,10 +164,51 @@ export interface State {
   runs: Run[];
   /** Published episodes scored by the story coach, best first. */
   stats: EpisodeStats[];
+  /** Numbers per post as last pulled, from every data folder. */
+  metrics: Metrics[];
   lessons: Lesson[];
   lessonsAt?: string;
   /** Days in a row, ending today or yesterday (Hanoi), with at least one published post. */
   streak: number;
+  /** Approved clips (data/posts/<id>.json) from every data folder: caption, video and the Threads still. */
+  clipFiles: Map<string, ClipFile>;
+}
+
+export interface ClipFile {
+  id: string;
+  caption: string;
+  /** Public URL of the vertical video. */
+  video?: string;
+  /** Public URL of the still posted to Threads; doubles as the clip's cover. */
+  still?: string;
+}
+
+/** Every approved clip post file, keyed by the clip id (the "-still" file folds into its clip). */
+export function readClipFiles(paths: Pick<Paths, "dataDir" | "extraDataDirs">): Map<string, ClipFile> {
+  const out = new Map<string, ClipFile>();
+  for (const dir of [...(paths.extraDataDirs ?? []), paths.dataDir]) {
+    const posts = join(dir, "posts");
+    if (!existsSync(posts)) continue;
+    for (const f of readdirSync(posts).filter((x) => x.endsWith(".json")).sort()) {
+      let p: { episodeId?: string; caption?: string; mediaUrls?: string[]; format?: string };
+      try {
+        p = JSON.parse(readFileSync(join(posts, f), "utf8"));
+      } catch {
+        continue;
+      }
+      const file = f.slice(0, -5);
+      const id = file.replace(/-still$/, "");
+      const c = out.get(id) ?? { id, caption: "" };
+      const url = p.mediaUrls?.[0];
+      if (file.endsWith("-still")) c.still = url;
+      else {
+        c.video = url;
+        c.caption = p.caption ?? c.caption;
+      }
+      out.set(id, c);
+    }
+  }
+  return out;
 }
 
 export const brandArtDir = (paths: Paths) => paths.brandArtDir ?? join(paths.runsDir, "..", "brand-art");
@@ -194,10 +254,53 @@ export function parseJournal(journal: Record<string, JournalEntry>, brands: Bran
 }
 
 /** The profile as the page shows it: the Vietnamese name in Vietnamese, the global name in English. */
-const shownProfile = (p: Profile): Profile => (lang() === "vi" ? { ...p, name: nameVi(p) } : p);
+const shownProfile = (p: Profile, dir = CHARACTERS_DIR): Profile => (lang() === "vi" ? { ...p, name: nameVi(p) } : inEnglish(p, dir));
+
+/**
+ * The profile's Vietnamese prose in English, from characters/<slug>/profile.en.json: a map from each
+ * Vietnamese line to its English. A line edited since then has no match and stays as written.
+ */
+function inEnglish(p: Profile, dir: string): Profile {
+  const en = readJson<Record<string, string>>(join(dir, p.slug, "profile.en.json"), {});
+  const tr = <T extends string | undefined>(s: T): T => (s && en[s] ? en[s] : s) as T;
+  const all = (xs?: string[]) => xs?.map((x) => tr(x));
+  return {
+    ...p,
+    role: tr(p.role),
+    office_type: tr(p.office_type),
+    core_gag: tr(p.core_gag),
+    want: tr(p.want),
+    fear: tr(p.fear),
+    contradiction: tr(p.contradiction),
+    edge: tr(p.edge),
+    life: all(p.life),
+    comic_engine: all(p.comic_engine),
+    relationships: p.relationships?.map((r) => ({ ...r, dynamic: tr(r.dynamic) })),
+    personality: all(p.personality)!,
+    never_says: all(p.never_says)!,
+    voice: { ...p.voice, catchphrases: all(p.voice.catchphrases)! },
+  };
+}
+
+/** Published posts from the dashboard's own data folder and the extra ones; its own wins on the same key. */
+export function readJournals(paths: Paths): Record<string, JournalEntry> {
+  const extra = (paths.extraDataDirs ?? []).map((d) => readJson<Record<string, JournalEntry>>(join(d, "publish-journal.json"), {}));
+  return Object.assign({}, ...extra, readJson<Record<string, JournalEntry>>(join(paths.dataDir, "publish-journal.json"), {}));
+}
+
+/** Pulled numbers from every data folder; the newest pull of a post wins. */
+export function readMetrics(paths: Paths): Metrics[] {
+  const byId = new Map<string, Metrics>();
+  for (const dir of [...(paths.extraDataDirs ?? []), paths.dataDir])
+    for (const m of readJson<Metrics[]>(join(dir, "insights.json"), [])) {
+      const had = byId.get(m.postId);
+      if (!had || (m.fetchedAt ?? "") >= (had.fetchedAt ?? "")) byId.set(m.postId, m);
+    }
+  return [...byId.values()];
+}
 
 export function loadState(paths: Paths): State {
-  const journal = readJson<Record<string, JournalEntry>>(join(paths.dataDir, "publish-journal.json"), {});
+  const journal = readJournals(paths);
   let brandList: Brand[] = [];
   try {
     brandList = loadBrands(paths.brandsFile);
@@ -213,7 +316,7 @@ export function loadState(paths: Paths): State {
   const characters = listCharacters(paths.charactersDir).map((slug) => {
     const runFile = join(paths.runsDir, slug, "run.json");
     return {
-      profile: shownProfile(loadProfile(slug, paths.charactersDir)),
+      profile: shownProfile(loadProfile(slug, paths.charactersDir), paths.charactersDir),
       run: readJson<ConsistencyRun | undefined>(runFile, undefined),
       episodes: new Set(episodes.filter((e) => e.character === slug && e.state === "published").map((e) => e.episodeId)).size,
       comments: comments.filter((c) => byPost.get(c.postId)?.character === slug).length,
@@ -221,7 +324,8 @@ export function loadState(paths: Paths): State {
   });
   const runs = readJson<Run[]>(join(paths.dataDir, "pipeline", "runs.json"), []).sort((a, b) => b.startedAt.localeCompare(a.startedAt));
   const memory = { ...emptyMemory(), ...readJson<Partial<StoryMemory>>(memoryFile(paths.seriesDir ?? SERIES_DIR), {}) };
-  const insights = readJson<PostInsights[]>(join(paths.dataDir, "insights.json"), []);
+  const metrics = readMetrics(paths);
+  const insights: PostInsights[] = metrics;
   const stats = measureEpisodes({ journal, comments, insights, memory });
   const env = paths.env ?? process.env;
   const artDir = brandArtDir(paths);
@@ -242,7 +346,7 @@ export function loadState(paths: Paths): State {
       art: artOf(brand.id),
     };
   });
-  return { brands, comics: loadComics(paths.episodesDir), characters, episodes, comments, directions, inbox, byPost, runs, stats, lessons: memory.lessons, lessonsAt: memory.lessonsAt, streak: postingStreak(episodes) };
+  return { brands, comics: loadComics(paths.episodesDir), characters, episodes, comments, directions, inbox, byPost, runs, stats, metrics, lessons: memory.lessons, lessonsAt: memory.lessonsAt, streak: postingStreak(episodes), clipFiles: readClipFiles(paths) };
 }
 
 /** Pick or unpick a comment as the next direction. Returns the new list. */

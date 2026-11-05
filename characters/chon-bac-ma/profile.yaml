@@ -99,4 +99,16 @@ never_says:
   - Nhắc chuyện săn bắt, buôn bán chồn hay bất kỳ động vật hoang dã nào
 
 memory:
-  episodes: []
+  episodes:
+    - episode: ep-001
+      facts:
+        - Cả tầng 7 đi khám sức khoẻ định kỳ chung trong phòng họp Sáng Tạo, ai cũng mặt bơ phờ vì nhịn ăn, phiếu khám ghi bệnh do công việc.
+        - Lẻo ưỡn ngực khoe với Mực tờ kết quả hoàn hảo nhất tầng.
+        - Bác sĩ nhìn tờ kết quả của Lẻo rồi chốt khoẻ vậy chắc vì không làm gì cả.
+        - Mèo Tuyết bỏ tay Mực để nhảy vào lòng Tũn nằm rồi lườm Lẻo.
+    - episode: ep-002
+      facts:
+        - Lẻo kẹp tờ khám sức khỏe, giơ số 02 ngáp dài xếp hàng chờ tới lượt sau Tũn.
+    - episode: ep-003
+      facts:
+        - Lẻo hôm đó đến sớm ngồi sau uống cà phê hóng, túi áo vẫn vo tờ số 02 chờ bị mắng từ hôm trước.

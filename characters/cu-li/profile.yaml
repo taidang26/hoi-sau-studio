@@ -91,4 +91,18 @@ never_says:
   - 'Từ chối thẳng việc sếp giao (Lolo chưa học được chữ "không")'
 
 memory:
-  episodes: []
+  episodes:
+    - episode: ep-001
+      facts:
+        - Cả tầng 7 đi khám sức khoẻ định kỳ chung trong phòng họp Sáng Tạo, ai cũng mặt bơ phờ vì nhịn ăn, phiếu khám ghi bệnh do công việc.
+        - Tũn thâm mắt vì làm đêm, ôm đầu đóng băng khi chờ khám.
+        - Mèo Tuyết bỏ tay Mực để nhảy vào lòng Tũn nằm rồi lườm Lẻo.
+    - episode: ep-002
+      facts:
+        - 16h55 Mực đứng trước bàn Tũn giảng một tràng về file báo cáo trên laptop, một tay vẫn đỡ mèo Tuyết đang ngủ gật.
+        - Tũn bị giảng mà ngả lưng như đi spa, tay ôm cốc trà gừng bốc khói, mắt lim dim nhưng mồ hôi túa sau gáy.
+        - Lẻo kẹp tờ khám sức khỏe, giơ số 02 ngáp dài xếp hàng chờ tới lượt sau Tũn.
+    - episode: ep-003
+      facts:
+        - Sáng đó Tũn lao tới máy chấm công lúc 8h59, mồ hôi văng tóc bay, một ngón dí máy một tay giơ chữ V như check-in du lịch.
+        - Sáng đó mèo Tuyết đi cùng Mực ra cửa máy chấm công và lườm Tũn.

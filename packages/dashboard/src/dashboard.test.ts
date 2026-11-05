@@ -148,7 +148,21 @@ test("studio: create a character, lock its sheet, build an episode end to end", 
     assert.match(html, /\/studio-media\/ep-009\/final\/01\.png/);
     assert.equal((await fetch(at + "/studio-media/ep-009/final/01.png")).status, 200);
     assert.equal((await fetch(at + "/studio-media/..%2F..%2Fcharacters%2Fcu-li%2Fprofile.yaml")).status, 404);
-    assert.equal((await fetch(at + "/studio")).status, 200);
+    const list = await (await fetch(at + "/studio")).text();
+    assert.match(list, /Muốn truyện gì, cứ viết như nhắn tin/);
+    assert.match(list, /tag due">Xong, chờ anh duyệt/, "one status per episode");
+    assert.doesNotMatch(list, /<ol class="steps">/, "no step chips on the list");
+    assert.match(html, /<details class="card process"><summary><b>Máy đã làm gì/, "the steps are folded");
+
+    // One line, no picks: the characters come from the names written, and it runs by itself.
+    const one = await post("/studio/new", { id: "ep-010", direction: "Bống và Tê cãi nhau về cái điều hoà", run: "1" });
+    assert.equal(one.headers.get("location"), "/studio/ep-010");
+    const spec = JSON.parse(readFileSync(join(dirs.episodesDir, "ep-010", "episode.json"), "utf8"));
+    assert.equal(spec.lead, "ca-noc");
+    assert.deepEqual(spec.characters, ["ca-noc", "te-te"]);
+    await studio.settle("ep-010");
+    assert.equal(studio.jobs.get("ep-010")!.error, undefined);
+    assert.ok(existsSync(join(dirs.episodesDir, "ep-010", "final", "01.png")));
 
     // Review: the gate ran in the pipeline; approve, then an edit after approval shows.
     assert.match(html, /Kiểm duyệt/);
@@ -209,7 +223,7 @@ test("automation runs and motion comic files show up", async () => {
     assert.match(auto, /token &lt;hết hạn&gt;/);
     assert.match(auto, /href="\/studio\/cu-li-ep-001"/);
     assert.match(auto, /https:\/\/facebook.com\/p\/1/);
-    assert.match(await (await fetch(at + "/")).text(), /Lần chạy tự động gần nhất/);
+    assert.match(await (await fetch(at + "/automation")).text(), /Cu Li bị gọi họp lúc 6h sáng/);
 
     const page = await (await fetch(at + "/studio/cu-li-ep-001")).text();
     assert.match(page, /<video[^>]+src="\/studio-media\/cu-li-ep-001\/motion\/reel\.mp4"/);
@@ -249,7 +263,6 @@ test("coach lessons and episode scores show on the dashboard", async () => {
     const home = await (await fetch(at + "/")).text();
     assert.match(home, /Bài học từ khán giả/);
     assert.match(home, /class="lesson bad">Tránh/);
-    assert.match(home, /Ngày đăng liên tiếp/);
     assert.match(await (await fetch(at + "/episodes")).text(), /<th[^>]*>Điểm<\/th>/);
   } finally {
     server.close();
@@ -285,7 +298,8 @@ test("pictures first: placeholder portraits are served and pages use them", asyn
   assert.match(res.headers.get("content-type") ?? "", /svg/);
   assert.equal((await fetch(base + "/portrait/..%2Fsecret.svg")).status, 404);
   const home = await (await fetch(base + "/")).text();
-  assert.match(home, /class="cast-card"/);
+  assert.match(await (await fetch(base + "/characters")).text(), /src="\/(portrait|face)\//);
+  assert.match(home, /class="hero/);
   // Every character has a locked sheet now, so pages show the front view cut from it.
   assert.match(await (await fetch(base + "/channels")).text(), /src="\/face\/sao-la\.webp"/);
   const face = await fetch(base + "/face/sao-la.webp");
@@ -358,8 +372,8 @@ test("studio: pick a series style, draw and lock a sheet with poses, make a thre
     assert.match(char, /Đồ nhận diện/);
     assert.equal((await fetch(at + "/sheet/te-te/pose-sheet.png")).status, 200);
 
-    // A strip3 episode: the form offers it first, and each panel is its own post image.
-    assert.match(await (await fetch(at + "/studio")).text(), /<input type="radio" name="format" value="strip3" checked>/);
+    // One panel is the default now; a strip3 episode still makes each panel its own post image.
+    assert.match(await (await fetch(at + "/studio")).text(), /<input type="radio" name="format" value="single" checked>/);
     await post("/studio/new", { id: "ep-010", lead: "te-te", with: ["cu-li"], direction: "Ở nhà thì chán, đi làm thì mệt", format: "strip3" });
     await post("/studio/ep-010/run");
     await studio.settle("ep-010");
@@ -368,6 +382,30 @@ test("studio: pick a series style, draw and lock a sheet with poses, make a thre
     assert.doesNotMatch(html, /Trang đăng/);
     assert.match(html, /\/studio-media\/ep-010\/final\/03\.png/);
     assert.ok(!existsSync(join(dirs.episodesDir, "ep-010", "final", "page.png")));
+
+    // Sửa bằng lời on the finished comic: proposal first, then before/after with keep or undo.
+    const script010 = readFileSync(join(dirs.episodesDir, "ep-010", "script.json"), "utf8");
+    assert.match(html, /id="fix"/);
+    assert.equal((await post("/studio/ep-010/fix/ask", { note: 'khung 1 nói "Về thôi" và bỏ cái cốc' })).headers.get("location"), "/studio/ep-010#fix");
+    await studio.settle("ep-010");
+    assert.equal(studio.jobs.get("ep-010")!.error, undefined);
+    let fixPage = await (await fetch(at + "/studio/ep-010")).text();
+    assert.match(fixPage, /Máy định làm/);
+    assert.match(fixPage, /Khung 1: đổi lời thành &quot;Về thôi&quot;|Khung 1: đổi lời thành "Về thôi"/);
+    await post("/studio/ep-010/fix/apply", { pick: ["0", "1"] });
+    await studio.settle("ep-010");
+    assert.equal(studio.jobs.get("ep-010")!.error, undefined);
+    fixPage = await (await fetch(at + "/studio/ep-010")).text();
+    assert.match(fixPage, /fix-undo\/final\/01\.png/);
+    assert.match(fixPage, /\/studio\/ep-010\/fix\/undo/);
+    assert.notEqual(readFileSync(join(dirs.episodesDir, "ep-010", "script.json"), "utf8"), script010);
+    await post("/studio/ep-010/fix/undo");
+    assert.equal(readFileSync(join(dirs.episodesDir, "ep-010", "script.json"), "utf8"), script010);
+    assert.doesNotMatch(await (await fetch(at + "/studio/ep-010")).text(), /fix-undo/);
+
+    // From a quote: the exact words go on the panel as its headline band.
+    await post("/studio/new", { id: "ep-011", lead: "cu-li", direction: "Tũn đổ lỗi cho đồng nghiệp", format: "single", headline: "Kiểm điểm bản thân ít thôi, trách đồng nghiệp nhiều vào" });
+    assert.equal(JSON.parse(readFileSync(join(dirs.episodesDir, "ep-011", "episode.json"), "utf8")).headline, "Kiểm điểm bản thân ít thôi, trách đồng nghiệp nhiều vào");
   } finally {
     server.close();
   }

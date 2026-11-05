@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+      - name: Mock episode, end to end
+        run: npm run pipeline -- run --mock
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mock-episode
+          path: |
+            data-demo/studio/episodes/*/motion/reel.mp4
+            data-demo/studio/episodes/*/motion/cover.jpg
+            data-demo/studio/episodes/*/post.json
+            data-demo/pipeline/runs.json
+          if-no-files-found: warn

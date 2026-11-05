@@ -1,0 +1,23 @@
+{
+  "name": "@hoi-sau/dance",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "hoisau-dance": "dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "test": "tsc -b && node --test dist/*.test.js"
+  },
+  "dependencies": {
+    "@hoi-sau/motion": "0.0.0",
+    "@hoi-sau/studio": "0.0.0",
+    "@meta-sam/parser": "^0.1.0",
+    "@resvg/resvg-js": "^2.6.2",
+    "sharp": "^0.34.4",
+    "yaml": "^2.9.1"
+  }
+}

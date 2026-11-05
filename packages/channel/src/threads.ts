@@ -97,6 +97,29 @@ export async function publishThreadsPost(
   return { postId: id, permalink };
 }
 
+/**
+ * A text reply under one of our own posts, e.g. the episode's question so it
+ * sits at the top of the conversation. Needs the threads_manage_replies scope.
+ */
+export async function replyOnThreads(
+  threads: GraphClient,
+  userId: string,
+  postId: string,
+  text: string,
+  opts: ThreadsPublishOptions = {},
+): Promise<{ postId: string; permalink?: string }> {
+  const { id: containerId } = await threads.post<{ id: string }>(`${userId}/threads`, {
+    media_type: "TEXT",
+    text,
+    reply_to_id: postId,
+  });
+  await waitForContainer(threads, containerId, opts);
+  await opts.beforePublish?.(containerId);
+  const { id } = await threads.post<{ id: string }>(`${userId}/threads_publish`, { creation_id: containerId });
+  const { permalink } = await threads.get<{ permalink?: string }>(id, { fields: "permalink" });
+  return { postId: id, permalink };
+}
+
 async function waitForContainer(threads: GraphClient, id: string, opts: ThreadsPublishOptions): Promise<void> {
   const interval = opts.pollIntervalMs ?? 5000;
   const deadline = Date.now() + (opts.pollTimeoutMs ?? 10 * 60_000);

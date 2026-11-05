@@ -1,0 +1,24 @@
+{
+  "name": "@hoi-sau/talk",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "hoisau-talk": "dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "test": "tsc -b && node --test dist/*.test.js"
+  },
+  "dependencies": {
+    "@hoi-sau/dance": "0.0.0",
+    "@hoi-sau/motion": "0.0.0",
+    "@hoi-sau/story": "0.0.0",
+    "@hoi-sau/studio": "0.0.0",
+    "@hoi-sau/svg-text": "0.0.0",
+    "sharp": "^0.34.4",
+    "yaml": "^2.9.1"
+  }
+}

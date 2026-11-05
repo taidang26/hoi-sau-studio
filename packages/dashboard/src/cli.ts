@@ -8,7 +8,8 @@
  * dashboard can post to the Pages and spend API credits.
  */
 
-import { cpSync, existsSync, readFileSync } from "node:fs";
+import { mediaBaseUrl } from "./phone.js";
+import { cpSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { addCharacterBrand, BRANDS_FILE, DEFAULT_GRAPH_VERSION, GraphClient, sendReply } from "@hoi-sau/channel";
@@ -18,9 +19,13 @@ import { Accounts } from "./accounts.js";
 import { Backup } from "./backup.js";
 import { demoAnalyst, Research, seedResearch } from "./research.js";
 import { t } from "./i18n.js";
-import { seedLessons, writeDemoData } from "./seed.js";
+import { seedLessons, seedSchedule, writeDemoData } from "./seed.js";
 import { Studio } from "./studio.js";
+import { mockExec, nodeExec, Videos } from "./video.js";
+import { Insights } from "./performance.js";
 import { defaultPaths, startDashboard } from "./server.js";
+import { Schedule } from "./schedule.js";
+import { loadComics } from "./data.js";
 
 const ROOT = fileURLToPath(new URL("../../..", import.meta.url));
 
@@ -78,6 +83,9 @@ if (demo) {
   seedLessons(studioDirs.seriesDir);
 }
 paths.episodesDir = studioDirs.episodesDir;
+// Luật nhà: one file the writer, planner and fixer prompts all read (also in the CLIs the dashboard runs).
+process.env.HOISAU_RULES_FILE = join(studioDirs.seriesDir, "house-rules.json");
+if (demo && !existsSync(process.env.HOISAU_RULES_FILE) && existsSync(join(SERIES_DIR, "house-rules.json"))) cpSync(join(SERIES_DIR, "house-rules.json"), process.env.HOISAU_RULES_FILE);
 paths.charactersDir ??= studioDirs.charactersDir;
 const museMock = demo || env.MUSE_MOCK === "1";
 if (demo) paths.brandArtDir = join(paths.dataDir, "studio", "brand-art");
@@ -110,8 +118,36 @@ const research = new Research({
         throw new Error(t("Đang xem dữ liệu mẫu nên không đọc Instagram thật."));
       }
     : (handle) => accounts.discoverInstagram(handle),
+  threadsReplies: demo
+    ? async () => [
+        { id: "demo-1", text: "Đi làm đúng giờ tưởng mình bị phạt" },
+        { id: "demo-2", text: "Ủa? Từ từ… thứ 7 cũng họp à" },
+      ]
+    : (brand) => accounts.threadsReplies(brand),
 });
 if (demo) await seedResearch(research);
+// Real data only: once a week, new replies under our Threads posts become voice patterns to approve on Tư liệu.
+if (!demo) {
+  const learn = () =>
+    research
+      .learnThreads("hoi-sau")
+      .then((n) => n && research.readNew("hoi-sau"))
+      .catch((e) => console.error(`Threads voice: ${e instanceof Error ? e.message : e}`));
+  setInterval(learn, 7 * 24 * 3600 * 1000).unref();
+}
+
+// Video: clips from a sample clip, run through packages/talk. The demo draws placeholder pictures instead.
+const videos = new Videos({
+  dir: join(paths.dataDir, "video"),
+  episodesDir: studioDirs.episodesDir,
+  siteMediaDir: join(ROOT, "site", "public", "media"),
+  mediaBase: mediaBaseUrl(),
+  samplesDirs: process.env.VIDEO_SAMPLES_DIRS ? process.env.VIDEO_SAMPLES_DIRS.split(";") : [join(ROOT, "..", "Video satank"), join(ROOT, "..", "Video chimnhonho"), join(paths.dataDir, "video-samples")],
+  cast: () => cast().map((c) => ({ slug: c.slug, name: c.name })),
+  exec: demo ? mockExec() : nodeExec(ROOT),
+  deploy: !demo,
+});
+if (!demo) videos.start();
 
 const port = Number(process.env.PORT || 4321);
 const host = process.env.HOST || "127.0.0.1";
@@ -120,6 +156,34 @@ if (!demo && !password && !["127.0.0.1", "localhost", "::1"].includes(host)) {
   console.error(`Refusing to serve real data on ${host} without DASHBOARD_PASSWORD.`);
   process.exit(1);
 }
+// The short clips go out from the hoi-sau-story checkout next to this one: its journal and numbers are shown too.
+if (!demo) {
+  const story = join(ROOT, "..", "hoi-sau-story", "data");
+  paths.extraDataDirs = process.env.EXTRA_DATA_DIRS ? process.env.EXTRA_DATA_DIRS.split(";").filter(Boolean) : existsSync(story) ? [story] : [];
+}
+// Lịch đăng: the clips post from the hoi-sau-story checkout through Windows Task Scheduler; the page reads
+// and rewrites those tasks. The demo keeps a plan file of its own, with a few approved clips to place.
+const storyRepo = join(ROOT, "..", "hoi-sau-story");
+const schedule = new Schedule({
+  repo: demo ? join(paths.dataDir, "story") : existsSync(join(storyRepo, "scripts", "post-clip.ps1")) ? storyRepo : ROOT,
+  windows: !demo && process.platform === "win32",
+});
+if (demo) seedSchedule(paths.dataDir, schedule, loadComics(studioDirs.episodesDir));
+
+// "Cập nhật số liệu" on Hiệu suất: channel insights over every journal; the demo only touches the pull time.
+const insights = new Insights({
+  exec: demo
+    ? async () => {
+        const file = join(paths.dataDir, "insights.json");
+        const rows = JSON.parse(readFileSync(file, "utf8")) as { fetchedAt?: string }[];
+        writeFileSync(file, JSON.stringify(rows.map((r) => ({ ...r, fetchedAt: new Date().toISOString() })), null, 2) + "\n");
+        return "";
+      }
+    : nodeExec(ROOT),
+  script: "packages/channel/dist/cli.js",
+  env: { CHANNEL_DATA_DIR: paths.dataDir, CHANNEL_EXTRA_DATA_DIRS: (paths.extraDataDirs ?? []).join(";") },
+});
+
 // Real data only: what is not in git gets copied every 6 hours (Settings shows it and can run it now).
 const backup = demo
   ? undefined
@@ -138,6 +202,9 @@ await startDashboard(
     studio,
     accounts,
     research,
+    videos,
+    insights,
+    schedule,
     demo,
     banner: demo ? "Đang xem dữ liệu mẫu. Bài đăng, bình luận và tin nhắn ở đây là bịa, chỉ để thử giao diện." : undefined,
     channel: () => ({

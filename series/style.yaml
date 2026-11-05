@@ -7,8 +7,9 @@ chosen: null
 reference: null
 base: >-
   Cute chibi comic style: big round heads about a third of the body, short
-  round limbs, soft chubby shapes. Clean, even, thick black outlines. Flat
-  colours with at most one soft shadow tone. A soft pink blush on the cheeks.
+  round limbs, soft chubby shapes. Clean, even, thick black outlines. Soft
+  airbrushed shading on the round forms: gently darker towards the edges, a
+  soft highlight on top, a blended warm blush on the cheeks.
   Simple round eyes with one white highlight, eyebrows that do the acting.
   Exaggerated cartoon acting, pushed further than feels safe: squash and
   stretch, extreme faces (jaw on the floor, eyes popping, tears streaming,
@@ -16,13 +17,17 @@ base: >-
   action, bodies bending and stretching like rubber. Drawn comic effects add
   energy: sweat drops, speed and motion lines, shock lines, anger veins, steam
   puffs, sparkles, little stars, dust clouds, always as pictures, never as
-  letters. Big, readable poses and expressions that land at phone size. Uncluttered
-  Vietnamese office settings with a few telling props. Lighting fits the
-  scene and stays cheerful: daytime by default, with light airy backgrounds
-  and fresh clean colours. When the story needs evening or night (overtime,
+  letters. Big, readable poses and expressions that land at phone size. Each panel sits on
+  one muted background tone that contrasts with the characters and fits the
+  mood (sage or deep green, warm beige, dusty blue, night navy), with only one
+  or two props that tell the story; the far background is simpler and softer
+  than the characters. Light comes from sources in the scene: window
+  daylight, a monitor glowing on a face, a desk lamp, a phone screen.
+  Lighting stays cheerful: daytime by default. When the story needs evening or night (overtime,
   a party), keep it warm and lively, lit by lamps and screens, never gloomy.
 avoid:
-  - photorealism, 3D render, glossy or airbrushed shading, gradients
+  - photorealism, 3D render, glossy plastic shine, painterly fur texture, thin sketchy lines
+  - busy backgrounds full of coworkers and objects, backgrounds as bright and detailed as the characters
   - anime sparkle eyes, manga screentone
   - drawn text, letters, numbers on signs, speech bubbles, captions, logos
   - gloomy, murky or depressing lighting, heavy shadows, a mood of despair

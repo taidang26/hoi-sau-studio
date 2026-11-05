@@ -1,0 +1,117 @@
+{
+  "episodes": [
+    {
+      "id": "lolo-test-001",
+      "number": 1,
+      "lead": "cu-li",
+      "characters": [
+        "cu-li",
+        "ca-noc"
+      ],
+      "title": "16h50, \"Em Ơi Giúp Anh Tí\"",
+      "summary": "16h50 Lolo nhận file gấp rồi đơ toàn tập khi 17h00 sếp hỏi \"xong chưa em?\", còn chị Poppy lăn ghế qua giúp càng dạ ạ càng phồng tới cỡ L. Đến 17h01 chị xẹp xuống lặng lẽ ngồi gõ phụ, Lolo hối lỗi đặt viên kẹo cạnh chuột và cả hai cùng nhìn màn hình làm tiếp.",
+      "hook": "Bạn từng đơ toàn tập vì câu \"xong chưa em\" lúc mấy giờ, kể nghe coi?",
+      "fromComments": [],
+      "at": "2026-10-27T03:24:27.764Z"
+    },
+    {
+      "id": "ep-001",
+      "number": 1,
+      "lead": "chon-bac-ma",
+      "characters": [
+        "chon-bac-ma",
+        "cu-li",
+        "cay-muc"
+      ],
+      "title": "Khám định kỳ, mình Lẻo khoẻ",
+      "summary": "Cả tầng 7 bơ phờ nhịn ăn xếp hàng khám định kỳ lúc 7 giờ sáng, chỉ mình Lẻo ưỡn ngực khoe tờ kết quả hoàn hảo với Mực. Mực cà khịa “khoẻ vậy chắc không làm gì” còn mèo Tuyết bỏ Mực nhảy sang lòng Tũn lườm Lẻo, khép lại bằng câu hỏi khoe vậy là sai hay khôn.",
+      "hook": "Lẻo khoe khoẻ nhất tầng là sai hay khôn?",
+      "fromComments": [],
+      "at": "2026-10-27T10:08:56.450Z"
+    },
+    {
+      "id": "ep-002",
+      "number": 2,
+      "lead": "cu-li",
+      "characters": [
+        "cu-li",
+        "cay-muc",
+        "chon-bac-ma"
+      ],
+      "title": "Bị giảng mà tưởng đi spa",
+      "summary": "Mực đứng giảng say sưa trước bàn Tũn với laptop mở file final, còn Tũn ngả lưng lim dim như đi spa ôm cốc trà gừng. Phía sau, Lẻo kẹp tờ khám khỏe nhất tầng và giơ số 02 ngáp dài chờ tới lượt, chốt bằng câu còn bị giảng là còn được nghỉ với lỗi thứ 38 của Tũn.",
+      "hook": "Lẻo tự lấy số chờ bị mắng, theo bạn là khôn hay sai?",
+      "fromComments": [],
+      "at": "2026-10-27T18:46:23.322Z"
+    },
+    {
+      "id": "ep-003",
+      "number": 3,
+      "lead": "cu-li",
+      "characters": [
+        "cu-li",
+        "cay-muc",
+        "chon-bac-ma"
+      ],
+      "title": "Chấm Công Lúc 8h59 Sáng",
+      "summary": "Tũn lao tới chấm công lúc 8h59 tóc bay mồ hôi văng thì đụng ngay Mực đứng bấm giờ cạnh máy. Phía sau, Lẻo hôm qua cầm số 02 nay tới sớm ôm cà phê ngồi hóng cười tủm. Mực chỉ nói việc nhỏ và bấm giờ thang máy nên Tũn thoát nạn trong gang tấc.",
+      "hook": "Lẻo tới sớm chỉ để hóng Tũn muộn, là khôn hay sai?",
+      "fromComments": [],
+      "at": "2026-10-28T03:46:34.239Z"
+    }
+  ],
+  "threads": [
+    {
+      "id": "t1",
+      "text": "Bạn từng đơ toàn tập vì câu \"xong chưa em\" lúc mấy giờ, kể nghe coi?",
+      "characters": [
+        "cu-li",
+        "ca-noc"
+      ],
+      "opened": "lolo-test-001",
+      "status": "open"
+    },
+    {
+      "id": "t2",
+      "text": "Lẻo khoe khoẻ nhất tầng là sai hay khôn?",
+      "characters": [
+        "chon-bac-ma",
+        "cu-li",
+        "cay-muc"
+      ],
+      "opened": "ep-001",
+      "status": "open"
+    },
+    {
+      "id": "t3",
+      "text": "Lẻo tự lấy số chờ bị mắng, theo bạn là khôn hay sai?",
+      "characters": [
+        "cu-li",
+        "cay-muc",
+        "chon-bac-ma"
+      ],
+      "opened": "ep-002",
+      "status": "open"
+    },
+    {
+      "id": "t4",
+      "text": "Lẻo tới sớm chỉ để hóng Tũn muộn, là khôn hay sai?",
+      "characters": [
+        "cu-li",
+        "cay-muc",
+        "chon-bac-ma"
+      ],
+      "opened": "ep-003",
+      "status": "open"
+    }
+  ],
+  "cameos": [],
+  "gagsUsed": {
+    "cay-trau-ba": 1,
+    "may-ca-phe": 1,
+    "phong-16h45": 1,
+    "final-v2": 2,
+    "thang-may": 3
+  },
+  "lessons": []
+}

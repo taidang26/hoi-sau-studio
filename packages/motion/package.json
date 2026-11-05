@@ -1,0 +1,19 @@
+{
+  "name": "@hoi-sau/motion",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "hoisau-motion": "dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "test": "tsc -b && node --test dist/*.test.js"
+  },
+  "dependencies": {
+    "@hoi-sau/studio": "0.0.0",
+    "@hoi-sau/svg-text": "0.0.0"
+  }
+}

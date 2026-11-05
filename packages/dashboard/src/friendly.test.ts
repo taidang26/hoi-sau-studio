@@ -51,7 +51,7 @@ after(() => {
 });
 
 test("no commands, setting names or file names on any page", async () => {
-  for (const path of ["/", "/channels", "/channels/lolo", "/characters", "/characters/cu-li", "/characters/new", "/characters/cu-li/edit", "/inbox", "/comments", "/episodes", "/automation", "/settings"]) {
+  for (const path of ["/", "/channels", "/channels/lolo", "/characters", "/characters/cu-li", "/characters/new", "/characters/cu-li/edit", "/inbox", "/comments", "/episodes", "/automation", "/settings", "/schedule", "/rules", "/performance"]) {
     const html = (await (await fetch(base + path)).text()).replace(/<(textarea|script)[\s\S]*?<\/\1>/g, "").replace(/name="[A-Z_]+"/g, "");
     assert.doesNotMatch(html, /npm run|\.env\b|channels\.yaml|profile\.yaml|FB_PAGE_|IG_USER_ID|THREADS_TOKEN|META_GRAPH_MOCK/, path);
   }

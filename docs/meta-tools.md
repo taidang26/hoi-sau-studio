@@ -11,7 +11,10 @@ Base `https://api.meta.ai/v1`, key in `META_API_KEY`. Every client has an offlin
 | **Muse Spark** (`muse-spark-1.3`) | Writes, checks and remembers: every text step below | Strict JSON schemas (`response_format: json_schema, strict: true`) make every output machine-checkable; fast enough for many short calls | Real runs from 27 Oct |
 | **Muse Spark vision** | Reviews every panel against the locked sheets; reads reference images for recipes | Compares a picture to a reference picture, not just a description | Real runs from 27 Oct |
 | **Muse Image** (`muse-image-1.0`) | Draws: series style, model and pose sheets, brand art, every panel, edit-only redraws | A locked sheet as reference plus chained turns (`previous_response_id`) keep a character on-model; an edit turn changes one detail and keeps the rest | Real runs from 27 Oct |
-| **Muse Voice Transcribe** | Time-aligned subtitles for the motion comic | Subtitles follow the real voice track | In progress (video work) |
+| **Muse Voice Transcribe** (`muse-voice-transcribe-1.0`) | Time-aligned subtitles for the motion comic; word times of a sound a character lip-syncs to | Timing comes from the real audio, not an estimate | Wired 27/10 (`packages/talk/src/transcribe.ts`); the current key gets 404, so lip-sync uses `--lyrics` until it opens |
+| **Muse Spark** (talking videos) | Writes a character's 30-second monologue with a gesture per line; for a lip-sync, picks a gesture per line of the sound and writes the title and caption (`packages/talk/src/script.ts`) | Same strict-JSON calls as the comic; the gesture list is an enum, so every line maps to a drawn pose | Done; first real video 27/10 |
+| **Muse Image** (talking videos) | Draws each character once as a talking set: a base shot, six gestures as chained edits of it, and a mouth-open and a blink edit of each gesture (`packages/talk/src/art.ts`) | Chained edits (`previous_response_id`) keep framing, background and character identical across the set | Done; Lolo's set drawn 27/10 |
+| **SAM 3.1** (`sam-3.1`) | Finds the mouth and the eyes in each gesture picture so only that part of the mouth/blink edit is pasted in (`packages/dance/src/sam.ts`) | Text-prompted segmentation ("the mouth", "the eyes") gives the exact region; the rest of the picture stays untouched | Done |
 | **Muse Wonder** | Candidate writer for season-level planning (`MUSE_WRITER_MODEL`) | Stronger reasoning over long context | Not wired; the writer role accepts it |
 
 ### Every call, by step
@@ -34,6 +37,16 @@ Base `https://api.meta.ai/v1`, key in `META_API_KEY`. Every client has an offlin
 | Scoring and grouping comments | Muse Spark Open, else Muse Spark | `story listen` | `packages/story/src/listen.ts` |
 | Character replies to comments, and the first comment under a new post | Muse Spark Open, else Muse Spark | `story replies`, `story first-comment` | `packages/story/src/engage.ts` |
 | Tư liệu: reads reference images into reusable recipes (gag, layout, pose, palette); images never go to Muse Image | Muse Spark vision | dashboard Tư liệu | `packages/dashboard/src/research.ts` |
+| Talking video: monologue with a gesture per line (or gestures, title and caption for a lip-synced sound) | Muse Spark | `talk make`, `talk sync` | `packages/talk/src/script.ts`, `sync.ts` |
+| Talking set: base shot, six gestures, mouth-open and blink edits, chained | Muse Image | `talk art [--pose stand]` | `packages/talk/src/art.ts` |
+| Background sets: real Hanoi places as faded watercolour sketches | Muse Image | `talk sets` | `packages/talk/src/sets.ts` |
+| Mouth and eyes in each gesture; character cut-out for a new background | SAM 3.1 | `talk art`, `talk cut` | `packages/dance/src/sam.ts`, `packages/talk/src/art.ts` |
+| Word times of a lip-synced sound | Muse Voice Transcribe | `talk sync` | `packages/talk/src/transcribe.ts` |
+| Illustrated video: what each shot shows, its second pose and bubble, from the clip's lines | Muse Spark | `talk illustrate --step plan` | `packages/talk/src/illustrate.ts` |
+| Illustrated video: one full-frame 9:16 picture per shot, then a second pose as an edit | Muse Image | `talk illustrate --step draw`, `poses` | `packages/talk/src/illustrate.ts` |
+| Illustrated video: each picture checked (on-model, drawn once, no text, fills the frame, props the right way round); redrawn on a fail | Muse Spark vision | `talk illustrate --step draw`, `poses` | `packages/talk/src/illustrate.ts` |
+| Illustrated video: the characters in both poses, so pose B keeps pose A's background | SAM 3.1 | `talk illustrate --step stabilize` | `packages/talk/src/illustrate.ts`, `patch.ts` |
+| Moving mouth: a shut and an open mouth per picture, pasted without touching nose or eyes, checked close up | Muse Image, SAM 3.1, Muse Spark vision | `talk illustrate --step mouths`, `render --mouth` | `packages/talk/src/illustrate.ts` |
 
 The clients are `packages/studio/src/muse-spark.ts` and `muse-image.ts` (Studio) and `packages/story/src/llm.ts` (story, with roles `writer`, `judge` and `listener`).
 
@@ -41,6 +54,10 @@ The clients are `packages/studio/src/muse-spark.ts` and `muse-image.ts` (Studio)
 
 | Tool | Job | Why | Where | Status |
 | --- | --- | --- | --- | --- |
+| **MMS-1B** (`facebook/mms-1b-all`) | Word times of a clip's voice for captions, cuts and the moving mouth | Muse Voice Transcribe returns 404 on our key; MMS-1B is Meta's open speech recogniser and runs on our GPU | `packages/talk/tts/asr.py` | In use for illustrated videos |
+| **MMS-TTS** (`facebook/mms-tts-vie`) | Talking-video voice; `--tts mms-hn` is our fine-tune on the owner's Hà Nội recordings | Meta's Vietnamese speech model | `packages/talk/tts/tts.py` | Base voice kept as a fallback; the fine-tune for non-commercial use (CC BY-NC base) |
+| **MusicGen** (`facebook/musicgen-small`) | Instrumental background music for silent text clips | Meta's open music model; runs on our GPU, so no licensed track is needed | `packages/talk/scripts/musicgen.py` | In use for the silent text clips |
+| **SeamlessM4T v2** (`facebook/seamless-m4t-v2-large`) | Alternative talking-video voice (`--tts seamless`) | More natural than base MMS-TTS | `packages/talk/tts/seamless.py` | Available; not used in published videos |
 | **Muse Spark Open** (`meta-models/muse-spark-open-1026`) | Scoring comments in batches of 25: idea or not, in character, funny, new; cluster label. Drafting character replies | Comment volume grows with the audience; open weights on Baseten or Modal keep it off the per-token API budget | `packages/story/src/listen.ts`, `engage.ts`, `llm.ts` (role `listener`) | Done with mock; falls back to Muse Spark until hosting is set (`MUSE_SPARK_OPEN_URL`, `MUSE_SPARK_OPEN_KEY`) |
 
 ## Meta platform APIs
@@ -61,14 +78,15 @@ The Meta app runs in Development mode, so all of this works on our own Pages and
 | --- | --- |
 | Muse Image | The episode is not drawn and nothing is posted that day. No other image model, on purpose: consistency is the product. |
 | Muse Spark Open hosting | Listening runs on Muse Spark through the Meta Model API, same prompt and batches. |
-| Muse Voice Transcribe | Subtitles come from the script with estimated timing. |
+| Muse Voice Transcribe | Lip-sync takes the words from `--lyrics` and times them against the loud parts of the sound. |
 | Graph or Threads API | Temporary errors and rate limits are retried with backoff; a token or permission error stops and shows on the dashboard. |
 
 ## Outside Meta
 
 Not part of the core and replaceable:
 
-- Text-to-speech voice for the motion comic (to be chosen; licensed for commercial use).
+- No voice from outside Meta: talking videos use MMS-TTS (`--tts mms-hn`, fine-tuned on our own Hà Nội recordings; CC BY-NC base) or SeamlessM4T v2, and illustrated videos keep the clip's own sound.
+- The demo video's English voice-over (narration only, not part of the product) was made with ElevenLabs. The demo's music is MusicGen.
 - `ffmpeg` to assemble the motion comic.
-- Font: Be Vietnam Pro, SIL Open Font License.
+- Fonts: Be Vietnam Pro and Mali (speech bubbles), SIL Open Font License.
 - Background music: royalty-free only, source listed here when chosen.

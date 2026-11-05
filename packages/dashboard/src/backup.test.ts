@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFil
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { Backup } from "./backup.js";
+import { Backup, backupSkips } from "./backup.js";
 
 test("backups copy what is not in git, never the secrets, and keep the last few", () => {
   const root = mkdtempSync(join(tmpdir(), "hoisau-backup-"));
@@ -25,4 +25,16 @@ test("backups copy what is not in git, never the secrets, and keep the last few"
   assert.deepEqual(readdirSync(join(root, "backups")).sort(), ["2026-10-27_0901", "2026-10-27_0902"]);
   assert.equal(b.info().count, 2);
   assert.equal(b.info().last?.name, "2026-10-27_0902");
+});
+
+test("backups leave out what the videos can make again, and never fill the drive", () => {
+  for (const f of ["data/video/x/x.mp4", "data/video/x/undo/shots/s01.png", "data/video/x/shots/s01-fix1.raw.png", "data/video/x/shots/s01-prev.png", "data/talk/a/voice.m4a", "data/video/x/shots/s01-m.raw.png", "data/.env"])
+    assert.ok(backupSkips(f), f);
+  for (const f of ["data/video/x/shots/s01.png", "data/video/x/plan.json", "data/video/x/meta.json", "data/research/a.png", "data/comments.json"]) assert.ok(!backupSkips(f), f);
+  const root = mkdtempSync(join(tmpdir(), "hoisau-backup-"));
+  mkdirSync(join(root, "data"));
+  const b = new Backup({ sources: [join(root, "data")], dir: () => join(root, "backups"), freeBytes: () => 2 * 1024 ** 3 });
+  assert.throws(() => b.run(), /2.0 GB/);
+  assert.equal(b.info().count, 0);
+  assert.match(b.info().error ?? "", /chưa sao lưu/);
 });

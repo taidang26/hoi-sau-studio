@@ -4,11 +4,12 @@ import { loadMemorySync } from "@hoi-sau/story";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { test } from "node:test";
+import { after, test } from "node:test";
 import { parse, parseDocument } from "yaml";
 import { approvalProblems } from "@hoi-sau/channel";
 import {
   approveEpisode,
+  approveVideo,
   approveSheet,
   checkForApproval,
   editedSteps,
@@ -41,8 +42,13 @@ import {
   type StudioContext,
 } from "./index.js";
 
+// Each sandbox copies the characters folder (pose sheets and all), so remove them when the file's tests end.
+const sandboxes: string[] = [];
+after(() => { for (const dir of sandboxes) rmSync(dir, { recursive: true, force: true }); });
+
 function sandbox() {
   const root = mkdtempSync(join(tmpdir(), "hoisau-studio-"));
+  sandboxes.push(root);
   const charactersDir = join(root, "characters");
   const seriesDir = join(root, "series");
   cpSync(CHARACTERS_DIR, charactersDir, { recursive: true });
@@ -414,4 +420,104 @@ test("heads named by display or Vietnamese name map back to slugs", () => {
   if (lolo.name_vi) assert.equal(slugFor(ctx, lolo.name_vi), "cu-li");
   assert.equal(slugFor(ctx, "cu-li"), "cu-li");
   assert.equal(slugFor(ctx, "Nobody"), "Nobody");
+});
+
+test("a finished video is approved with its caption, and only that video and caption can be published", () => {
+  const root = mkdtempSync(join(tmpdir(), "hoisau-video-"));
+  const episodes = join(root, "episodes");
+  const video = join(root, "clip.mp4");
+  writeFileSync(video, "video bytes");
+  const post = { episodeId: "pilot-1", format: "reels-9x16" as const, caption: "Lương mới nuôi mình #HoiSau", mediaUrls: ["https://example.com/clip.mp4"] };
+  const postFile = join(root, "post.json");
+  writeFileSync(postFile, JSON.stringify(post));
+  const dir = join(episodes, "pilot-1");
+
+  const a = approveVideo("pilot-1", video, postFile, { dir: episodes, by: "tai" });
+  assert.ok(a.files["video.mp4"] && a.post);
+  assert.deepEqual(approvalProblems(dir, post), []);
+  assert.match(approvalProblems(dir, { ...post, caption: "Caption khác" }).join(), /caption or media differ/);
+  writeFileSync(join(dir, "video.mp4"), "another video");
+  assert.match(approvalProblems(dir, post).join(), /video.mp4 changed after approval/);
+
+  // A banned caption is refused; the post file must match the id and be one video.
+  writeFileSync(postFile, JSON.stringify({ ...post, caption: "Chuyện chính trị văn phòng" }));
+  assert.throws(() => approveVideo("pilot-1", video, postFile, { dir: episodes }), /safety rules/);
+  writeFileSync(postFile, JSON.stringify(post));
+  assert.throws(() => approveVideo("pilot-2", video, postFile, { dir: episodes }), /is for pilot-1/);
+  writeFileSync(postFile, JSON.stringify({ ...post, format: "carousel-4x5" }));
+  assert.throws(() => approveVideo("pilot-1", video, postFile, { dir: episodes }), /reels-9x16/);
+  // A still for Threads is approved the same way.
+  const still = join(root, "still.jpg");
+  writeFileSync(still, "picture bytes");
+  const imagePost = { ...post, episodeId: "pilot-1-still", format: "image-4x5" as const, mediaUrls: ["https://example.com/still.jpg"] };
+  writeFileSync(postFile, JSON.stringify(imagePost));
+  assert.ok(approveVideo("pilot-1-still", still, postFile, { dir: episodes }).files["image.jpg"]);
+  assert.deepEqual(approvalProblems(join(episodes, "pilot-1-still"), imagePost), []);
+  rmSync(root, { recursive: true, force: true });
+});
+
+test("swears are always masked, the way Threads writes them", async () => {
+  const { maskSwears } = await import("./swears.js");
+  assert.equal(maskSwears("Đm deadline"), "Đ*m deadline");
+  assert.equal(maskSwears("thứ 7 cũng họp, vcl"), "thứ 7 cũng họp, v*l");
+  assert.equal(maskSwears("đéo ai làm"), "đ*o ai làm");
+  assert.equal(maskSwears("đ*m vẫn che rồi"), "đ*m vẫn che rồi");
+  assert.equal(maskSwears("vlog với dmm"), "vlog với d*m", "only whole words");
+  assert.equal(maskSwears("vãi cả chưởng"), "v*i cả chưởng");
+});
+
+test("Sửa bằng lời on a comic: words and a picture change, before is kept, undo puts it all back", async () => {
+  const { askComicFixes, applyComicFixes, undoComicFix, comicFixDone, keepComicFix, validComicFix } = await import("./index.js");
+  const box = sandbox();
+  const spark = mockSparkTransport();
+  const ctx: StudioContext = {
+    ...openStudio({ mock: true, ...box }),
+    spark: new MuseSpark({ apiKey: "k", transport: spark.transport }),
+    image: new MuseImage({ apiKey: "k", transport: mockTransport().transport }),
+  };
+  ctx.dir = box.episodesDir;
+  createEpisode({ id: "ep-fix", lead: "cu-li", characters: ["te-te"], direction: "Quên tắt mic khi họp", credits: [], format: "strip3" }, box.episodesDir);
+  await runEpisode(ctx, "ep-fix");
+  const folder = join(box.episodesDir, "ep-fix");
+  const scriptBefore = readFileSync(join(folder, "script.json"), "utf8");
+  const pageBefore = readFileSync(join(folder, "final", "01.png"));
+  const panelBefore = readStep<{ renders: Array<{ file: string }> }>("ep-fix", "panels", box.episodesDir)!.renders[0].file;
+
+  // An unclear note asks back and changes nothing.
+  const unclear = await askComicFixes(ctx, "ep-fix", "chưa ổn lắm");
+  assert.equal(unclear.actions.length, 0);
+  assert.match(unclear.reply, /\?/);
+
+  const plan = await askComicFixes(ctx, "ep-fix", 'khung 1 nói "Tắt mic chưa đấy" và bỏ cái cốc');
+  assert.deepEqual(plan.actions.map((a) => a.do), ["line_text", "fix_picture"]);
+  const call = spark.calls.find((c) => c.response_format.json_schema.name === "comic_fixes")!;
+  assert.ok(call.messages[0].content.some((c: any) => c.type === "image_url"), "the finished panels go with the note");
+  // Edits pointing at a panel that does not exist are dropped.
+  const script = readStep<any>("ep-fix", "script", box.episodesDir);
+  assert.equal(validComicFix(script, ["cu-li"], { do: "line_text", panel: 9, line: 0, speaker: "", text: "x", what: "", say: "" }), false);
+
+  assert.deepEqual(await applyComicFixes(ctx, "ep-fix", plan.actions), [1]);
+  assert.equal(readStep<any>("ep-fix", "script", box.episodesDir).panels[0].dialogue[0].text, "Tắt mic chưa đấy");
+  const after1 = readStep<{ renders: Array<{ file: string; history: string[] }> }>("ep-fix", "panels", box.episodesDir)!.renders[0];
+  assert.notEqual(after1.file, panelBefore);
+  assert.deepEqual(after1.history.at(-1), panelBefore);
+  assert.notDeepEqual(readFileSync(join(folder, "final", "01.png")), pageBefore);
+  assert.ok(existsSync(join(folder, "fix-undo", "final", "01.png")), "the page before is kept for the before/after view");
+  assert.deepEqual(comicFixDone("ep-fix", box.episodesDir)?.panels, [1]);
+  // The new words went through the safety gate again.
+  assert.equal(readStep<any>("ep-fix", "safety", box.episodesDir).pass, true);
+
+  undoComicFix("ep-fix", box.episodesDir);
+  assert.equal(readFileSync(join(folder, "script.json"), "utf8"), scriptBefore);
+  assert.deepEqual(readFileSync(join(folder, "final", "01.png")), pageBefore);
+  assert.equal(comicFixDone("ep-fix", box.episodesDir), undefined);
+
+  // A refused line puts everything back and says why.
+  await assert.rejects(applyComicFixes(ctx, "ep-fix", [{ do: "line_text", panel: 1, line: 0, speaker: "", text: "chuyện chính trị hôm nay", what: "", say: "" }]), SafetyError);
+  assert.equal(readFileSync(join(folder, "script.json"), "utf8"), scriptBefore);
+
+  await applyComicFixes(ctx, "ep-fix", [plan.actions[0]]);
+  keepComicFix("ep-fix", box.episodesDir);
+  assert.equal(comicFixDone("ep-fix", box.episodesDir), undefined);
+  assert.equal(readStep<any>("ep-fix", "script", box.episodesDir).panels[0].dialogue[0].text, "Tắt mic chưa đấy");
 });

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { DEMO, demoGraph } from "./demo.js";
-import { exchangeThreadsLongLived, fetchThreadsReplies, GraphClient, publishEpisode, THREADS_BASE_URL, validatePost } from "./index.js";
+import { exchangeThreadsLongLived, fetchThreadsReplies, GraphClient, publishEpisode, replyOnThreads, THREADS_BASE_URL, validatePost } from "./index.js";
 import { carousel, demoTargets, fast, reels, strip, tempJournal as journal } from "./testkit.js";
 
 test("Threads token exchange sends its inputs on the query string, to graph.threads.net", async () => {
@@ -60,4 +60,14 @@ test("a three-panel page posts as one image on Facebook, Instagram and Threads",
   await publishEpisode("threads", strip, targets, j, fast);
   const created = mock.calls.filter((c) => c.method === "POST" && c.path.endsWith("/threads"));
   assert.deepEqual(created.map((c) => c.params.media_type), ["IMAGE"]);
+});
+
+test("a Threads reply goes under our own post as a TEXT container with reply_to_id", async () => {
+  const { mock, targets } = demoTargets({ containerPolls: 1 });
+  const r = await replyOnThreads(targets.threads.client, targets.threads.userId, "900005", "Ai sẽ báo sếp?", fast);
+  assert.ok(r.postId);
+  const create = mock.calls.find((c) => c.method === "POST" && c.path.endsWith("/threads"));
+  assert.equal(create?.params.media_type, "TEXT");
+  assert.equal(create?.params.reply_to_id, "900005");
+  assert.equal(create?.params.text, "Ai sẽ báo sếp?");
 });

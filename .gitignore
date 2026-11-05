@@ -19,3 +19,15 @@ firebase-debug.log
 # Noise
 *.log
 .DS_Store
+logs/
+
+# Generated art and local episodes (re-made by the commands that drew them)
+episodes/
+characters/*/talk/
+characters/*/talk-stand/
+characters/*/*.webp
+series/sets/
+
+# Built by `npm run studio -- tai` (and before every site deploy)
+site/public/tai/index.html
+site/public/feed.json

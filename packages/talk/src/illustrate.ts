@@ -24,6 +24,7 @@ import { characterRefs, generateSoftly, houseRulesPrompt, S, styleReference, sty
 import type { Sam } from "@hoi-sau/dance";
 import { COMIC_FONT_PATH, escapeXml, loadFont, measure, svgToPng } from "@hoi-sau/svg-text";
 import { captionSvg } from "./captions.js";
+import { poseSwitches, snapShots } from "./beats.js";
 import { chunkWords, OUT, SAFE, type Chunk, type Word } from "./timeline.js";
 import { align, grow, maskBox, unionBox, writePng, type Box, type Raster } from "./patch.js";
 import { python } from "./voice.js";
@@ -1005,15 +1006,30 @@ function bubbleSvg(text: string): string {
 }
 
 /** Caption chunks that never run across two sung or spoken lines ("laptop Giờ này"): each line is chunked on its own. */
-export function lineChunks(lines: Line[], words: Word[]): ReturnType<typeof chunkWords> {
+export function lineChunks(lines: Line[], words: Word[], opts: { minDur?: number; maxChars?: number; hold?: number } = {}): ReturnType<typeof chunkWords> {
   if (!lines.length) return chunkWords(words, 3, 16);
+  const { minDur = 0.9, maxChars = 48, hold = 0.8 } = opts;
   const owner = (w: Word) => {
     const k = lines.findIndex((l) => w.start >= l.start - 0.05 && w.start < l.end);
     return k < 0 ? lines.reduce((b, l, i) => (Math.abs(l.start - w.start) < Math.abs(lines[b].start - w.start) ? i : b), 0) : k;
   };
   const groups = new Map<number, Word[]>();
   for (const w of words) groups.set(owner(w), [...(groups.get(owner(w)) ?? []), w]);
-  return [...groups.keys()].sort((a, b) => a - b).flatMap((k) => chunkWords(groups.get(k)!, 3, 16));
+  // One caption per sung line, so a fast song is read a whole line at a time instead of three words flashing by.
+  const out = [...groups.keys()].sort((a, b) => a - b).map((k) => { const ws = groups.get(k)!; return { words: ws, start: ws[0].start, end: ws[ws.length - 1].end }; });
+  const chars = (c: { words: Word[] }) => c.words.reduce((n, w) => n + w.text.length + 1, 0);
+  // A line too short to read joins the neighbour it fits best with (still at most two rows of text).
+  for (let i = 0; i < out.length; i++) {
+    if (out[i].end - out[i].start >= minDur || out.length < 2) continue;
+    const fits = [i - 1, i + 1].filter((j) => out[j] && chars(out[i]) + chars(out[j]) <= maxChars && Math.abs((j < i ? out[i].start - out[j].end : out[j].start - out[i].end)) < 0.4);
+    const j = fits.sort((x, y) => chars(out[x]) - chars(out[y]))[0];
+    if (j === undefined) continue;
+    const [p, q] = j < i ? [j, i] : [i, j];
+    out.splice(p, 2, { words: [...out[p].words, ...out[q].words], start: out[p].start, end: out[q].end });
+    i = p - 1;
+  }
+  // Each caption stays up until the next one (or `hold` s past its last word), so it never blinks off mid-song.
+  return out.map((c, i) => ({ ...c, end: Math.max(c.end, Math.min(out[i + 1]?.start ?? Infinity, c.end + hold)) }));
 }
 
 /**
@@ -1031,8 +1047,14 @@ export async function fitPlate(file: string): Promise<Buffer> {
 }
 
 /** Frames only where something changes (a cut, a pose, the bubble pop, a word), then ffmpeg with the clip's audio. */
-export async function renderIllustrated(plan: Plan, words: Word[], dir: string, out: string, opts: { mouth?: boolean[]; log?: (s: string) => void } = {}): Promise<string> {
+export async function renderIllustrated(plan: Plan, words: Word[], dir: string, out: string, opts: { mouth?: boolean[]; beats?: number[]; log?: (s: string) => void } = {}): Promise<string> {
   const chunks = lineChunks(plan.lines, words);
+  // With the song's beats, every cut and every pose change lands on one.
+  if (opts.beats?.length) plan = { ...plan, shots: snapShots(plan.shots, opts.beats) };
+  const switches = new Map(plan.shots.map((s, i) => {
+    const end = plan.shots[i + 1]?.t ?? plan.end;
+    return [s.id, opts.beats?.length ? poseSwitches(s.t, end, chunks.map((c) => c.start), opts.beats) : undefined] as const;
+  }));
   // Captions sit in the calm top fifth when the shot has no bubble (the lead stands lower, at medium size); under a bubble they keep to the bottom.
   const bubbleTop = SAFE.top + 10, capBottom = SAFE.bottom - 190, capHigh = SAFE.top + 20;
   const plate = (f: string) => fitPlate(f);
@@ -1064,7 +1086,7 @@ export async function renderIllustrated(plan: Plan, words: Word[], dir: string, 
     }
   }
   const times = new Set<number>([0, plan.end]);
-  for (const s of plan.shots) { times.add(s.t); for (const [d] of POP) times.add(+(s.t + 0.25 + d).toFixed(3)); }
+  for (const s of plan.shots) { times.add(s.t); for (const [d] of POP) times.add(+(s.t + 0.25 + d).toFixed(3)); for (const x of switches.get(s.id) ?? []) times.add(x); }
   for (const c of chunks) { for (const w of c.words) times.add(+w.start.toFixed(2)); times.add(+c.end.toFixed(2)); }
   opts.mouth?.forEach((v, f) => { if (f && v !== opts.mouth![f - 1]) times.add(+(f / FPS).toFixed(4)); });
   const ts = [...times].filter((t) => t >= 0 && t <= plan.end).sort((a, b) => a - b);
@@ -1075,10 +1097,11 @@ export async function renderIllustrated(plan: Plan, words: Word[], dir: string, 
     const t = ts[i], d = ts[i + 1] - t;
     if (d < 0.005) continue;
     const shot = [...plan.shots].reverse().find((s) => s.t <= t + 1e-6)!;
-    const ci = chunks.findIndex((c) => t >= c.start - 1e-6 && t < c.end + 0.25);
+    const ci = chunks.reduce((k, c, j) => (t >= c.start - 1e-6 && t < c.end + 0.25 ? j : k), -1);
     const wi = ci < 0 ? -1 : chunks[ci].words.reduce((k, w, j) => (t >= w.start - 1e-6 ? j : k), 0);
     const shotEnd = plan.shots.find((x) => x.t > shot.t + 1e-6)?.t ?? plan.end;
-    const pose = poseAt(chunks, ci, shot.t, plates[shot.id].length, Math.max(0, wi), shotEnd);
+    const sw = switches.get(shot.id);
+    const pose = sw ? sw.filter((x) => t >= x - 1e-6).length % plates[shot.id].length : poseAt(chunks, ci, shot.t, plates[shot.id].length, Math.max(0, wi), shotEnd);
     const pop = popScale(t - (shot.t + 0.25));
     const pl = plates[shot.id][pose];
     const open = !!pl.open && openAt(t + 1e-4);
@@ -1087,7 +1110,7 @@ export async function renderIllustrated(plan: Plan, words: Word[], dir: string, 
     if (!file) {
       const layers: sharp.OverlayOptions[] = [];
       if (pop && shot.bubble) { const b = bubbles[shot.id][pop]; layers.push({ input: b.input, top: bubbleTop + b.dy, left: b.left }); }
-      if (ci >= 0) layers.push({ input: svgToPng(captionSvg(chunks[ci], wi)), top: shot.bubble ? capBottom : capHigh, left: 0 });
+      if (ci >= 0) layers.push({ input: svgToPng(captionSvg(chunks[ci], wi, { sweep: true })), top: shot.bubble ? capBottom : capHigh, left: 0 });
       file = join(fdir, `f${String(cache.size).padStart(4, "0")}.png`).replace(/\\/g, "/");
       await sharp(open ? pl.open! : pl.shut).composite(layers).png().toFile(file);
       cache.set(key, file);

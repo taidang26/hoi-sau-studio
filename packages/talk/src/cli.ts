@@ -9,7 +9,7 @@
  *   npm run talk -- cut <slug> [--phrase "cartoon character"] [--keep desk|none] [--force]  SAM 3.1 cuts the character (and desk) out
  *   npm run talk -- sets [--only office,cafe] [--force]                    Muse Image draws empty background sets in series/sets/
  *                    make/sync take --bg plain[:#hex], office|pantry|phong-tro|cafe, or photo.jpg: the cut-out character stands in front of it
- *   npm run talk -- illustrate <slug> <clip.mp4> [--vocals stem.wav] [--lines lines.json (corrected lines; also lets the plan run without the speech recogniser)] [--end s] [--step plan|draw|fix|ask|gaps|poses|stabilize|mouths|render|all] [--find <thing>] [--at <s>] [--only s01] [--note <what to change>] [--mouth] [--only s01,s02] [--out dir]
+ *   npm run talk -- illustrate <slug> <clip.mp4> [--vocals stem.wav] [--lines lines.json (corrected lines; also lets the plan run without the speech recogniser)] [--end s] [--step plan|draw|fix|ask|gaps|poses|stabilize|mouths|render|all] [--find <thing>] [--at <s>] [--only s01] [--note <what to change>] [--mouth] [--no-beats (cuts stay where the plan puts them, not on the beat)] [--max-shot s (longest shot the plan makes; 3 for a fast song)] [--only s01,s02] [--out dir]
  *                    the clip's voice and cuts, one picture per shot of <slug> acting it out (Muse Image, checked by Muse Spark), two poses on one background (SAM 3.1)
  *   npm run talk -- cover <slug> --out <illustrate dir> --quote "“line|line *key*.”" [--shot s08] [--episode <id>]
  *                    TikTok cover: the line on a white badge (key words red) + "Hồi Sau" tag over a shot, inside the grid's safe zone and off the faces (SAM 3.1)
@@ -39,6 +39,7 @@ import { makeBlink, makeMusic, planMeme, readMeme, renderMeme, retimeMeme } from
 import { askFixes, speechGaps } from "./fixes.js";
 import { ideaImages, readIdea } from "./idea.js";
 import { drawMouths, drawPoses, drawShots, fixShot, gateToWords, groupLines, hearWords, planShots, renderIllustrated, sceneCuts, shotSpans, stabilizePoses, timeWords, type Line, type Plan } from "./illustrate.js";
+import { detectBeats } from "./beats.js";
 
 const ROOT = fileURLToPath(new URL("../../..", import.meta.url));
 const CHARACTERS = join(ROOT, "characters");
@@ -273,7 +274,7 @@ async function main() {
         // Corrected lines (text, start, end) when given; otherwise the recogniser's words split at pauses.
         const lines: Line[] = opt.lines ? JSON.parse(readFileSync(fromCwd(opt.lines as string), "utf8")) : groupLines(heard);
         const end = opt.end ? Number(opt.end) : (await probeVideo(fromCwd(clip))).duration;
-        const shotsPlan = await planShots(ctx, slug, lines, shotSpans(lines, sceneCuts(fromCwd(clip)), end));
+        const shotsPlan = await planShots(ctx, slug, lines, shotSpans(lines, sceneCuts(fromCwd(clip)), end, Number(opt["max-shot"]) || 6));
         writeFileSync(planFile, JSON.stringify({ slug, clip: fromCwd(clip), end, lines, shots: shotsPlan } satisfies Plan, null, 2) + "\n");
         log(`${planFile}: ${lines.length} lines, ${shotsPlan.length} shots (edit it before drawing if needed)`);
       }
@@ -312,7 +313,16 @@ async function main() {
           const frames = Math.ceil(plan.end * 30);
           track = gateToWords(mouthTrack({ pcm, rate: RATE, spans: [] }, 30, frames), words, 30);
         }
-        const video = await renderIllustrated(plan, words, shots, join(out, `${slug}${opt.mouth ? "-mouth" : ""}.mp4`), { mouth: track, log });
+        // Cuts and pose changes snap to the song's beats (heard from the full mix); --no-beats keeps the plan's times.
+        let beats: number[] | undefined;
+        if (!opt["no-beats"]) {
+          const mix = await readSound(plan.clip, join(out, "mix.m4a"));
+          const found = detectBeats(mix, RATE);
+          writeFileSync(join(out, "beats.json"), JSON.stringify(found));
+          log(`Beats: ${found.bpm} bpm, ${found.beats.length} beats`);
+          beats = found.beats.filter((b) => b <= plan.end);
+        }
+        const video = await renderIllustrated(plan, words, shots, join(out, `${slug}${opt.mouth ? "-mouth" : ""}.mp4`), { mouth: track, beats, log });
         await silentCopy(video);
         const problems = reelsProblems(await probeVideo(video));
         log(problems.length ? `Reels check: ${problems.join("; ")}` : "Reels check: ok for Facebook/Instagram Reels and TikTok");

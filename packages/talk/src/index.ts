@@ -5,6 +5,7 @@
  */
 
 export * from "./art.js";
+export * from "./beats.js";
 export * from "./captions.js";
 export * from "./fixes.js";
 export * from "./gestures.js";

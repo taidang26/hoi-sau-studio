@@ -12,6 +12,7 @@
 export * from "./schema.js";
 export * from "./text.js";
 export * from "./llm.js";
+export * from "./rotation.js";
 export * from "./memory.js";
 export * from "./listen.js";
 export * from "./recap.js";

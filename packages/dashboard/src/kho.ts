@@ -16,7 +16,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { t } from "./i18n.js";
-import type { Videos } from "./video.js";
+import { MEME_MUSIC, type Videos } from "./video.js";
 import { esc, flash, layout } from "./views.js";
 
 /** One post as the scraper writes it. */
@@ -54,6 +54,8 @@ export interface StockItem {
   skip?: boolean;
   /** Why the pictures did not download. */
   error?: string;
+  /** The text clip made from it (data/video/<id>). */
+  video?: string;
 }
 
 export interface Stock {
@@ -199,8 +201,8 @@ export function planDays<T extends { score: number; topic: string; caption: stri
   return items;
 }
 
-export type StockStatus = "skip" | "download" | "read" | "reading" | "ready" | "failed";
-export const STATUS_LABEL: Record<StockStatus, string> = { skip: "Đã bỏ", download: "Chờ tải ảnh", read: "Chờ đọc", reading: "Đang đọc", ready: "Có đề xuất", failed: "Lỗi" };
+export type StockStatus = "skip" | "download" | "read" | "reading" | "ready" | "making" | "made" | "failed";
+export const STATUS_LABEL: Record<StockStatus, string> = { skip: "Đã bỏ", download: "Chờ tải ảnh", read: "Chờ đọc", reading: "Đang đọc", ready: "Có đề xuất", making: "Đang làm clip", made: "Đã có clip", failed: "Lỗi" };
 
 /** Hanoi date of today. */
 export const hanoiToday = (now = new Date()) => day(new Date(now.getTime() + 7 * 3600000));
@@ -229,6 +231,8 @@ export class IdeaStock {
 
   status(i: StockItem): StockStatus {
     if (i.skip) return "skip";
+    if (i.video) return this.videos.jobs.get(i.video)?.running || this.jobs.get(`make:${i.id}`)?.running ? "making" : "made";
+    if (this.jobs.get(`make:${i.id}`)?.running) return "making";
     const dir = this.dirOf(i);
     if (existsSync(join(dir, "idea.json"))) return "ready";
     if (this.jobs.get(`read:${i.id}`)?.running) return "reading";
@@ -339,6 +343,52 @@ export class IdeaStock {
     return count;
   }
 
+  /**
+   * The week's batch in one go: every proposal of the next `days` days becomes a text clip
+   * (planned, drawn, second poses, rendered), a few at a time, so the owner reviews the whole
+   * week once on the Video screen. Nothing is approved or posted here.
+   */
+  makeDays(days: number, from = hanoiToday(), parallel = 3): number {
+    const until = addDays(from, days - 1);
+    const todo = this.load().items.filter((i) => i.makeOn >= from && i.makeOn <= until && this.status(i) === "ready");
+    const count = todo.length;
+    if (!count) return 0;
+    const cast = new Set(this.videos.opts.cast().map((c) => c.slug));
+    this.background("make", async (log) => {
+      let done = 0;
+      const next = async (): Promise<void> => {
+        const i = todo.shift();
+        if (!i) return;
+        const key = `make:${i.id}`;
+        this.jobs.set(key, { running: true });
+        try {
+          const plan = JSON.parse(readFileSync(join(this.dirOf(i), "idea.json"), "utf8")) as { lead: string; title: string; caption?: string; meme: { top: string; punch: string; scenes: string[] } };
+          const slug = cast.has(plan.lead) ? plan.lead : cast.has("cu-li") ? "cu-li" : [...cast][0];
+          const id = this.videos.create({ kind: "meme", slug, mouth: false, title: plan.title, meme: { top: plan.meme.top, punch: plan.meme.punch, scenes: plan.meme.scenes, music: MEME_MUSIC, seconds: 0 }, caption: plan.caption });
+          const s = this.load();
+          const it = s.items.find((x) => x.id === i.id);
+          if (it) {
+            it.video = id;
+            this.save(s);
+          }
+          await this.videos.settle(id);
+          const drawn = this.videos.jobs.get(id)?.error;
+          if (drawn) throw new Error(drawn);
+          this.videos.render(id);
+          await this.videos.settle(id);
+          const rendered = this.videos.jobs.get(id)?.error;
+          this.jobs.set(key, { running: false, ...(rendered ? { error: rendered } : {}) });
+        } catch (e) {
+          this.jobs.set(key, { running: false, error: e instanceof Error ? e.message : String(e) });
+        }
+        log(t("Đã làm {i}/{n} clip", { i: ++done, n: count }));
+        return next();
+      };
+      await Promise.all(Array.from({ length: Math.min(parallel, count) }, next));
+    });
+    return count;
+  }
+
   /** Waits for the background runs; for tests. */
   async settle(): Promise<void> {
     while (this.running()) await new Promise((r) => setTimeout(r, 20));
@@ -353,7 +403,7 @@ export function stockPage(k: IdeaStock, view: { all?: boolean; err?: string; ok?
   const counts = new Map<StockStatus, number>();
   for (const i of items) counts.set(k.status(i), (counts.get(k.status(i)) ?? 0) + 1);
   const chips = (Object.keys(STATUS_LABEL) as StockStatus[]).filter((x) => counts.get(x)).map((x) => `<span class="chip">${esc(t(STATUS_LABEL[x]))} <b>${counts.get(x)}</b></span>`).join(" ");
-  const jobs = ["download", "read"].map((key) => k.jobs.get(key)).filter((j) => j?.running).map((j) => `<p class="small"><span class="spinner"></span> ${esc(j!.step ?? "")}</p>`).join("");
+  const jobs = ["download", "read", "make"].map((key) => k.jobs.get(key)).filter((j) => j?.running).map((j) => `<p class="small"><span class="spinner"></span> ${esc(j!.step ?? "")}</p>`).join("");
   const shown = items.filter((i) => view.all || (i.makeOn >= today && i.makeOn <= addDays(today, 13)) || (i.makeOn < today && k.status(i) !== "skip"));
   const days = [...new Set(shown.map((i) => i.makeOn))].sort();
   const row = (i: StockItem) => {
@@ -368,7 +418,9 @@ export function stockPage(k: IdeaStock, view: { all?: boolean; err?: string; ok?
         /* keep the caption */
       }
     }
-    const open = st === "ready" ? `<a class="btn small on" href="/video/idea/${esc(dir)}">${esc(t("Xem đề xuất"))}</a>` : "";
+    const open = i.video
+      ? `<a class="btn small on" href="/video/${esc(i.video)}">${esc(t("Xem clip"))}</a>`
+      : st === "ready" ? `<a class="btn small on" href="/video/idea/${esc(dir)}">${esc(t("Xem đề xuất"))}</a>` : "";
     const skip = `<form class="inline" method="post" action="/video/kho/${esc(i.id)}/${i.skip ? "keep" : "skip"}"><button class="btn small">${esc(t(i.skip ? "Lấy lại" : "Bỏ"))}</button></form>`;
     return `<li class="kho-item s-${st}">${pic}<div><b>${esc(title)}</b>${i.season ? ` <span class="tag">${esc(i.season)}</span>` : ""}
 <p class="muted small">${esc(t(topicLabel(i.topic)))} · ❤ ${i.reactions.toLocaleString("vi-VN")} · ↗ ${i.shares.toLocaleString("vi-VN")} · 💬 ${i.comments.toLocaleString("vi-VN")}${i.error ? ` · ${esc(i.error)}` : ""}</p>
@@ -381,7 +433,9 @@ ${flash(view.ok, view.err)}
 <div class="actions">
 <form class="inline" method="post" action="/video/kho/download"><button class="btn on"${k.running() ? " disabled" : ""}>${esc(t("Tải ảnh còn thiếu"))}</button></form>
 <form class="inline" method="post" action="/video/kho/read"><select name="days"><option value="1">${esc(t("hôm nay"))}</option><option value="3">${esc(t("3 ngày tới"))}</option><option value="7" selected>${esc(t("7 ngày tới"))}</option><option value="30">${esc(t("30 ngày tới"))}</option></select> <button class="btn"${k.running() ? " disabled" : ""}>${esc(t("Cho máy đọc"))}</button></form>
+<form class="inline" method="post" action="/video/kho/make"><input type="hidden" name="days" value="7"><button class="btn on"${k.running() ? " disabled" : ""}>${esc(t("Làm clip cả tuần tới"))}</button></form>
 </div>
+<p class="muted small">${esc(t("Làm cả tuần: mọi đề xuất của 7 ngày tới thành clip chữ (vẽ, ghép, xuất video) trong một lượt. Anh duyệt cả tuần một lần ở màn Video; chưa đăng gì."))}</p>
 <details class="small"><summary>${esc(t("Thêm bài từ file JSON đã lấy về"))}</summary>
 <form class="form" method="post" action="/video/kho/import" enctype="multipart/form-data"><input type="file" name="file" accept=".json,application/json" required> <label>${esc(t("Mỗi ngày"))} <input type="number" name="perday" min="1" max="12" value="${s.perDay}"></label> <button class="btn">${esc(t("Thêm vào kho"))}</button></form></details>
 <p class="small">${view.all ? `<a href="/video/kho">${esc(t("Chỉ 14 ngày tới"))}</a>` : `<a href="/video/kho?all=1">${esc(t("Xem cả kho ({n})", { n: items.length }))}</a>`}</p></section>

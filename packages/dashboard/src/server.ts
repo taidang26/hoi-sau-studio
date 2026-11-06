@@ -638,7 +638,7 @@ export function handler(opts: DashboardOptions) {
         return fail("/video/kho", e);
       }
     }
-    const vk = vd && req.method === "POST" ? path.match(/^\/video\/kho\/(?:(download|read)|(k-\d+)\/(skip|keep))$/) : null;
+    const vk = vd && req.method === "POST" ? path.match(/^\/video\/kho\/(?:(download|read|make)|(k-\d+)\/(skip|keep))$/) : null;
     if (vk && vd) {
       try {
         if (vk[1] === "download") {
@@ -649,6 +649,11 @@ export function handler(opts: DashboardOptions) {
           const form = await readForm(req);
           const n = vd.stock.readDays(Math.min(60, Math.max(1, Number(form.get("days")) || 7)));
           return redirect(res, withNote("/video/kho", "ok", n ? t("Máy đang đọc {n} ý.", { n }) : t("Không còn ý nào chờ đọc trong mấy ngày này.")));
+        }
+        if (vk[1] === "make") {
+          const form = await readForm(req);
+          const n = vd.stock.makeDays(Math.min(31, Math.max(1, Number(form.get("days")) || 7)));
+          return redirect(res, withNote("/video/kho", "ok", n ? t("Máy đang làm {n} clip của tuần tới. Xong anh duyệt ở màn Video.", { n }) : t("Tuần tới chưa có đề xuất nào sẵn: cho máy đọc trước.")));
         }
         vd.stock.setSkip(vk[2], vk[3] === "skip");
         return redirect(res, "/video/kho");

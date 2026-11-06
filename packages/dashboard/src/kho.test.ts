@@ -94,10 +94,20 @@ test("the stock: added from a scrape, pictures downloaded, read into meme propos
   assert.ok(existsSync(join(k.dirOf(by("1")), "idea.json")));
   assert.equal(by("3").season, "Tết", "a Tết post waits for Tết");
 
+  // The week in one go: today's proposal becomes a drawn and rendered text clip, linked from the stock.
+  assert.equal(k.makeDays(1, "2026-11-07"), 1);
+  await k.settle();
+  const made = by("1");
+  assert.ok(made.video, "the clip is remembered on the item");
+  assert.equal(k.status(made), "made");
+  assert.ok(existsSync(v.videoFile(made.video!, "plain")), "rendered");
+  assert.equal(k.makeDays(1, "2026-11-07"), 0, "a clip is made once");
+  assert.match(stockPage(k, { all: true }), new RegExp(`/video/${made.video}`));
+
   k.setSkip(by("7").id, true);
   assert.equal(k.status(by("7")), "skip");
   const html = stockPage(k, { all: true });
-  assert.match(html, /\/video\/idea\/y-k-\d{4}/);
+  assert.match(html, /Đã có clip/);
   assert.match(html, /Đã bỏ/);
   assert.doesNotMatch(html, /Than Thở/);
 });

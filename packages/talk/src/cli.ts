@@ -37,6 +37,7 @@ import { facesBox, makeCover } from "./cover.js";
 import sharp from "sharp";
 import { makeBlink, makeMusic, planMeme, readMeme, renderMeme, retimeMeme } from "./meme.js";
 import { makeLibrary, MOODS, takeTrack } from "./music-lib.js";
+import { kitSheet, loadKit, makeMouthKit, type Angle } from "./mouthkit.js";
 import { approveStock, availableStock, loadStock, makeStock, REACTIONS, stockSheet, useStock } from "./stock.js";
 import { askFixes, speechGaps } from "./fixes.js";
 import { ideaImages, readIdea } from "./idea.js";
@@ -301,7 +302,7 @@ async function main() {
       if (run("stabilize")) report("stabilize.json", "id", await stabilizePoses(Sam.fromEnv(), ctx, plan, shots, { only, retries: Number(opt.retries) || undefined, log }));
       // --mouth: the lead talks; without it the clip renders as before.
       const mouth = !!opt.mouth || step === "mouths";
-      if (mouth && run("mouths")) report("mouths.json", "pic", await drawMouths(Sam.fromEnv(), ctx, plan, shots, { only, log }));
+      if (mouth && run("mouths")) report("mouths.json", "pic", await drawMouths(Sam.fromEnv(), ctx, plan, shots, { only, kit: !opt["no-kit"], log }));
       // --step review: Spark looks at every picture the render will show and lists what is broken (review.json).
       if (step === "review" || step === "all") {
         report("review.json", "pic", await reviewShots(ctx, plan, shots, { only, log }));
@@ -435,6 +436,19 @@ async function main() {
       const count = Number(opt.count ?? 4);
       const made = makeLibrary(ROOT, (out, secs, prompt, seed) => void makeMusic(prompt, secs - 1, out, log, seed), count, log);
       console.log(`${made} new track(s); ${MOODS.length} moods × ${count}`);
+      return;
+    }
+    case "mouthkit": {
+      // Ready-made mouths: talk mouthkit <slug|all> [--only front,side] [--sheet]
+      const [who] = pos;
+      if (!who) throw new Error("Usage: talk mouthkit <slug|all> [--only front,side] [--sheet]");
+      const ctx = openStudio({ log });
+      const cdir = ctx.charactersDir ?? CHARACTERS;
+      for (const slug of who === "all" ? [...ctx.profiles.keys()] : [who]) {
+        if (!opt.sheet) await makeMouthKit(ctx, Sam.fromEnv(), slug, { only: opt.only ? (String(opt.only).split(",") as Angle[]) : undefined, log });
+        const kit = loadKit(cdir, slug);
+        console.log(`${slug}: ${kit ? kit.angles.map((a) => `${a.angle} ${a.shapes.length}`).join(", ") : "no kit"}; ${(await kitSheet(cdir, slug)) ?? "no sheet"}`);
+      }
       return;
     }
     case "stock": {

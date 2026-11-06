@@ -20,7 +20,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import sharp from "sharp";
 import { DELIVERY } from "@hoi-sau/motion";
-import { characterRefs, generateSoftly, houseRulesPrompt, S, styleReference, styleText, type ChatMessage, type StudioContext } from "@hoi-sau/studio";
+import { characterRefs, CHARACTERS_DIR, generateSoftly, houseRulesPrompt, S, styleReference, styleText, type ChatMessage, type StudioContext } from "@hoi-sau/studio";
 import type { Sam } from "@hoi-sau/dance";
 import { COMIC_FONT_PATH, escapeXml, loadFont, measure, svgToPng } from "@hoi-sau/svg-text";
 import { captionSvg } from "./captions.js";
@@ -28,6 +28,7 @@ import { poseSwitches, snapShots } from "./beats.js";
 import { chunkWords, OUT, SAFE, type Chunk, type Word } from "./timeline.js";
 import { align, grow, maskBox, unionBox, writePng, type Box, type Raster } from "./patch.js";
 import { python } from "./voice.js";
+import { KIT_MIN_MOUTH, loadKit, noseOffset, pasteKit, pickAngle } from "./mouthkit.js";
 
 export interface Line {
   text: string;
@@ -955,11 +956,14 @@ export async function mouthIn(segment: (phrase: string) => Promise<Array<{ mask:
 export async function leadOr(first: Uint8Array, fallback: () => Promise<Uint8Array>): Promise<Uint8Array> {
   return first.some((v) => v) ? first : fallback();
 }
-export async function drawMouths(sam: Sam, ctx: StudioContext, plan: Plan, dir: string, opts: { only?: string[]; mouthTries?: number; log?: (s: string) => void } = {}): Promise<Array<{ pic: string; ok: boolean; problem?: string }>> {
+export async function drawMouths(sam: Sam, ctx: StudioContext, plan: Plan, dir: string, opts: { only?: string[]; mouthTries?: number; kit?: boolean; log?: (s: string) => void } = {}): Promise<Array<{ pic: string; ok: boolean; problem?: string; kit?: boolean }>> {
   const { w, h } = OUT;
   const p = ctx.profiles.get(plan.slug)!;
   const species = p.species.split("(")[0].trim();
-  const report: Array<{ pic: string; ok: boolean; problem?: string }> = [];
+  const report: Array<{ pic: string; ok: boolean; problem?: string; kit?: boolean }> = [];
+  // The character's ready-made mouths (talk mouthkit): pasted first, the Muse edit below only when they do not pass.
+  const cdir = ctx.charactersDir ?? CHARACTERS_DIR;
+  const kit = opts.kit === false ? undefined : loadKit(cdir, plan.slug);
   const pngOf = (rgb: Uint8Array) => sharp(Buffer.from(rgb), { raw: { width: w, height: h, channels: 3 } }).png().toBuffer();
   const leadMask = async (rgb: Uint8Array) => leadOr(await maskOf(sam, rgb, [`cartoon ${species}`]), () => maskOf(sam, rgb, ["cartoon character"]));
   const findMouth = async (rgb: Uint8Array) => {
@@ -977,8 +981,16 @@ export async function drawMouths(sam: Sam, ctx: StudioContext, plan: Plan, dir: 
       const m = leadFeatures(await sam.segment(ph, url, w, h), lead, w, h);
       for (let i = 0; i < keep.length; i++) if (m[i]) { keep[i] = 1; if (ph.startsWith("nose")) nose[i] = 1; }
     }
-    return { keep: dilate(keep, w, h, 3), nearNose: dilate(nose, w, h, NOSE_GAP) };
+    return { keep: dilate(keep, w, h, 3), nearNose: dilate(nose, w, h, NOSE_GAP), noseBox: maskBox(nose, w, h) };
   };
+  type Made = { img: Raster; size: number; box: Box; onFace: number; nearNose: number };
+  const pairProblem = async (mouth: { box: Box }, shut: Made | undefined, open: Made | undefined) =>
+    !shut || !open ? "a mouth edit failed"
+      : open.size < shut.size * 1.4 ? `the open mouth is not clearly bigger than the shut one (${open.size} vs ${shut.size} px)`
+      : open.box.h > shut.box.w * 1.6 ? `the open mouth is too tall (${open.box.h} px for a ${shut.box.w} px wide mouth)`
+      : open.onFace > 0.03 ? `the open mouth runs into the nose or eyes (${Math.round(open.onFace * 100)}% of it)`
+      : open.nearNose > 0 ? `the open mouth comes within ${NOSE_GAP} px of the nose`
+      : faceProblem(ctx, p.name, shut.img, open.img, grow(unionBox([mouth.box, shut.box, open.box])!, 3, w, h, 160));
   await eachShot(plan.shots, async (s) => {
     if (s.src) return;
     for (const pic of [s.id, `${s.id}-b2`]) {
@@ -994,8 +1006,26 @@ export async function drawMouths(sam: Sam, ctx: StudioContext, plan: Plan, dir: 
         opts.log?.(`${pic}: no mouth of ${p.name} found; this picture keeps its mouth as drawn`);
         continue;
       }
-      const { keep, nearNose } = await faceKeep(rgb);
-      const made: Record<"shut" | "open", { img: Raster; size: number; box: Box; onFace: number; nearNose: number } | undefined> = { shut: undefined, open: undefined };
+      const { keep, nearNose, noseBox } = await faceKeep(rgb);
+      const pick = kit && mouth.box.w >= KIT_MIN_MOUTH ? pickAngle(kit, noseOffset(mouth.box, noseBox)) : undefined;
+      if (kit && pick) {
+        const pair: Record<"shut" | "open", Made | undefined> = { shut: undefined, open: undefined };
+        for (const kind of ["shut", "open"] as const) {
+          const img = await pasteKit(cdir, kit, base, mouth, kind, pick, keep);
+          const found = img && (await findMouth(img.data));
+          if (img && found) pair[kind] = { img, size: area(found.mask), box: found.box, onFace: overlapShare(found.mask, keep, w, h), nearNose: overlapShare(found.mask, nearNose, w, h) };
+        }
+        const kp = await pairProblem(mouth, pair.shut, pair.open);
+        if (!kp) {
+          await sharp(pair.shut!.img.data, { raw: { width: w, height: h, channels: 3 } }).png().toFile(shutFile);
+          await sharp(pair.open!.img.data, { raw: { width: w, height: h, channels: 3 } }).png().toFile(openFile);
+          report.push({ pic, ok: true, kit: true });
+          opts.log?.(`${pic}: mouth pair from the kit (${pick.angle.angle}${pick.mirror ? ", mirrored" : ""}), nothing drawn`);
+          continue;
+        }
+        opts.log?.(`${pic}: kit mouth did not pass (${kp}); drawing the mouth instead`);
+      } else if (kit) opts.log?.(`${pic}: the mouth is too small for the kit (${mouth.box.w} px); drawing it instead`);
+      const made: Record<"shut" | "open", Made | undefined> = { shut: undefined, open: undefined };
       // A failed open mouth is drawn again, smaller and lower, up to `mouthTries` times; the shut one is kept once it is made.
       let problem = "";
       for (let attempt = 0; attempt < (opts.mouthTries ?? (Number(process.env.TALK_MOUTH_TRIES) || 3)); attempt++) {
@@ -1020,13 +1050,8 @@ export async function drawMouths(sam: Sam, ctx: StudioContext, plan: Plan, dir: 
         const shift = align(base, edit, grow(unionBox([mouth.box, found.box])!, 1.6, w, h, 48));
         made[kind] = { img: pasteMouth(base, edit, mouth.mask, found.mask, shift.dx, shift.dy, 5, keep, 12), size: area(found.mask), box: found.box, onFace: overlapShare(found.mask, keep, w, h, shift.dx, shift.dy), nearNose: overlapShare(found.mask, nearNose, w, h, shift.dx, shift.dy) };
       }
-      const { shut, open } = made;
-      problem = !shut || !open ? "a mouth edit failed"
-        : open.size < shut.size * 1.4 ? `the open mouth is not clearly bigger than the shut one (${open.size} vs ${shut.size} px)`
-        : open.box.h > shut.box.w * 1.6 ? `the open mouth is too tall (${open.box.h} px for a ${shut.box.w} px wide mouth)`
-        : open.onFace > 0.03 ? `the open mouth runs into the nose or eyes (${Math.round(open.onFace * 100)}% of it)`
-        : open.nearNose > 0 ? `the open mouth comes within ${NOSE_GAP} px of the nose`
-        : await faceProblem(ctx, p.name, shut.img, open.img, grow(unionBox([mouth.box, shut.box, open.box])!, 3, w, h, 160));
+      const { shut } = made;
+      problem = await pairProblem(mouth, made.shut, made.open);
       if (!problem || !shut) break;
       }
       report.push({ pic, ok: !problem, problem: problem || undefined });

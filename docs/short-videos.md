@@ -115,3 +115,9 @@ The **Làm từ chữ hoặc ảnh** box at the top of the Video screen takes wh
 ## Thư viện nhạc (music library)
 
 `talk music-lib [--count 4]` makes 4 tracks per mood once with MusicGen (vui nhộn, chán, hí hửng, deadline, buồn cười ra nước mắt), 22 s each, in `series/music/`. A meme's music step then copies the least used track of its mood instead of running MusicGen for every clip; with no library, or a clip longer than a track, it makes its own as before.
+
+## Bộ mồm (ready-made mouths)
+
+`talk mouthkit <slug|all>` draws each character's mouths once: a big portrait facing front and one turned three-quarters, then six shapes on each (shut, open, wide, o, smile, teeth), cut out by SAM 3.1 into `characters/<slug>/mouthkit/` with a `sheet.jpg` to look over (about 0.12 USD a character). `--only side` redraws one angle; `--sheet` only rebuilds the sheet.
+
+From then on the `mouths` step of a lip-sync clip pastes the kit's shut and open mouths onto each picture instead of asking Muse Image for two edits: it erases the drawn mouth with the skin around it, picks the angle from where the nose sits (mirrored for a face turned the other way), scales to the mouth's width and runs the same checks as before (open clearly bigger, clear of the nose and eyes, the Muse Spark face close-up). A face too small for the kit, or a pair that fails, is drawn the old way. `--no-kit` skips the kit for a run; `mouths.json` marks the pictures that came from it.

@@ -111,6 +111,20 @@
       "text": "Nhân vật vẽ cỡ vừa, khoảng 1/3 chiều cao khung, chừa khoảng trống xung quanh; không vẽ cận mặt to kín màn hình (xem trên điện thoại bị ngợp).",
       "at": "2026-11-05T07:51:09.000Z",
       "from": "chat"
+    },
+    {
+      "id": "r-stage-1106",
+      "area": "art",
+      "text": "Dàn cảnh phải đúng đời thật: nhân vật đủ người trong khung, không bị mép cắt; chân chạm sàn (hoặc ghế khi ngồi); ghế, bàn đứng trên sàn, không đặt ghế lên bàn; mỗi đồ vật một cái; cửa, tường, người không trong suốt, tay không xuyên qua cửa; màn hình quay về người đang dùng; không viền trắng quanh nhân vật.",
+      "at": "2026-11-06T01:30:16.000Z",
+      "from": "chat"
+    },
+    {
+      "id": "r-review-1106",
+      "area": "art",
+      "text": "Trước khi gửi clip: soát lại mọi hình sẽ lên màn hình sau khi đã ghép tư thế, miệng và vá (đường cắt, vệt mờ, đồ trùng, đồ trong suốt, cắt mép, lơ lửng). Vá chi tiết để lại vết thì vẽ lại cả cảnh.",
+      "at": "2026-11-06T01:30:16.000Z",
+      "from": "chat"
     }
   ]
 }

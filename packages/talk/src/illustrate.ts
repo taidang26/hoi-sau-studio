@@ -307,6 +307,7 @@ export const LOOK = [
   "Objects face the right way: a screen faces whoever is using it, a character's body faces what he works on, paws hold things naturally, every character has exactly two arms.",
   "The picture fills the whole frame edge to edge: no borders, no empty colour bands at the top or bottom. Keep the top fifth and the bottom fifth calm (a speech bubble and captions go there).",
   "Only draw a computer or phone when the scene needs one; a screen nobody in the scene uses never glows toward the viewer.",
+  "Staging is physically right: every character is whole and well inside the frame with empty floor on both sides, never cut by an edge; every foot rests on the floor, or the seat when sitting; chairs and furniture stand on the floor, never on a table; each prop appears once; doors, walls and bodies are solid, never see-through, and no arm passes through them; no white outline or sticker border around anyone.",
   "Absolutely no text, letters, numbers, signs, speech bubbles or captions anywhere. No clock on the wall or desk unless the scene asks for a time; then it shows hands only, at that time.",
   "A character seen from behind shows only the back: front-only details (a chest pin, a tie, a badge or lanyard on the front, the face) are not visible.",
   "Never draw a real person or a celebrity's likeness: a singer, band, actor or idol the words name appears only as tiny dark silhouettes far away (on a stage, a screen or a poster without a face); our animal cast are the only characters drawn in full.",
@@ -317,8 +318,10 @@ const CHECK = S.obj({ pass: S.bool(), problems: S.arr(S.str("one concrete proble
 const dataUrl = (png: Buffer) => `data:image/png;base64,${png.toString("base64")}`;
 
 /** Muse Spark looks at one picture: on-model, drawn once, no text, physical and orientation logic. */
-export async function checkPicture(ctx: StudioContext, slug: string, act: string, png: Buffer): Promise<{ pass: boolean; problems: string[]; fix: string }> {
+export async function checkPicture(ctx: StudioContext, slug: string, act: string, png: Buffer, cast: string[] = []): Promise<{ pass: boolean; problems: string[]; fix: string }> {
   const p = ctx.profiles.get(slug)!;
+  // What is canon for the others in the frame (Bino's cap and his white cat), so the check never asks to remove it.
+  const others = cast.map((c) => ctx.profiles.get(c)).filter(Boolean).map((c) => `${c!.name}: ${c!.look.signature.join("; ")}`);
   const sheet = characterRefs(ctx, slug)[0];
   const content: ChatMessage["content"] = [
     {
@@ -330,6 +333,8 @@ export async function checkPicture(ctx: StudioContext, slug: string, act: string
         "extra arms or hands, a paw holding something wrongly; objects facing the wrong way (a monitor or phone screen must face the character using it, his body must face what he works on; eyes may look at the viewer); a clock when the frame does not ask for a time, a clock with more or fewer than two hands, or a clock showing a different time from the one asked;",
         "a busy background (crowds, many props) or sparkles, sweat drops, motion lines; a glowing screen facing the viewer while the character uses it; a misshapen or broken prop (a wallet must look like a normal bifold wallet); empty colour bands across the top or bottom.",
         "Also fail it for editing damage and staging errors: a hard straight seam, or a patch whose lines or colours do not match, around a character or prop; a ghost, smear, blur or half-transparent area; a solid thing drawn see-through (a door, a wall, a body); the same prop twice when there is one job for it (two mops, two badges); a character, or the head or a limb of one, cut by the frame edge; a character or furniture floating, or resting on the wrong thing (a chair standing on a table); a hand or arm passing through a door, wall or furniture.",
+        ...(others.length ? [`Other cast in the frame, drawn on-model, with what always belongs to them (never a fault): ${others.join(" | ")}.`] : []),
+        "Size alone (a character a bit bigger or smaller than a third of the frame) is not a fault.",
         "If it fails, write the fix as a short edit instruction.",
       ].join(" "),
     },
@@ -351,7 +356,7 @@ export async function reviewShots(ctx: StudioContext, plan: Plan, dir: string, o
     for (const pic of [s.id, `${s.id}-b2`]) {
       const file = [`${pic}-s.png`, `${pic}.png`].map((f) => join(dir, f)).find((f) => existsSync(f));
       if (!file || (pic !== s.id && !existsSync(join(dir, `${pic}.png`)))) continue;
-      const v = await checkPicture(ctx, plan.slug, pic === s.id ? s.act : `${s.act}; now: ${s.pose}`, readFileSync(file));
+      const v = await checkPicture(ctx, plan.slug, pic === s.id ? s.act : `${s.act}; now: ${s.pose}`, readFileSync(file), s.cast);
       opts.log?.(`${pic}: ${v.pass ? "review passed" : `review failed: ${v.problems.join("; ")}`}`);
       rows.push({ pic, ...v });
     }
@@ -385,7 +390,7 @@ export async function drawShots(ctx: StudioContext, plan: Plan, dir: string, opt
       const res = await generateSoftly(ctx.image, { prompt: prompt + (fix ? ` Make sure: ${fix}` : ""), size: `${OUT.w}x${OUT.h}`, references: refs }, opts.log);
       writeFileSync(file, res.image);
       const frame = await frameCheck(res.image);
-      const v = frame ? { pass: false, problems: [frame], fix: "Draw the scene to fill the whole vertical 9:16 frame edge to edge, continuing the wall up and the floor down; no empty bands." } : await checkPicture(ctx, plan.slug, s.act, res.image);
+      const v = frame ? { pass: false, problems: [frame], fix: "Draw the scene to fill the whole vertical 9:16 frame edge to edge, continuing the wall up and the floor down; no empty bands." } : await checkPicture(ctx, plan.slug, s.act, res.image, s.cast);
       opts.log?.(`${s.id}: ${v.pass ? "check passed" : `check failed: ${v.problems.join("; ")}`}`);
       if (v.pass) break;
       fix = v.fix;
@@ -439,7 +444,7 @@ export async function fixShot(ctx: StudioContext, plan: Plan, dir: string, id: s
         await carryFix(dir, id, before, pasted.image, opts.log);
         return;
       }
-      const v = await checkPicture(ctx, plan.slug, `${s.act}; changed: ${note.trim()}`, pasted.image);
+      const v = await checkPicture(ctx, plan.slug, `${s.act}; changed: ${note.trim()}`, pasted.image, s.cast);
       opts.log?.(`${id}: ${v.pass ? "check passed" : `check failed: ${v.problems.join("; ")}`}`);
       writeFileSync(file, pasted.image);
       why = "";
@@ -683,7 +688,7 @@ export async function drawPoses(ctx: StudioContext, plan: Plan, dir: string, opt
       opts.log?.(`${s.id}: second pose`);
       const res = await generateSoftly(ctx.image, { prompt, size: `${OUT.w}x${OUT.h}`, references: [dataUrl(readFileSync(base)), ...characterRefs(ctx, plan.slug)] }, opts.log);
       writeFileSync(file, res.image);
-      const v = await checkPicture(ctx, plan.slug, `${s.act}; now: ${s.pose}`, res.image);
+      const v = await checkPicture(ctx, plan.slug, `${s.act}; now: ${s.pose}`, res.image, s.cast);
       opts.log?.(`${s.id}-b: ${v.pass ? "check passed" : `check failed: ${v.problems.join("; ")}`}`);
       if (v.pass) break;
     }

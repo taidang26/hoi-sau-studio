@@ -787,6 +787,20 @@ export async function stabilizePoses(sam: Sam, ctx: StudioContext, plan: Plan, d
   return report;
 }
 
+/** Side of the square face crop the mouth is edited in, in pixels. */
+const MOUTH_EDIT = 1024;
+
+/**
+ * The square around a mouth that gets edited: about 8 mouths wide (the whole face for context), 240-640 px,
+ * moved (not shrunk) to stay inside the frame.
+ */
+export function mouthCrop(b: Box, width: number, height: number): Box {
+  const side = Math.min(width, height, Math.max(240, Math.min(640, Math.round(Math.max(b.w, b.h) * 8))));
+  const x = Math.min(width - side, Math.max(0, Math.round(b.x + b.w / 2 - side / 2)));
+  const y = Math.min(height - side, Math.max(0, Math.round(b.y + b.h / 2 - side / 2)));
+  return { x, y, w: side, h: side };
+}
+
 export const mouthPrompt = (name: string, open: boolean, attempt = 0) =>
   `Change only ${name}'s mouth: ${open ? (attempt ? "open it a little as if singing a vowel: a small oval about half as tall as it is wide, set low toward the chin, well below the nose with a wide gap of skin between them, clearly showing the dark inside; never touches the nose, eyes or eye markings" : "open it mid-word as if talking loudly, clearly showing the inside of the mouth; it opens downward from where the mouth is, stays below the nose with a clear gap of skin between them, never touches or covers the nose, eyes or eye markings, and is no taller than it is wide") : "close it, lips together in a calm closed line, no teeth, no smile"}. The mouth stays the same width and in the same place. Do not move the head, nose, eyes, eyebrows, cheeks, arms, anyone else or anything else. Keep the same framing, background, colours and line style. No text.`;
 
@@ -959,11 +973,17 @@ export async function drawMouths(sam: Sam, ctx: StudioContext, plan: Plan, dir: 
       for (const kind of (made.shut ? ["open"] : ["shut", "open"]) as Array<"shut" | "open">) {
         opts.log?.(`${pic}: drawing the mouth ${kind}`);
         // A refused or failed mouth edit costs this picture its talking mouth, never the whole run.
-        const res = await generateSoftly(ctx.image, { prompt: mouthPrompt(p.name, kind === "open", attempt), size: `${w}x${h}`, references: [dataUrl(await writePng(base))] }, opts.log)
+        // The face is cut out and blown up to 1024 px before the edit: at medium size the mouth is only ~24 px
+        // in the whole frame, too small for the model to draw cleanly. The edited crop is shrunk back into place.
+        const crop = mouthCrop(mouth.box, w, h);
+        const cropPng = await sharp(await writePng(base)).extract({ left: crop.x, top: crop.y, width: crop.w, height: crop.h }).resize(MOUTH_EDIT, MOUTH_EDIT).png().toBuffer();
+        const res = await generateSoftly(ctx.image, { prompt: mouthPrompt(p.name, kind === "open", attempt), size: `${MOUTH_EDIT}x${MOUTH_EDIT}`, references: [dataUrl(cropPng)] }, opts.log)
           .catch((e: Error) => { opts.log?.(`${pic}: mouth ${kind} not drawn (${e.message.slice(0, 120)})`); return undefined; });
         if (!res) break;
         writeFileSync(join(dir, `${pic}-${kind === "open" ? "m" : "s"}.raw.png`), res.image);
-        const editRgb = new Uint8Array(await sharp(res.image).resize(w, h, { fit: "cover" }).removeAlpha().raw().toBuffer());
+        const patch = await sharp(res.image).resize(crop.w, crop.h, { fit: "fill" }).removeAlpha().raw().toBuffer();
+        const editRgb = Uint8Array.from(rgb);
+        for (let y = 0; y < crop.h; y++) editRgb.set(patch.subarray(y * crop.w * 3, (y + 1) * crop.w * 3), ((crop.y + y) * w + crop.x) * 3);
         const found = await findMouth(editRgb);
         if (!found) { opts.log?.(`${pic}: no mouth found in the ${kind} edit`); continue; }
         const edit: Raster = { data: Buffer.from(editRgb), width: w, height: h };

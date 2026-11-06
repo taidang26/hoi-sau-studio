@@ -97,7 +97,7 @@ const MEME_PLAN = S.obj({
  * `stock`: approved ready-made reactions of the lead. With two scenes, Muse Spark may take one
  * for the punchline scene when it fits, and that scene is then not drawn.
  */
-export async function planMeme(ctx: StudioContext, slug: string, spec: MemeSpec, stock: Array<{ name: string; vi: string; act: string }> = [], sounds: Array<{ name: string; vi: string; prompt: string }> = []): Promise<Plan> {
+export async function planMeme(ctx: StudioContext, slug: string, spec: MemeSpec, stock: Array<{ name: string; vi: string; act: string; cast?: string[] }> = [], sounds: Array<{ name: string; vi: string; prompt: string }> = []): Promise<Plan> {
   const p = ctx.profiles.get(slug);
   if (!p) throw new Error(`No character "${slug}".`);
   const cast = [...ctx.profiles.values()].filter((c) => c.slug !== slug).map((c) => `${c.slug} = ${c.name} (${c.species}, ${c.role})`).join("; ");
@@ -115,7 +115,7 @@ export async function planMeme(ctx: StudioContext, slug: string, spec: MemeSpec,
         `Text 1 (set-up): ${spec.top}\nText 2 (punchline): ${spec.punch}`,
         scenes,
         ...(stock.length && spec.scenes.length === 2
-          ? [`For scene 2 only, instead of a new drawing you may pick one of these ready-made pictures of ${p.name} alone in the office, when it acts out the punchline well (and the scene note does not ask for something else or for other characters). Put its name in \`stock\` for scene 2, else leave \`stock\` empty:\n${stock.map((e) => `- ${e.name}: ${e.act}`).join("\n")}`]
+          ? [`For scene 2 only, instead of a new drawing you may pick one of these ready-made pictures of ${p.name} in the office (alone unless it says who is with them), when it acts out the punchline well (and the scene note does not ask for something else or for other characters). Put its name in \`stock\` for scene 2, else leave \`stock\` empty:\n${stock.map((e) => `- ${e.name}: ${e.act}`).join("\n")}`]
           : []),
         ...(sounds.length
           ? [`You may add one sound effect when the punchline appears, only if it makes the joke land harder (most memes need none). Put its name in \`sfx\`, else leave it empty:\n${sounds.map((x) => `- ${x.name}: ${x.prompt}`).join("\n")}`]
@@ -141,7 +141,7 @@ export async function planMeme(ctx: StudioContext, slug: string, spec: MemeSpec,
   }));
   // A ready-made reaction only for the punchline scene, only one that was offered, and with the lead alone.
   const pick = spec.scenes.length === 2 ? stock.find((e) => e.name === r.shots[1]?.stock?.trim()) : undefined;
-  if (pick) Object.assign(shots[1], { stock: pick.name, act: `${pick.act} ${MEME_FRAME}`, pose: "", cast: [], moving: undefined });
+  if (pick) Object.assign(shots[1], { stock: pick.name, act: `${pick.act} ${MEME_FRAME}`, pose: "", cast: pick.cast ?? [], moving: undefined });
   const sfx = sounds.find((x) => x.name === r.sfx?.trim())?.name;
   return { slug, clip: "", end, lines, shots, ...(sfx ? { sfx } : {}), ...(outfit ? { season: outfit.season } : {}) };
 }

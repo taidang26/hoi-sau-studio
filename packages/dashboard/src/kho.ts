@@ -61,7 +61,26 @@ export interface StockItem {
 export interface Stock {
   perDay: number;
   items: StockItem[];
+  /** The Meta credit the owner last read off Billing, and how many clips had been made then. */
+  credit?: { usd: number; on: string; made: number };
 }
+
+/** About what one text meme costs on the cheap Muse Spark (pictures, checks, poses), and the credit kept back for lip-sync clips. */
+export const MEME_COST = 0.15;
+export const CREDIT_KEEP = 18;
+
+/** The credit left, estimated from the last reading and the clips made since; undefined before a reading. */
+export function creditLeft(s: Stock): number | undefined {
+  if (!s.credit) return undefined;
+  const made = s.items.filter((i) => i.video).length;
+  return Math.round((s.credit.usd - Math.max(0, made - s.credit.made) * MEME_COST) * 100) / 100;
+}
+
+/** How many clips the credit still allows before the part kept for lip-sync clips; Infinity before a reading. */
+export const clipsAllowed = (s: Stock): number => {
+  const left = creditLeft(s);
+  return left === undefined ? Infinity : Math.max(0, Math.floor((left - CREDIT_KEEP) / MEME_COST));
+};
 
 /** Not for an office comedy channel: politics, the page talking about itself, ads, death, crude words, real people. */
 const OFF = /hoàng sa|trường sa|chính trị|biểu tình|block|kick|admin|fanpage|\bpage\b|thông báo|content|follow|inbox|giveaway|minigame|livestream|\blink\b|shopee|sex|địt|lồn|buồi|cặc|chịch|sao kê|ung thư|qua đời|tai nạn|vụ án|tử vong|\brip\b|chia buồn/i;
@@ -348,9 +367,21 @@ export class IdeaStock {
    * (planned, drawn, second poses, rendered), a few at a time, so the owner reviews the whole
    * week once on the Video screen. Nothing is approved or posted here.
    */
+  /** The owner's reading of the Meta credit (USD), from Billing. */
+  setCredit(usd: number): void {
+    if (!(usd >= 0)) throw new Error(t("Số credit không hợp lệ."));
+    const s = this.load();
+    s.credit = { usd, on: new Date().toISOString(), made: s.items.filter((i) => i.video).length };
+    this.save(s);
+  }
+
   makeDays(days: number, from = hanoiToday(), parallel = 3): number {
     const until = addDays(from, days - 1);
-    const todo = this.load().items.filter((i) => i.makeOn >= from && i.makeOn <= until && this.status(i) === "ready");
+    const all = this.load();
+    // The credit kept for lip-sync clips is never spent on memes: stop, or make only as many as still fit.
+    const allowed = clipsAllowed(all);
+    if (allowed <= 0) throw new Error(t("Credit ước tính còn {left} USD, đã chạm mức giữ lại {keep} USD cho clip nhép: không làm meme nữa. Nạp thêm hoặc nhập lại số credit.", { left: creditLeft(all) ?? 0, keep: CREDIT_KEEP }));
+    const todo = all.items.filter((i) => i.makeOn >= from && i.makeOn <= until && this.status(i) === "ready").slice(0, allowed);
     const count = todo.length;
     if (!count) return 0;
     const cast = new Set(this.videos.opts.cast().map((c) => c.slug));
@@ -435,6 +466,8 @@ ${flash(view.ok, view.err)}
 <form class="inline" method="post" action="/video/kho/read"><select name="days"><option value="1">${esc(t("hôm nay"))}</option><option value="3">${esc(t("3 ngày tới"))}</option><option value="7" selected>${esc(t("7 ngày tới"))}</option><option value="30">${esc(t("30 ngày tới"))}</option></select> <button class="btn"${k.running() ? " disabled" : ""}>${esc(t("Cho máy đọc"))}</button></form>
 <form class="inline" method="post" action="/video/kho/make"><input type="hidden" name="days" value="7"><button class="btn on"${k.running() ? " disabled" : ""}>${esc(t("Làm clip cả tuần tới"))}</button></form>
 </div>
+<form class="inline small" method="post" action="/video/kho/credit"><label>${esc(t("Credit Meta còn (USD, xem Billing)"))} <input type="number" name="usd" min="0" step="0.01" value="${s.credit?.usd ?? ""}" style="width:6em"></label> <button class="btn small">${esc(t("Lưu"))}</button></form>
+<p class="muted small">${creditLeft(s) === undefined ? esc(t("Chưa nhập credit: máy không tự dừng.")) : esc(t("Ước tính còn {left} USD, làm được thêm khoảng {n} meme trước mức giữ {keep} USD.", { left: creditLeft(s)!, n: clipsAllowed(s), keep: CREDIT_KEEP }))}</p>
 <p class="muted small">${esc(t("Làm cả tuần: mọi đề xuất của 7 ngày tới thành clip chữ (vẽ, ghép, xuất video) trong một lượt. Anh duyệt cả tuần một lần ở màn Video; chưa đăng gì."))}</p>
 <details class="small"><summary>${esc(t("Thêm bài từ file JSON đã lấy về"))}</summary>
 <form class="form" method="post" action="/video/kho/import" enctype="multipart/form-data"><input type="file" name="file" accept=".json,application/json" required> <label>${esc(t("Mỗi ngày"))} <input type="number" name="perday" min="1" max="12" value="${s.perDay}"></label> <button class="btn">${esc(t("Thêm vào kho"))}</button></form></details>

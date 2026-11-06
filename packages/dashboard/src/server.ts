@@ -639,6 +639,14 @@ export function handler(opts: DashboardOptions) {
         return fail("/video/kho", e);
       }
     }
+    if (vd && req.method === "POST" && path === "/video/kho/credit") {
+      try {
+        vd.stock.setCredit(Number((await readForm(req)).get("usd")));
+        return redirect(res, withNote("/video/kho", "ok", t("Đã lưu số credit.")));
+      } catch (e) {
+        return fail("/video/kho", e);
+      }
+    }
     const vk = vd && req.method === "POST" ? path.match(/^\/video\/kho\/(?:(download|read|make)|(k-\d+)\/(skip|keep))$/) : null;
     if (vk && vd) {
       try {

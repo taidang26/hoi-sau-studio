@@ -41,7 +41,7 @@ import { makeSeasons, OUTFITS } from "./seasons.js";
 import { availableSfx, makeSfx, SOUNDS, sfxFile } from "./sfx.js";
 import { backgroundsDir, loadRooms, makeBackgrounds, ROOMS } from "./backgrounds.js";
 import { kitSheet, loadKit, makeMouthKit, type Angle } from "./mouthkit.js";
-import { approveStock, availableStock, loadStock, makeStock, REACTIONS, stockExtras, stockSheet, useStock } from "./stock.js";
+import { approveStock, availableStock, loadStock, makeStock, REACTIONS, retryPoses, stockExtras, stockSheet, useStock } from "./stock.js";
 import { askFixes, speechGaps } from "./fixes.js";
 import { ideaImages, readIdea } from "./idea.js";
 import { drawMouths, drawPoses, drawShots, reviewShots, fixShot, gateToWords, groupLines, hearWords, planShots, renderIllustrated, sceneCuts, shotSpans, stabilizePoses, timeWords, type Line, type Plan } from "./illustrate.js";
@@ -487,7 +487,7 @@ async function main() {
     case "stock": {
       // Ready-made reactions: talk stock <slug|all> [--only a,b] | --approve a,b|all | --unapprove a,b | --list
       const [who] = pos;
-      if (!who) throw new Error("Usage: talk stock <slug|all> [--only do-mat,om-dau] [--approve names|all] [--unapprove names] [--list] [--extras]");
+      if (!who) throw new Error("Usage: talk stock <slug|all> [--only do-mat,om-dau] [--approve names|all] [--unapprove names] [--list] [--extras] [--poses]");
       const ctx = openStudio({ log });
       const slugs = who === "all" ? [...ctx.profiles.keys()] : [who];
       const names = (v: unknown) => (String(v) === "all" ? "all" : String(v).split(",")) as string[] | "all";
@@ -495,6 +495,9 @@ async function main() {
         if (opt.approve || opt.unapprove) {
           approveStock(ctx.charactersDir ?? CHARACTERS, slug, names(opt.approve ?? opt.unapprove), Boolean(opt.approve));
           log(`${slug}: ${await stockSheet(ctx.charactersDir ?? CHARACTERS, slug)}`);
+        } else if (opt.poses) {
+          // Second poses again for the reactions without one: talk stock <slug|all> --poses [--only names]
+          await retryPoses(ctx, Sam.fromEnv(), slug, { only: opt.only ? String(opt.only).split(",") : undefined, log });
         } else if (opt.extras) {
           // Blinks and mouth pairs for the drawn reactions: talk stock <slug|all> --extras [--only names]
           const x = await stockExtras(ctx, Sam.fromEnv(), slug, { only: opt.only ? String(opt.only).split(",") : undefined, log });

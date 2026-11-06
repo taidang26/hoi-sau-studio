@@ -33,6 +33,8 @@ export interface Reaction {
   pose: string;
   /** For SAM: what moves between the poses. */
   moving: string[];
+  /** A second character in the picture: "boss" (the director, or a colleague when the lead is the director) or a slug. */
+  with?: string;
 }
 
 /** The reactions office jokes land on most (from the Than Thở stock): one clear body and face each. */
@@ -49,12 +51,24 @@ export const REACTIONS: Reaction[] = [
   { name: "khoc-rong", vi: "Khóc ròng", act: "sits at the desk crying comically, two streams of tears, mouth wobbling", pose: "wipes the eyes with the back of one hand", moving: ["character"] },
   { name: "an-mung", vi: "Ăn mừng", act: "jumps up beside the desk with a fist pump, big happy grin", pose: "lands with both fists up", moving: ["character"] },
   { name: "lau-mo-hoi", vi: "Lau mồ hôi", act: "stands nervously wiping the forehead with the back of one hand, an uneasy smile", pose: "glances sideways while still wiping", moving: ["character"] },
+  { name: "luot-dien-thoai", vi: "Lướt điện thoại", act: "sits at the desk slouched, scrolling a phone with a bored blank face, the screen facing the character", pose: "the thumb flicks up the screen", moving: ["character", "phone"] },
+  { name: "chay-deadline", vi: "Chạy deadline", act: "types frantically at the laptop with both hands, eyes wide, a few sweat drops, papers piled on the desk", pose: "the hands blur over the keys, leaning closer to the screen", moving: ["character"] },
+  { name: "ngu-gat", vi: "Ngủ gật", act: "dozes off sitting at the desk, the head drooping forward, eyes shut, a little drool", pose: "the head jerks up half awake", moving: ["character"] },
+  { name: "chay-tre", vi: "Chạy trễ giờ", act: "runs in through the office door in a hurry with a backpack, hair messy, a bread roll in the mouth", pose: "the legs swing forward mid-run", moving: ["character"] },
+  { name: "nop-don", vi: "Nộp đơn nghỉ", act: "stands holding out a plain white envelope with both hands, a determined serious face", pose: "pushes the envelope a little further forward", moving: ["character", "envelope"] },
+  { name: "vi-rong", vi: "Nhìn ví rỗng", act: "sits at the desk holding an open empty wallet upside down, staring into it in despair, one moth flying out", pose: "shakes the wallet once", moving: ["character", "wallet"] },
+  { name: "ngoi-hop", vi: "Ngồi họp", act: "sits at the long meeting table in the meeting room with a notebook, eyes glazed, chin propped on one hand", pose: "the chin slips off the hand", moving: ["character"] },
+  { name: "sep-giao-viec", vi: "Sếp giao việc", act: "sits at the desk as the boss drops a tall pile of folders on it with a smile; the character stares at the pile", pose: "the pile wobbles and the character slumps", moving: ["character", "folders"], with: "boss" },
+  { name: "sep-mang", vi: "Sếp mắng", act: "stands shrinking small in front of the boss, who scolds pointing a finger; the character looks at the floor", pose: "the character shrinks a little more", moving: ["character"], with: "boss" },
+  { name: "hong-chuyen", vi: "Hóng chuyện", act: "leans in eagerly with wide curious eyes as a colleague whispers gossip behind one hand", pose: "leans in even closer", moving: ["character"], with: "colleague" },
 ];
 
 export interface StockEntry {
   name: string;
   vi: string;
   act: string;
+  /** The other character in the picture, if any. */
+  cast?: string[];
   approved: boolean;
   /** Clip folders that used it, with the day (yyyy-mm-dd). */
   used: Array<{ clip: string; on: string }>;
@@ -83,9 +97,24 @@ export function availableStock(charactersDir: string, slug: string, today = day(
   return loadStock(charactersDir, slug).filter((e) => e.approved && existsSync(join(stockDir(charactersDir, slug), `${e.name}.png`)) && !e.used.some((u) => u.on > cut));
 }
 
+/** The second character of a two-person reaction: the director for "boss" (or Tũn when the lead is the director), a colleague for "colleague". */
+export function partnerOf(ctx: Pick<StudioContext, "profiles">, slug: string, who: string | undefined): string | undefined {
+  if (!who) return undefined;
+  const all = [...ctx.profiles.values()];
+  const boss = all.find((c) => /giám đốc|director|founder/i.test(c.role))?.slug;
+  const mate = all.find((c) => c.slug !== slug && c.slug !== boss)?.slug;
+  if (who === "boss") return boss && boss !== slug ? boss : mate;
+  if (who === "colleague") return mate;
+  return ctx.profiles.has(who) && who !== slug ? who : undefined;
+}
+
 /** The reactions as a plan of one shot each, laid out like a meme picture. */
-export function stockPlan(slug: string, reactions: Reaction[]): Plan {
-  const shots: Shot[] = reactions.map((r) => ({ id: r.name, t: 0, act: `In the Hồi Sau office, alone in the picture: ${r.act}. ${MEME_FRAME}`, pose: r.pose, bubble: "", cast: [], moving: r.moving }));
+export function stockPlan(slug: string, reactions: Reaction[], ctx?: Pick<StudioContext, "profiles">): Plan {
+  const shots: Shot[] = reactions.map((r) => {
+    const other = ctx ? partnerOf(ctx, slug, r.with) : undefined;
+    const who = other ? `with ${ctx!.profiles.get(other)!.name}` : "alone in the picture";
+    return { id: r.name, t: 0, act: `In the Hồi Sau office, ${who}: ${r.act.replace(/\bthe boss\b|\ba colleague\b/, other ? ctx!.profiles.get(other)!.name : "$&")}. ${MEME_FRAME}`, pose: r.pose, bubble: "", cast: other ? [other] : [], moving: r.moving };
+  });
   return { slug, clip: "", end: 1, lines: [], shots };
 }
 
@@ -107,7 +136,7 @@ export async function makeStock(ctx: StudioContext, sam: Sam, slug: string, opts
     noteDesign(dir, slug, cdir);
     return have;
   }
-  const plan = stockPlan(slug, todo);
+  const plan = stockPlan(slug, todo, ctx);
   writeFileSync(join(work, "plan.json"), JSON.stringify(plan, null, 2));
   const only = opts.only || stale ? todo.map((r) => r.name) : undefined;
   await drawShots(ctx, plan, work, { only, log: opts.log });
@@ -126,7 +155,8 @@ export async function makeStock(ctx: StudioContext, sam: Sam, slug: string, opts
     const b2 = join(work, `${r.name}-b2.png`);
     if (existsSync(b2)) copyFileSync(b2, join(dir, `${r.name}-b2.png`));
     const old = entries.findIndex((e) => e.name === r.name);
-    const entry: StockEntry = { name: r.name, vi: r.vi, act: r.act, approved: false, used: old >= 0 ? entries[old].used : [] };
+    const shot = plan.shots.find((x) => x.id === r.name)!;
+    const entry: StockEntry = { name: r.name, vi: r.vi, act: shot.act.replace(` ${MEME_FRAME}`, ""), ...(shot.cast.length ? { cast: shot.cast } : {}), approved: false, used: old >= 0 ? entries[old].used : [] };
     if (old >= 0) entries[old] = entry;
     else entries.push(entry);
   }
@@ -209,7 +239,35 @@ export async function stockExtras(ctx: StudioContext, sam: Sam, slug: string, op
     const face = await facesBox(sam, rgb, species);
     if (face && makeBlink(a, out, face, opts.log)) blinks++;
   }
-  const report = await drawMouths(sam, ctx, stockPlan(slug, have), dir, { only: opts.only, log: opts.log });
+  const report = await drawMouths(sam, ctx, stockPlan(slug, have, ctx), dir, { only: opts.only, log: opts.log });
   opts.log?.(`${slug}: ${report.filter((x) => x.ok).length} new mouth pairs`);
   return { blinks, mouths: have.filter((r) => existsSync(join(dir, `${r.name}-m.png`))).length };
+}
+
+/**
+ * Tries the second pose again for the drawn reactions that have none (or `only`): a reaction with two
+ * poses moves in the meme, one with a single picture only blinks. Pose A and its approval stay.
+ */
+export async function retryPoses(ctx: StudioContext, sam: Sam, slug: string, opts: { only?: string[]; log?: (s: string) => void } = {}): Promise<number> {
+  const cdir = ctx.charactersDir ?? CHARACTERS_DIR, dir = stockDir(cdir, slug), work = join(dir, "_work");
+  mkdirSync(work, { recursive: true });
+  const todo = REACTIONS.filter((r) => existsSync(join(dir, `${r.name}.png`)) && (opts.only ? opts.only.includes(r.name) : !existsSync(join(dir, `${r.name}-b2.png`))));
+  if (!todo.length) return 0;
+  const plan = stockPlan(slug, todo, ctx), only = todo.map((r) => r.name);
+  for (const r of todo) {
+    copyFileSync(join(dir, `${r.name}.png`), join(work, `${r.name}.png`));
+    for (const x of ["-b", "-b2"]) rmSync(join(work, `${r.name}${x}.png`), { force: true });
+  }
+  await drawPoses(ctx, plan, work, { only, log: opts.log });
+  await stabilizePoses(sam, ctx, plan, work, { only, log: opts.log });
+  let made = 0;
+  for (const r of todo) {
+    const b2 = join(work, `${r.name}-b2.png`);
+    if (!existsSync(b2)) continue;
+    copyFileSync(b2, join(dir, `${r.name}-b2.png`));
+    for (const x of ["-b2-s", "-b2-m"]) rmSync(join(dir, `${r.name}${x}.png`), { force: true });
+    made++;
+  }
+  opts.log?.(`${slug}: ${made}/${todo.length} new second poses`);
+  return made;
 }

@@ -1028,4 +1028,10 @@ export const EN: Record<string, string> = {
   "Làm mắt chớp + mồm nói ({n}/{all})": "Make blinks + talking mouths ({n}/{all})",
   "Đồ theo dịp": "Seasonal outfits",
   "Vẽ đồ theo dịp còn thiếu": "Draw the missing outfits",
+  "Số credit không hợp lệ.": "Not a valid credit amount.",
+  "Credit ước tính còn {left} USD, đã chạm mức giữ lại {keep} USD cho clip nhép: không làm meme nữa. Nạp thêm hoặc nhập lại số credit.": "About {left} USD of credit left, at the {keep} USD kept for lip-sync clips: no more memes. Top up or enter the credit again.",
+  "Credit Meta còn (USD, xem Billing)": "Meta credit left (USD, from Billing)",
+  "Chưa nhập credit: máy không tự dừng.": "No credit entered: nothing stops automatically.",
+  "Ước tính còn {left} USD, làm được thêm khoảng {n} meme trước mức giữ {keep} USD.": "About {left} USD left: about {n} more memes before the {keep} USD kept back.",
+  "Đã lưu số credit.": "Credit saved.",
 };

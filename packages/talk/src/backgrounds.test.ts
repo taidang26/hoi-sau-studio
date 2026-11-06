@@ -17,5 +17,5 @@ test("office rooms are drawn once and used for scenes in them only after the own
   assert.equal(roomFor("makes instant noodles at the microwave", series)?.room.name, "pantry");
   assert.equal(roomFor("waits for the elevator", series), undefined);
   assert.equal(roomFor("sits at the desk", series), undefined);
-  assert.equal(ROOMS.length, 6);
+  assert.equal(ROOMS.length, 10);
 });

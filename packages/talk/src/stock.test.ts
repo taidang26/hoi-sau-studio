@@ -6,7 +6,7 @@ import { test } from "node:test";
 import { CHARACTERS_DIR, openStudio } from "@hoi-sau/studio";
 import type { Sam } from "@hoi-sau/dance";
 import { planMeme } from "./meme.js";
-import { approveStock, availableStock, loadStock, makeStock, REACTIONS, stockDir, useStock } from "./stock.js";
+import { approveStock, availableStock, loadStock, makeStock, partnerOf, REACTIONS, stockDir, useStock } from "./stock.js";
 
 const chars = mkdtempSync(join(tmpdir(), "hoisau-stock-"));
 cpSync(CHARACTERS_DIR, chars, { recursive: true });
@@ -43,6 +43,10 @@ test("reactions are drawn once, wait for the owner's approval, then stand in for
   assert.ok(!existsSync(join(shots, "s01.png")), "the first scene is still drawn as usual");
   assert.equal(loadStock(chars, "cu-li").find((e) => e.name === "guc-ban")!.used[0].clip, "meme-1");
   assert.deepEqual(availableStock(chars, "cu-li"), [], "a used reaction rests a few days");
-  assert.equal(REACTIONS.length, 12);
+  assert.equal(REACTIONS.length, 22);
+  // A two-person reaction gets the director as the boss, or a colleague when the lead is the director.
+  assert.equal(partnerOf(base, "cu-li", "boss"), "cay-muc");
+  assert.notEqual(partnerOf(base, "cay-muc", "boss"), "cay-muc");
+  assert.equal(partnerOf(base, "cu-li", undefined), undefined);
   assert.ok(REACTIONS.every((r) => /^[a-z-]+$/.test(r.name)));
 });

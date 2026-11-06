@@ -128,7 +128,11 @@ One screen for everything drawn once and reused: each character's reactions (Duy
 
 Each folder notes the design it was drawn for (`design.json`: a fingerprint of the profile's look and the model sheet). When the character is redesigned the page says so, and `talk stock` / `talk mouthkit` redraw everything on their next run.
 
-- **Phông văn phòng** (`talk backgrounds [--approve all]`): six empty rooms in `series/backgrounds` (bàn làm việc, phòng sếp, phòng họp, pantry, thang máy, cửa chấm công). A scene whose act happens in an approved room gets it as the last Muse Image reference, so the room looks the same in every clip.
+- **Phông** (`talk backgrounds [--approve all]`): ten empty rooms in `series/backgrounds`: six in the office (bàn làm việc, phòng sếp, phòng họp, pantry, thang máy, cửa chấm công) and four outside for jokes that need them (phòng trọ, nhà tắm, quán trà đá, đường phố). A scene whose act happens in an approved room gets it as the last Muse Image reference, so the room looks the same in every clip.
 - **Âm thanh hiệu ứng** (`talk sfx`): twelve short sounds made once with AudioGen (Meta AudioCraft, `pip install audiocraft` in the `TALK_PYTHON` environment) in `series/sfx`. Muse Spark may pick one for the punchline of a meme; it is mixed over the music when the punchline appears.
 - **Đồ theo dịp** (`talk seasons <slug|all>`): each character once in the outfit of Tết, Noel, Trung thu, 20/10, 8/3 and 14/2 (`characters/<slug>/seasons`). A meme for an occasion (the idea stock tags them) dresses the lead from that picture and takes no everyday reaction.
 - **Mắt**: every picture without a second pose already gets a shut-eye copy for blinks, on the machine and free. Side glances and wide eyes are part of the expression and come with the drawing.
+
+Reactions are 22: fifteen alone and seven more everyday ones (lướt điện thoại, chạy deadline, ngủ gật, chạy trễ, nộp đơn nghỉ, ví rỗng, ngồi họp), plus three with a second character (sếp giao việc, sếp mắng with the director; hóng chuyện with a colleague), which keep that character in the meme. `talk stock <slug> --poses` tries the second pose again for reactions that have only one picture.
+
+The Kho ý page takes the Meta credit read off Billing; from then on "Làm clip cả tuần tới" estimates about 0.15 USD a meme and stops before the last 18 USD, which stay for lip-sync clips.

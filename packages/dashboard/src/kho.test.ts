@@ -111,3 +111,13 @@ test("the stock: added from a scrape, pictures downloaded, read into meme propos
   assert.match(html, /Đã bỏ/);
   assert.doesNotMatch(html, /Than Thở/);
 });
+
+test("memes stop before the credit kept for lip-sync clips", async () => {
+  const { clipsAllowed, creditLeft, CREDIT_KEEP, MEME_COST } = await import("./kho.js");
+  const items = Array.from({ length: 10 }, (_, k) => ({ video: k < 4 ? `v${k}` : undefined })) as never[];
+  assert.equal(clipsAllowed({ perDay: 4, items }), Infinity);
+  const s = { perDay: 4, items, credit: { usd: 20, on: "", made: 2 } };
+  assert.equal(creditLeft(s), Math.round((20 - 2 * MEME_COST) * 100) / 100);
+  assert.equal(clipsAllowed(s), Math.floor((creditLeft(s)! - CREDIT_KEEP) / MEME_COST));
+  assert.equal(clipsAllowed({ ...s, credit: { usd: 18, on: "", made: 4 } }), 0);
+});

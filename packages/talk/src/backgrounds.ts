@@ -27,6 +27,11 @@ export const ROOMS: Room[] = [
   { name: "pantry", vi: "Pantry", text: "the office pantry: a counter with a coffee machine, an electric kettle and mugs, a small fridge, a microwave, a round table with two stools on the floor", words: /\b(pantry|kitchen|coffee machine|microwave|break room)\b/ },
   { name: "thang-may", vi: "Thang máy", text: "the lift lobby of an office building: two closed steel lift doors with floor buttons between them, a floor number display above, a polished floor", words: /\b(lift|elevator)\b/ },
   { name: "cham-cong", vi: "Cửa chấm công", text: "the office entrance: a glass door, a fingerprint time-clock machine on the wall beside it, a small reception counter with the Hồi Sau logo as a plain shape (no letters), a wall clock", words: /\b(time[- ]clock|clock(s|ing)? in|check[- ]in machine|fingerprint|entrance|front door|reception)\b/ },
+  // Outside the office, only when the joke needs it (the house rule: the office by default).
+  { name: "phong-tro", vi: "Phòng trọ", text: "a small rented room in Hanoi: a narrow bed with a crumpled blanket on the floor, a plastic wardrobe, a small desk with a laptop facing the chair, clothes on a rack, one small window", words: /\b(rented room|bedroom|at home|in bed|phòng trọ|boarding room)\b/ },
+  { name: "nha-tam", vi: "Nhà tắm", text: "a small tiled bathroom: a wall shower head, a plastic bucket and a scoop on the floor, a small mirror over a basin, a towel on a hook", words: /\b(bathroom|shower|toilet)\b/ },
+  { name: "tra-da", vi: "Quán trà đá", text: "a Hanoi street-side iced tea stall on the pavement: low blue plastic stools on the ground, a small low table with glasses of iced tea, a thermos and a jar of sunflower seeds, a tree trunk and a wall behind", words: /\b(iced tea|tea stall|trà đá|street stall|plastic stools?)\b/ },
+  { name: "duong-pho", vi: "Đường phố", text: "a busy Hanoi street in the morning: a few parked motorbikes on the road, shop fronts with plain coloured awnings and no lettering, overhead tangled power lines, a pavement", words: /\b(street|motorbike|traffic|scooter|on the road|commut)/ },
 ];
 
 export const backgroundsDir = (seriesDir = SERIES_DIR) => join(seriesDir, "backgrounds");

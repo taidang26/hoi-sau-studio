@@ -37,6 +37,7 @@ import { facesBox, makeCover } from "./cover.js";
 import sharp from "sharp";
 import { makeBlink, makeMusic, planMeme, readMeme, renderMeme, retimeMeme } from "./meme.js";
 import { makeLibrary, MOODS, takeTrack } from "./music-lib.js";
+import { makeSeasons, OUTFITS } from "./seasons.js";
 import { availableSfx, makeSfx, SOUNDS, sfxFile } from "./sfx.js";
 import { backgroundsDir, loadRooms, makeBackgrounds, ROOMS } from "./backgrounds.js";
 import { kitSheet, loadKit, makeMouthKit, type Angle } from "./mouthkit.js";
@@ -438,6 +439,17 @@ async function main() {
       const count = Number(opt.count ?? 4);
       const made = makeLibrary(ROOT, (out, secs, prompt, seed) => void makeMusic(prompt, secs - 1, out, log, seed), count, log);
       console.log(`${made} new track(s); ${MOODS.length} moods × ${count}`);
+      return;
+    }
+    case "seasons": {
+      // Seasonal outfits, drawn once per character: talk seasons <slug|all> [--only tet,noel]
+      const [who] = pos;
+      if (!who) throw new Error("Usage: talk seasons <slug|all> [--only tet,noel]");
+      const ctx = openStudio({ log });
+      for (const slug of who === "all" ? [...ctx.profiles.keys()] : [who]) {
+        const n = await makeSeasons(ctx, slug, { only: opt.only ? String(opt.only).split(",") : undefined, log });
+        console.log(`${slug}: ${n} new of ${OUTFITS.length}`);
+      }
       return;
     }
     case "sfx": {

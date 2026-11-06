@@ -1026,4 +1026,6 @@ export const EN: Record<string, string> = {
   "Thiết kế nhân vật đã đổi từ lúc vẽ đồ làm sẵn: nên vẽ lại để khớp.": "The character's design changed since these were drawn: redraw them to match.",
   "Tranh vẽ một lần rồi dùng lại trong clip: phản ứng cho meme (chỉ tranh đã duyệt), bộ mồm cho clip nhép, phông các phòng. Tranh mới vẽ lại phải duyệt lại.": "Pictures drawn once and reused in clips: reactions for memes (approved ones only), mouths for lip-sync clips, office rooms. Redrawn pictures need approving again.",
   "Làm mắt chớp + mồm nói ({n}/{all})": "Make blinks + talking mouths ({n}/{all})",
+  "Đồ theo dịp": "Seasonal outfits",
+  "Vẽ đồ theo dịp còn thiếu": "Draw the missing outfits",
 };

@@ -664,7 +664,7 @@ export function handler(opts: DashboardOptions) {
     }
     // Đồ làm sẵn: reactions, mouth kits and office rooms drawn once per character, approved or redrawn with a tap.
     if (vd && path === "/video/san" && req.method === "GET") return page(res, 200, readyPage(vd.ready, { err, ok }));
-    const vr = vd && req.method === "POST" ? path.match(/^\/video\/san\/([a-z0-9-]+|_bg)\/(approve|unapprove|redraw|mouthkit|backgrounds)\/([a-z0-9-]+)$/) : null;
+    const vr = vd && req.method === "POST" ? path.match(/^\/video\/san\/([a-z0-9-]+|_bg)\/(approve|unapprove|redraw|mouthkit|backgrounds|seasons)\/([a-z0-9-]+)$/) : null;
     if (vr && vd) {
       const back = `/video/san#${vr[1] === "_bg" ? "phong" : vr[1]}`;
       try {
@@ -676,6 +676,7 @@ export function handler(opts: DashboardOptions) {
         }
         if (act === "redraw") vd.ready.redrawStock(slug, what);
         else if (act === "mouthkit") vd.ready.redrawKit(slug, what === "all");
+        else if (act === "seasons") vd.ready.redrawSeasons(slug, what === "missing" ? undefined : what);
         else vd.ready.redrawBackgrounds(what === "missing" ? undefined : what);
         return redirect(res, withNote(back, "ok", t("Máy đang vẽ. Tranh mới vẽ lại phải duyệt lại.")));
       } catch (e) {

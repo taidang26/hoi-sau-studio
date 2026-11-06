@@ -28,6 +28,7 @@ import { popScale, type Line, type Plan, type Shot } from "./illustrate.js";
 import { OUT, SAFE } from "./timeline.js";
 import { python } from "./voice.js";
 import { sfxMix } from "./sfx.js";
+import { outfitOf } from "./seasons.js";
 
 export interface MemeSpec {
   /** The set-up, shown from the start. */
@@ -40,6 +41,8 @@ export interface MemeSpec {
   music: string;
   /** Total length; 0 lets the reading time decide (memeTiming). */
   seconds: number;
+  /** An occasion (Tết, Noel, Trung thu, 20/10, 8/3, 14/2): the lead wears that season's outfit (talk seasons). */
+  season?: string;
 }
 
 export const MEME_SECONDS = { min: 6, max: 20, default: 0 };
@@ -100,6 +103,9 @@ export async function planMeme(ctx: StudioContext, slug: string, spec: MemeSpec,
   const cast = [...ctx.profiles.values()].filter((c) => c.slug !== slug).map((c) => `${c.slug} = ${c.name} (${c.species}, ${c.role})`).join("; ");
   // "Sếp" in a joke is the most senior cast member (the director), never just any colleague.
   const boss = [...ctx.profiles.values()].find((c) => c.slug !== slug && /giám đốc|director|founder/i.test(c.role));
+  // An occasion's meme dresses the lead for it; the ready-made reactions wear the everyday outfit, so none is offered.
+  const outfit = outfitOf(spec.season);
+  if (outfit) stock = [];
   const scenes = spec.scenes.map((n, i) => `Scene ${i + 1}: ${n.trim() || "(your choice)"}`).join("\n");
   const messages: ChatMessage[] = [
     {
@@ -114,7 +120,7 @@ export async function planMeme(ctx: StudioContext, slug: string, spec: MemeSpec,
         ...(sounds.length
           ? [`You may add one sound effect when the punchline appears, only if it makes the joke land harder (most memes need none). Put its name in \`sfx\`, else leave it empty:\n${sounds.map((x) => `- ${x.name}: ${x.prompt}`).join("\n")}`]
           : []),
-        `Rules: ${p.name} wears the usual outfit from the reference sheet; the setting is the Hồi Sau office unless a scene note says otherwise; one clear action and a strong expression; nothing with lettering on it (no shirts, signs or screens with words); no clocks; every scene has the same time of day and lighting (daytime office unless a note says night). Call ${p.name} by name, never "he" or "she". Other cast if needed: ${cast}.${boss ? ` When the text says "sếp" (the boss), the boss is ${boss.name} (${boss.slug}): put ${boss.slug} in cast and draw ${boss.name}, not another colleague.` : ""}`,
+        `Rules: ${p.name} wears the usual outfit from the reference sheet${outfit ? ` plus, for ${outfit.vi}, ${outfit.text}` : ""}; the setting is the Hồi Sau office unless a scene note says otherwise; one clear action and a strong expression; nothing with lettering on it (no shirts, signs or screens with words); no clocks; every scene has the same time of day and lighting (daytime office unless a note says night). Call ${p.name} by name, never "he" or "she". Other cast if needed: ${cast}.${boss ? ` When the text says "sếp" (the boss), the boss is ${boss.name} (${boss.slug}): put ${boss.slug} in cast and draw ${boss.name}, not another colleague.` : ""}`,
       ].join("\n\n"),
     },
   ];
@@ -137,7 +143,7 @@ export async function planMeme(ctx: StudioContext, slug: string, spec: MemeSpec,
   const pick = spec.scenes.length === 2 ? stock.find((e) => e.name === r.shots[1]?.stock?.trim()) : undefined;
   if (pick) Object.assign(shots[1], { stock: pick.name, act: `${pick.act} ${MEME_FRAME}`, pose: "", cast: [], moving: undefined });
   const sfx = sounds.find((x) => x.name === r.sfx?.trim())?.name;
-  return { slug, clip: "", end, lines, shots, ...(sfx ? { sfx } : {}) };
+  return { slug, clip: "", end, lines, shots, ...(sfx ? { sfx } : {}), ...(outfit ? { season: outfit.season } : {}) };
 }
 
 /** Added to every meme picture: room for the text on top, and none of what went wrong in tests. */

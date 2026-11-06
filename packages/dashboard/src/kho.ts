@@ -364,7 +364,7 @@ export class IdeaStock {
         try {
           const plan = JSON.parse(readFileSync(join(this.dirOf(i), "idea.json"), "utf8")) as { lead: string; title: string; caption?: string; meme: { top: string; punch: string; scenes: string[] } };
           const slug = cast.has(plan.lead) ? plan.lead : cast.has("cu-li") ? "cu-li" : [...cast][0];
-          const id = this.videos.create({ kind: "meme", slug, mouth: false, title: plan.title, meme: { top: plan.meme.top, punch: plan.meme.punch, scenes: plan.meme.scenes, music: MEME_MUSIC, seconds: 0 }, caption: plan.caption });
+          const id = this.videos.create({ kind: "meme", slug, mouth: false, title: plan.title, meme: { top: plan.meme.top, punch: plan.meme.punch, scenes: plan.meme.scenes, music: MEME_MUSIC, seconds: 0, ...(i.season ? { season: i.season } : {}) }, caption: plan.caption });
           const s = this.load();
           const it = s.items.find((x) => x.id === i.id);
           if (it) {

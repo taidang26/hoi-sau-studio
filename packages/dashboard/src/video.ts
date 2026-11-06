@@ -68,6 +68,8 @@ export interface MemeInput {
   scenes: string[];
   music: string;
   seconds: number;
+  /** An occasion (Tết, Noel...): the lead wears that season's outfit. */
+  season?: string;
 }
 
 interface Meta {

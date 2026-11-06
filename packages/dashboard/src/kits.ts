@@ -9,7 +9,7 @@
  * A folder drawn for an older design of the character (designChanged) says so, with one button to draw it all again.
  */
 
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { designChanged } from "@hoi-sau/studio";
 import { t } from "./i18n.js";
@@ -83,6 +83,16 @@ export class ReadyMade {
     this.run(`kit:${slug}`, ["mouthkit", slug, ...(all ? ["--only", "front,side"] : [])]);
   }
 
+  /** Draws the missing seasonal outfits of a character, or one again by key. */
+  redrawSeasons(slug: string, key?: string): void {
+    this.run(`seasons:${slug}`, ["seasons", slug, ...(key ? ["--only", key] : [])]);
+  }
+
+  seasons(slug: string): string[] {
+    const d = join(this.opts.charactersDir(), slug, "seasons");
+    return existsSync(d) ? readdirSync(d).filter((f) => f.endsWith(".png")).map((f) => f.slice(0, -4)).sort() : [];
+  }
+
   /** Draws the missing office rooms, or one again by name. */
   redrawBackgrounds(name?: string): void {
     this.run("backgrounds", ["backgrounds", ...(name ? ["--only", name] : [])]);
@@ -100,9 +110,9 @@ export class ReadyMade {
 
   /** The file a /ready-media/ URL names, or undefined: only pictures inside the ready-made folders. */
   file(path: string): string | undefined {
-    const m = path.match(/^([a-z0-9-]+)\/(stock|mouthkit)\/([a-z0-9-]+\.(?:png|jpg))$/) ?? path.match(/^(_bg)\/(backgrounds)\/([a-z0-9-]+\.(?:png|jpg))$/);
+    const m = path.match(/^([a-z0-9-]+)\/(stock|mouthkit|seasons)\/([a-z0-9-]+\.(?:png|jpg))$/) ?? path.match(/^(_bg)\/(backgrounds)\/([a-z0-9-]+\.(?:png|jpg))$/);
     if (!m) return undefined;
-    const f = m[1] === "_bg" ? join(this.backgroundsDir(), m[3]) : join(m[2] === "stock" ? this.stockDir(m[1]) : this.kitDir(m[1]), m[3]);
+    const f = m[1] === "_bg" ? join(this.backgroundsDir(), m[3]) : join(this.opts.charactersDir(), m[1], m[2], m[3]);
     return existsSync(f) ? f : undefined;
   }
 }
@@ -133,6 +143,8 @@ ${stale ? `<p class="flash err">${esc(t("Thiết kế nhân vật đã đổi t�
 <p class="small">${drawn.length && ok < drawn.length ? post(`/video/san/${slug}/approve/all`, t("Duyệt hết"), true) : ""} ${post(`/video/san/${slug}/redraw/missing`, t(drawn.length ? "Vẽ phần còn thiếu" : "Vẽ kho phản ứng"))} ${drawn.length ? post(`/video/san/${slug}/redraw/extras`, t("Làm mắt chớp + mồm nói ({n}/{all})", { n: drawn.filter((e) => existsSync(join(sdir, `${e.name}-m.png`))).length, all: drawn.length })) : ""}</p>
 ${jobLine(`stock:${slug}`)}<ul class="ready-grid">${tiles}</ul>
 <h3>${esc(t("Bộ mồm"))}</h3>${kitSheet}
+<h3>${esc(t("Đồ theo dịp"))}</h3><ul class="ready-grid">${r.seasons(slug).map((k) => `<li class="ready-tile"><img class="square" src="/ready-media/${esc(slug)}/seasons/${esc(k)}.png" alt="${esc(k)}" loading="lazy"><p class="small"><b>${esc(k)}</b> ${post(`/video/san/${slug}/seasons/${k}`, t("Vẽ lại"))}</p></li>`).join("")}</ul>
+<p class="small">${post(`/video/san/${slug}/seasons/missing`, t("Vẽ đồ theo dịp còn thiếu"))}</p>${jobLine(`seasons:${slug}`)}
 <p class="small">${post(`/video/san/${slug}/mouthkit/missing`, t(existsSync(join(kdir, "kit.json")) ? "Vẽ mồm còn thiếu" : "Làm bộ mồm"))} ${existsSync(join(kdir, "kit.json")) ? post(`/video/san/${slug}/mouthkit/all`, t("Vẽ lại bộ mồm")) : ""}</p>${jobLine(`kit:${slug}`)}</section>`;
   }).join("");
   const bgs = r.backgrounds();
@@ -143,7 +155,7 @@ ${jobLine(`stock:${slug}`)}<ul class="ready-grid">${tiles}</ul>
 <p class="muted">${esc(t("Tranh vẽ một lần rồi dùng lại trong clip: phản ứng cho meme (chỉ tranh đã duyệt), bộ mồm cho clip nhép, phông các phòng. Tranh mới vẽ lại phải duyệt lại."))}</p>
 <p class="small">${r.opts.cast().map((c) => `<a href="#${esc(c.slug)}">${esc(c.name)}</a>`).join(" · ")} · <a href="#phong">${esc(t("Phông"))}</a></p></section>
 ${people}${rooms}
-<style>.ready-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px;list-style:none;padding:0}.ready-tile img{width:100%;aspect-ratio:9/16;object-fit:cover;border-radius:8px;border:2px solid transparent}.ready-tile.ok img{border-color:#3a9d5d}.ready-sheet{max-width:100%;border-radius:8px}</style>`;
+<style>.ready-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px;list-style:none;padding:0}.ready-tile img{width:100%;aspect-ratio:9/16;object-fit:cover;border-radius:8px;border:2px solid transparent}.ready-tile.ok img{border-color:#3a9d5d}.ready-tile img.square{aspect-ratio:1}.ready-sheet{max-width:100%;border-radius:8px}</style>`;
   return layout(t("Đồ làm sẵn"), "/video", body);
 }
 

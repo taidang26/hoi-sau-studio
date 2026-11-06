@@ -313,12 +313,12 @@ export const LOOK = [
   "Never draw a real person or a celebrity's likeness: a singer, band, actor or idol the words name appears only as tiny dark silhouettes far away (on a stage, a screen or a poster without a face); our animal cast are the only characters drawn in full.",
 ].join(" ");
 
-const CHECK = S.obj({ pass: S.bool(), problems: S.arr(S.str("one concrete problem"), 0, 8), fix: S.str("English edit instruction naming only what to change, or empty if pass") });
+const CHECK = S.obj({ pass: S.bool(), blocking: S.bool(), problems: S.arr(S.str("one concrete problem"), 0, 8), fix: S.str("English edit instruction naming only what to change, or empty if pass") });
 
 const dataUrl = (png: Buffer) => `data:image/png;base64,${png.toString("base64")}`;
 
 /** Muse Spark looks at one picture: on-model, drawn once, no text, physical and orientation logic. */
-export async function checkPicture(ctx: StudioContext, slug: string, act: string, png: Buffer, cast: string[] = []): Promise<{ pass: boolean; problems: string[]; fix: string }> {
+export async function checkPicture(ctx: StudioContext, slug: string, act: string, png: Buffer, cast: string[] = []): Promise<{ pass: boolean; blocking?: boolean; problems: string[]; fix: string }> {
   const p = ctx.profiles.get(slug)!;
   // What is canon for the others in the frame (Bino's cap and his white cat), so the check never asks to remove it.
   const others = cast.map((c) => ctx.profiles.get(c)).filter(Boolean).map((c) => `${c!.name}: ${c!.look.signature.join("; ")}`);
@@ -334,7 +334,9 @@ export async function checkPicture(ctx: StudioContext, slug: string, act: string
         "a busy background (crowds, many props) or sparkles, sweat drops, motion lines; a glowing screen facing the viewer while the character uses it; a misshapen or broken prop (a wallet must look like a normal bifold wallet); empty colour bands across the top or bottom.",
         "Also fail it for editing damage and staging errors: a hard straight seam, or a patch whose lines or colours do not match, around a character or prop; a ghost, smear, blur or half-transparent area; a solid thing drawn see-through (a door, a wall, a body); the same prop twice when there is one job for it (two mops, two badges); a character, or the head or a limb of one, cut by the frame edge; a character or furniture floating, or resting on the wrong thing (a chair standing on a table); a hand or arm passing through a door, wall or furniture.",
         ...(others.length ? [`Other cast in the frame, drawn on-model, with what always belongs to them (never a fault): ${others.join(" | ")}.`] : []),
+        "Count, for EVERY character in the frame, the arms, hands and legs (exactly two arms and two legs each; a hand holding a pet or prop is one of the two), and count each piece of furniture and each lamp, chair, mop or screen: anything there twice that the scene has one job for is a fault.",
         "Size alone (a character a bit bigger or smaller than a third of the frame) is not a fault.",
+        "Set blocking true when any problem is an extra or missing limb, a duplicated character, prop or furniture, a see-through solid, a seam or ghost, an off-model character, a human, or text; false when every problem is cosmetic (a hidden lanyard, a slight crop at a desk, a screen glow).",
         "If it fails, write the fix as a short edit instruction.",
       ].join(" "),
     },
@@ -349,8 +351,8 @@ export async function checkPicture(ctx: StudioContext, slug: string, act: string
  * mouth the render uses) for what the drawing checks catch plus what the later steps can break: seams, ghosts
  * and smears from a pasted pose or mouth, a removed prop leaving a smudge. Returns one row per picture.
  */
-export async function reviewShots(ctx: StudioContext, plan: Plan, dir: string, opts: { only?: string[]; log?: (s: string) => void } = {}): Promise<Array<{ pic: string; pass: boolean; problems: string[]; fix: string }>> {
-  const rows: Array<{ pic: string; pass: boolean; problems: string[]; fix: string }> = [];
+export async function reviewShots(ctx: StudioContext, plan: Plan, dir: string, opts: { only?: string[]; log?: (s: string) => void } = {}): Promise<Array<{ pic: string; pass: boolean; blocking?: boolean; problems: string[]; fix: string }>> {
+  const rows: Array<{ pic: string; pass: boolean; blocking?: boolean; problems: string[]; fix: string }> = [];
   await eachShot(plan.shots, async (s) => {
     if (s.src || (opts.only && !opts.only.includes(s.id))) return;
     for (const pic of [s.id, `${s.id}-b2`]) {

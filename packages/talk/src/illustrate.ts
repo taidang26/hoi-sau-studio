@@ -787,8 +787,8 @@ export async function stabilizePoses(sam: Sam, ctx: StudioContext, plan: Plan, d
   return report;
 }
 
-export const mouthPrompt = (name: string, open: boolean) =>
-  `Change only ${name}'s mouth: ${open ? "open it mid-word as if talking loudly, clearly showing the inside of the mouth; it opens downward from where the mouth is, stays below the nose with a clear gap of skin between them, never touches or covers the nose, eyes or eye markings, and is no taller than it is wide" : "close it, lips together in a calm closed line, no teeth, no smile"}. The mouth stays the same width and in the same place. Do not move the head, nose, eyes, eyebrows, cheeks, arms, anyone else or anything else. Keep the same framing, background, colours and line style. No text.`;
+export const mouthPrompt = (name: string, open: boolean, attempt = 0) =>
+  `Change only ${name}'s mouth: ${open ? (attempt ? "open it a little as if singing a vowel: a small oval about half as tall as it is wide, set low toward the chin, well below the nose with a wide gap of skin between them, clearly showing the dark inside; never touches the nose, eyes or eye markings" : "open it mid-word as if talking loudly, clearly showing the inside of the mouth; it opens downward from where the mouth is, stays below the nose with a clear gap of skin between them, never touches or covers the nose, eyes or eye markings, and is no taller than it is wide") : "close it, lips together in a calm closed line, no teeth, no smile"}. The mouth stays the same width and in the same place. Do not move the head, nose, eyes, eyebrows, cheeks, arms, anyone else or anything else. Keep the same framing, background, colours and line style. No text.`;
 
 /**
  * The lead's mouth among SAM's finds: the biggest find whose centre lies on the
@@ -911,7 +911,7 @@ export async function mouthIn(segment: (phrase: string) => Promise<Array<{ mask:
 export async function leadOr(first: Uint8Array, fallback: () => Promise<Uint8Array>): Promise<Uint8Array> {
   return first.some((v) => v) ? first : fallback();
 }
-export async function drawMouths(sam: Sam, ctx: StudioContext, plan: Plan, dir: string, opts: { only?: string[]; log?: (s: string) => void } = {}): Promise<Array<{ pic: string; ok: boolean; problem?: string }>> {
+export async function drawMouths(sam: Sam, ctx: StudioContext, plan: Plan, dir: string, opts: { only?: string[]; mouthTries?: number; log?: (s: string) => void } = {}): Promise<Array<{ pic: string; ok: boolean; problem?: string }>> {
   const { w, h } = OUT;
   const p = ctx.profiles.get(plan.slug)!;
   const species = p.species.split("(")[0].trim();
@@ -952,10 +952,14 @@ export async function drawMouths(sam: Sam, ctx: StudioContext, plan: Plan, dir: 
       }
       const { keep, nearNose } = await faceKeep(rgb);
       const made: Record<"shut" | "open", { img: Raster; size: number; box: Box; onFace: number; nearNose: number } | undefined> = { shut: undefined, open: undefined };
-      for (const kind of ["shut", "open"] as const) {
+      // A failed open mouth is drawn again, smaller and lower, up to `mouthTries` times; the shut one is kept once it is made.
+      let problem = "";
+      for (let attempt = 0; attempt < (opts.mouthTries ?? (Number(process.env.TALK_MOUTH_TRIES) || 3)); attempt++) {
+      if (attempt) { made.open = undefined; opts.log?.(`${pic}: ${problem}; drawing the open mouth again (try ${attempt + 1})`); }
+      for (const kind of (made.shut ? ["open"] : ["shut", "open"]) as Array<"shut" | "open">) {
         opts.log?.(`${pic}: drawing the mouth ${kind}`);
         // A refused or failed mouth edit costs this picture its talking mouth, never the whole run.
-        const res = await generateSoftly(ctx.image, { prompt: mouthPrompt(p.name, kind === "open"), size: `${w}x${h}`, references: [dataUrl(await writePng(base))] }, opts.log)
+        const res = await generateSoftly(ctx.image, { prompt: mouthPrompt(p.name, kind === "open", attempt), size: `${w}x${h}`, references: [dataUrl(await writePng(base))] }, opts.log)
           .catch((e: Error) => { opts.log?.(`${pic}: mouth ${kind} not drawn (${e.message.slice(0, 120)})`); return undefined; });
         if (!res) break;
         writeFileSync(join(dir, `${pic}-${kind === "open" ? "m" : "s"}.raw.png`), res.image);
@@ -967,12 +971,14 @@ export async function drawMouths(sam: Sam, ctx: StudioContext, plan: Plan, dir: 
         made[kind] = { img: pasteMouth(base, edit, mouth.mask, found.mask, shift.dx, shift.dy, 5, keep, 12), size: area(found.mask), box: found.box, onFace: overlapShare(found.mask, keep, w, h, shift.dx, shift.dy), nearNose: overlapShare(found.mask, nearNose, w, h, shift.dx, shift.dy) };
       }
       const { shut, open } = made;
-      const problem = !shut || !open ? "a mouth edit failed"
+      problem = !shut || !open ? "a mouth edit failed"
         : open.size < shut.size * 1.4 ? `the open mouth is not clearly bigger than the shut one (${open.size} vs ${shut.size} px)`
         : open.box.h > shut.box.w * 1.6 ? `the open mouth is too tall (${open.box.h} px for a ${shut.box.w} px wide mouth)`
         : open.onFace > 0.03 ? `the open mouth runs into the nose or eyes (${Math.round(open.onFace * 100)}% of it)`
         : open.nearNose > 0 ? `the open mouth comes within ${NOSE_GAP} px of the nose`
         : await faceProblem(ctx, p.name, shut.img, open.img, grow(unionBox([mouth.box, shut.box, open.box])!, 3, w, h, 160));
+      if (!problem || !shut) break;
+      }
       report.push({ pic, ok: !problem, problem: problem || undefined });
       if (problem) { opts.log?.(`${pic}: ${problem}; this picture keeps its mouth as drawn`); continue; }
       await sharp(made.shut!.img.data, { raw: { width: w, height: h, channels: 3 } }).png().toFile(shutFile);

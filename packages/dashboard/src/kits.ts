@@ -40,6 +40,15 @@ export class ReadyMade {
 
   /** The owner's word on reactions; `name` "all" means every one with a picture. */
   approve(slug: string, name: string, approved: boolean): number {
+    if (slug === "_bg") {
+      const file = join(this.backgroundsDir(), "backgrounds.json");
+      const rooms = JSON.parse(readFileSync(file, "utf8")) as Array<{ name: string; approved?: boolean }>;
+      let k = 0;
+      for (const r of rooms) if (name === "all" || r.name === name) { r.approved = approved; k++; }
+      if (!k) throw new Error(t("Không có tranh nào tên này."));
+      writeFileSync(file, `${JSON.stringify(rooms, null, 1)}\n`);
+      return k;
+    }
     const entries = this.stock(slug);
     let n = 0;
     for (const e of entries) if ((name === "all" || e.name === name) && existsSync(join(this.stockDir(slug), `${e.name}.png`))) { e.approved = approved; n++; }
@@ -78,9 +87,9 @@ export class ReadyMade {
     this.run("backgrounds", ["backgrounds", ...(name ? ["--only", name] : [])]);
   }
 
-  backgrounds(): Array<{ name: string; vi: string; file: string }> {
+  backgrounds(): Array<{ name: string; vi: string; approved?: boolean; file: string }> {
     try {
-      return (JSON.parse(readFileSync(join(this.backgroundsDir(), "backgrounds.json"), "utf8")) as Array<{ name: string; vi: string }>)
+      return (JSON.parse(readFileSync(join(this.backgroundsDir(), "backgrounds.json"), "utf8")) as Array<{ name: string; vi: string; approved?: boolean }>)
         .map((b) => ({ ...b, file: `${b.name}.png` }))
         .filter((b) => existsSync(join(this.backgroundsDir(), b.file)));
     } catch {
@@ -127,8 +136,8 @@ ${jobLine(`stock:${slug}`)}<ul class="ready-grid">${tiles}</ul>
   }).join("");
   const bgs = r.backgrounds();
   const rooms = `<section class="card" id="phong"><h2>${esc(t("Phông văn phòng"))}</h2>
-<ul class="ready-grid">${bgs.map((b) => `<li class="ready-tile"><img src="/ready-media/_bg/backgrounds/${esc(b.file)}" alt="${esc(b.vi)}" loading="lazy"><p class="small"><b>${esc(b.vi)}</b></p><p class="small">${post(`/video/san/_bg/backgrounds/${b.name}`, t("Vẽ lại"))}</p></li>`).join("")}</ul>
-<p class="small">${post("/video/san/_bg/backgrounds/missing", t(bgs.length ? "Vẽ phòng còn thiếu" : "Vẽ phông văn phòng"))}</p>${jobLine("backgrounds")}</section>`;
+<ul class="ready-grid">${bgs.map((b) => `<li class="ready-tile${b.approved ? " ok" : ""}"><img src="/ready-media/_bg/backgrounds/${esc(b.file)}" alt="${esc(b.vi)}" loading="lazy"><p class="small"><b>${b.approved ? "✓ " : ""}${esc(b.vi)}</b></p><p class="small">${post(`/video/san/_bg/${b.approved ? "unapprove" : "approve"}/${b.name}`, t(b.approved ? "Bỏ duyệt" : "Duyệt"), !b.approved)} ${post(`/video/san/_bg/backgrounds/${b.name}`, t("Vẽ lại"))}</p></li>`).join("")}</ul>
+<p class="small">${bgs.some((b) => !b.approved) ? post("/video/san/_bg/approve/all", t("Duyệt hết"), true) : ""} ${post("/video/san/_bg/backgrounds/missing", t(bgs.length ? "Vẽ phòng còn thiếu" : "Vẽ phông văn phòng"))}</p>${jobLine("backgrounds")}</section>`;
   const body = `${flash(view.ok, view.err)}<section class="card"><h1>${esc(t("Đồ làm sẵn"))}</h1>
 <p class="muted">${esc(t("Tranh vẽ một lần rồi dùng lại trong clip: phản ứng cho meme (chỉ tranh đã duyệt), bộ mồm cho clip nhép, phông các phòng. Tranh mới vẽ lại phải duyệt lại."))}</p>
 <p class="small">${r.opts.cast().map((c) => `<a href="#${esc(c.slug)}">${esc(c.name)}</a>`).join(" · ")} · <a href="#phong">${esc(t("Phông"))}</a></p></section>

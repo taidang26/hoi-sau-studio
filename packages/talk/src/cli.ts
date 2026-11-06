@@ -37,6 +37,7 @@ import { facesBox, makeCover } from "./cover.js";
 import sharp from "sharp";
 import { makeBlink, makeMusic, planMeme, readMeme, renderMeme, retimeMeme } from "./meme.js";
 import { makeLibrary, MOODS, takeTrack } from "./music-lib.js";
+import { backgroundsDir, loadRooms, makeBackgrounds, ROOMS } from "./backgrounds.js";
 import { kitSheet, loadKit, makeMouthKit, type Angle } from "./mouthkit.js";
 import { approveStock, availableStock, loadStock, makeStock, REACTIONS, stockSheet, useStock } from "./stock.js";
 import { askFixes, speechGaps } from "./fixes.js";
@@ -436,6 +437,19 @@ async function main() {
       const count = Number(opt.count ?? 4);
       const made = makeLibrary(ROOT, (out, secs, prompt, seed) => void makeMusic(prompt, secs - 1, out, log, seed), count, log);
       console.log(`${made} new track(s); ${MOODS.length} moods × ${count}`);
+      return;
+    }
+    case "backgrounds": {
+      // Office rooms drawn once, used as a reference for scenes in them: talk backgrounds [--only phong-sep,pantry] [--approve names|all]
+      const ctx = openStudio({ log });
+      if (opt.approve) {
+        const want = String(opt.approve).split(",");
+        const rooms = loadRooms();
+        for (const r of rooms) if (want.includes("all") || want.includes(r.name)) r.approved = true;
+        writeFileSync(join(backgroundsDir(), "backgrounds.json"), `${JSON.stringify(rooms, null, 1)}\n`);
+      } else await makeBackgrounds(ctx, { only: opt.only ? String(opt.only).split(",") : undefined, log });
+      const rooms = loadRooms();
+      console.log(`${rooms.length}/${ROOMS.length} rooms drawn, ${rooms.filter((r) => r.approved).length} approved`);
       return;
     }
     case "mouthkit": {

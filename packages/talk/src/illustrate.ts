@@ -28,6 +28,7 @@ import { poseSwitches, snapShots } from "./beats.js";
 import { chunkWords, OUT, SAFE, type Chunk, type Word } from "./timeline.js";
 import { align, grow, maskBox, unionBox, writePng, type Box, type Raster } from "./patch.js";
 import { python } from "./voice.js";
+import { roomFor, roomPrompt } from "./backgrounds.js";
 import { colourGap, KIT_MIN_MOUTH, KIT_SKIN_GAP, openShapes, kitDrops, kitSkin, loadKit, ringColour, noseOffset, pasteKit, pickAngle } from "./mouthkit.js";
 
 export interface Line {
@@ -387,8 +388,11 @@ export async function drawShots(ctx: StudioContext, plan: Plan, dir: string, opt
   await eachShot(plan.shots, async (s) => {
     const file = join(dir, `${s.id}.png`);
     if (s.src || (opts.only ? !opts.only.includes(s.id) : existsSync(file))) return;
-    const refs = [...characterRefs(ctx, plan.slug), ...s.cast.flatMap((c) => characterRefs(ctx, c)), ...(style ? [style] : [])];
-    const prompt = `Full-frame vertical illustration for a short comedy video, one scene. ${lead}. Scene: ${s.act}. ${LOOK} ${ctx.style ? `Style: ${styleText(ctx.style)}` : ""} Draw ${p.name} exactly once.`;
+    // A scene in one of the drawn office rooms gets that room as the last reference, so it looks the same in every clip.
+    const room = roomFor(s.act);
+    const refs = [...characterRefs(ctx, plan.slug), ...s.cast.flatMap((c) => characterRefs(ctx, c)), ...(style ? [style] : []), ...(room ? [dataUrl(readFileSync(room.file))] : [])];
+    if (room) opts.log?.(`${s.id}: in ${room.room.name}`);
+    const prompt = `Full-frame vertical illustration for a short comedy video, one scene. ${lead}. Scene: ${s.act}. ${room ? `${roomPrompt(room.room)} ` : ""}${LOOK} ${ctx.style ? `Style: ${styleText(ctx.style)}` : ""} Draw ${p.name} exactly once.`;
     let fix = "";
     for (let attempt = 0; attempt < (opts.tries ?? 3); attempt++) {
       opts.log?.(`${s.id}: drawing${fix ? ` again (${fix})` : ""}`);

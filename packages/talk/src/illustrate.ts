@@ -28,7 +28,7 @@ import { poseSwitches, snapShots } from "./beats.js";
 import { chunkWords, OUT, SAFE, type Chunk, type Word } from "./timeline.js";
 import { align, grow, maskBox, unionBox, writePng, type Box, type Raster } from "./patch.js";
 import { python } from "./voice.js";
-import { KIT_MIN_MOUTH, KIT_OPEN, kitDrops, loadKit, noseOffset, pasteKit, pickAngle } from "./mouthkit.js";
+import { colourGap, KIT_MIN_MOUTH, KIT_OPEN, KIT_SKIN_GAP, kitDrops, kitSkin, loadKit, ringColour, noseOffset, pasteKit, pickAngle } from "./mouthkit.js";
 
 export interface Line {
   text: string;
@@ -1008,17 +1008,28 @@ export async function drawMouths(sam: Sam, ctx: StudioContext, plan: Plan, dir: 
       }
       const { keep, nearNose, noseBox } = await faceKeep(rgb);
       const pick = kit && mouth.box.w >= KIT_MIN_MOUTH ? pickAngle(kit, noseOffset(mouth.box, noseBox)) : undefined;
-      if (kit && pick) {
+      // The kit is only for the lead's own face: its mouth must lie on the lead found by species (not the "cartoon character" fallback,
+      // which takes in everyone), and the skin round it must match the kit portrait's (Tũn's mouth once landed on Bống and on Bino).
+      const own = pick ? await maskOf(sam, rgb, [`cartoon ${species}`]) : undefined;
+      const onLead = !!own && own[Math.round(mouth.box.y + mouth.box.h / 2) * w + Math.round(mouth.box.x + mouth.box.w / 2)] === 1;
+      const skin = pick && onLead ? await kitSkin(cdir, kit!, pick.angle) : undefined;
+      const gap = skin ? colourGap(ringColour(base, mouth.mask, 3, keep), skin) : Infinity;
+      if (pick && !(onLead && gap <= KIT_SKIN_GAP)) opts.log?.(`${pic}: ${onLead ? `the skin round the mouth is off the kit's (${Math.round(gap)})` : "the mouth is not on the lead"}; not using the kit`);
+      if (kit && pick && onLead && gap <= KIT_SKIN_GAP) {
+        // Nothing is pasted off the lead (a cup or a hand held at the mouth stays as drawn).
+        const keepK = Uint8Array.from(keep);
+        for (let i = 0; i < keepK.length; i++) if (!own![i]) keepK[i] = 1;
         const made1 = async (img: Raster | undefined): Promise<Made | undefined> => {
           const found = img && (await findMouth(img.data));
           return img && found ? { img, size: area(found.mask), box: found.box, onFace: overlapShare(found.mask, keep, w, h), nearNose: overlapShare(found.mask, nearNose, w, h) } : undefined;
         };
-        const shutK = await made1(await pasteKit(cdir, kit, base, mouth, "shut", pick, keep));
+        // The shut frame is the picture as drawn, so its own expression (a sad line, a grin) stays; only the open frame comes from the kit.
+        const shutK = await made1(base);
         let kp = "the kit has no shut mouth", used = "";
         // Each open shape, moved down step by step while it sits too close to the nose; the first pair that passes is kept.
         for (const shape of shutK ? KIT_OPEN : []) {
           for (const drop of kitDrops(mouth.box.h)) {
-            const openK = await made1(await pasteKit(cdir, kit, base, mouth, shape, pick, keep, drop));
+            const openK = await made1(await pasteKit(cdir, kit, base, mouth, shape, pick, keepK, drop));
             if (!openK) { kp = `no ${shape} mouth in the kit`; break; }
             kp = await pairProblem(mouth, shutK, openK);
             if (!kp) {

@@ -67,3 +67,13 @@ test("the kit is drawn once per angle, cut by SAM, and pasted in place of a pict
   const pasted = await pasteKit(chars, kit, base, mouth, "open", pickAngle(kit, 0)!);
   assert.ok(pasted && !pasted.data.equals(base.data));
 });
+
+test("the skin round a mouth tells one character's face from another's", async () => {
+  const { ringColour, colourGap, KIT_SKIN_GAP } = await import("./mouthkit.js");
+  const w = 30, h = 30, tan = Buffer.alloc(w * h * 3), dark = Buffer.alloc(w * h * 3);
+  for (let i = 0; i < w * h; i++) { tan.set([210, 160, 110], i * 3); dark.set([60, 50, 50], i * 3); }
+  const mouth = rect(w, h, 12, 14, 18, 16);
+  const a = ringColour({ data: tan, width: w, height: h }, mouth), b = ringColour({ data: dark, width: w, height: h }, mouth);
+  assert.deepEqual(a, [210, 160, 110]);
+  assert.ok(colourGap(a, b) > KIT_SKIN_GAP);
+});

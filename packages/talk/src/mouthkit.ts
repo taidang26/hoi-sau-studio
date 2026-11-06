@@ -87,6 +87,29 @@ export function eraseMouth(base: Raster, mouth: Uint8Array, growPx = 3, keep?: U
   return { data: out, width: w, height: h };
 }
 
+/** The median colour of a ring of skin around `mouth` (`grow`+1 to `grow`+6 px out), skipping `keep`. */
+export function ringColour(img: Raster, mouth: Uint8Array, growPx = 3, keep?: Uint8Array): [number, number, number] {
+  const { width: w, height: h } = img;
+  const hole = dilate(mouth, w, h, growPx), outer = dilate(mouth, w, h, growPx + 6);
+  const ch: number[][] = [[], [], []];
+  for (let i = 0; i < hole.length; i++) if (outer[i] && !hole[i] && !keep?.[i]) for (let c = 0; c < 3; c++) ch[c].push(img.data[i * 3 + c]);
+  return ch.map((v) => v.sort((a, b) => a - b)[v.length >> 1] ?? 0) as [number, number, number];
+}
+
+export const colourGap = (a: number[], b: number[]) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+/** How far the skin round a picture's mouth may be from the kit portrait's before the kit is not used: another character's face (Bino's dark fur) is far off. */
+export const KIT_SKIN_GAP = 70;
+
+/** The skin colour round the kit portrait's shut mouth, for one angle. */
+export async function kitSkin(charactersDir: string, kit: MouthKit, angle: KitAngle): Promise<[number, number, number] | undefined> {
+  const file = join(kitDir(charactersDir, kit.slug), `${angle.angle}.png`);
+  if (!existsSync(file)) return undefined;
+  const img = await rawOf(readFileSync(file), KIT_SIZE), n = KIT_SIZE, m = new Uint8Array(n * n);
+  const x0 = Math.round(angle.base.cx - angle.base.w / 2), h = Math.max(4, Math.round(angle.base.w / 4));
+  for (let y = angle.base.top; y < Math.min(n, angle.base.top + h); y++) for (let x = Math.max(0, x0); x < Math.min(n, x0 + angle.base.w); x++) m[y * n + x] = 1;
+  return ringColour(img, m, 3);
+}
+
 /** Alpha-blends an RGBA patch onto `base` with its top-left at (x, y), never over `keep`. */
 export function blendPatch(base: Raster, rgba: Buffer, pw: number, ph: number, x: number, y: number, keep?: Uint8Array): Raster {
   const { width: w, height: h } = base;

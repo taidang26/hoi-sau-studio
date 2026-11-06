@@ -20,6 +20,7 @@ import { pickLang, t, withLang, type Lang } from "./i18n.js";
 import { characterNotes, compareSection, inspirationField, researchPage, type IdeaKind, IDEA_KINDS, type Research } from "./research.js";
 import { episodeStudioPage, friendly, Studio, studioPage, stylePage } from "./studio.js";
 import { ideaPage, leadFromText, videoPage, videosPage, type Videos } from "./video.js";
+import { stockPage, type ScrapedPost } from "./kho.js";
 import { CHARACTERS_DIR, loadProfile, readStep, SERIES_DIR, type EpisodeStep } from "@hoi-sau/studio";
 import {
   automationPage,
@@ -614,6 +615,45 @@ export function handler(opts: DashboardOptions) {
       if (req.method === "GET") {
         const html = ideaPage(vd, vi[1], Boolean(opts.studio), err);
         return html ? page(res, 200, html) : page(res, 404, notFoundPage());
+      }
+    }
+    // Kho ý: scraped posts → a queue of text memes, read by Muse Spark a few days ahead.
+    if (vd && path === "/video/kho" && req.method === "GET") return page(res, 200, stockPage(vd.stock, { all: q.has("all"), err, ok }));
+    if (vd && req.method === "POST" && path === "/video/kho/import") {
+      try {
+        const form = await readUpload(req, 100 * 1024 * 1024);
+        const file = form.get("file");
+        if (!(file instanceof File) || !file.size) throw new Error(t("Chưa chọn file JSON."));
+        let posts: unknown;
+        try {
+          posts = JSON.parse(await file.text());
+        } catch {
+          throw new Error(t("File không phải JSON."));
+        }
+        if (!Array.isArray(posts)) throw new Error(t("File JSON phải là danh sách bài."));
+        const r = vd.stock.add(posts as ScrapedPost[], { perDay: Number(form.get("perday")) || undefined });
+        vd.stock.download();
+        return redirect(res, withNote("/video/kho", "ok", t("Đã thêm {n} ý, đang tải ảnh. Bỏ qua: {left}.", { n: r.added, left: Object.entries(r.left).map(([k, n]) => `${n} ${t(k)}`).join(", ") || "0" })));
+      } catch (e) {
+        return fail("/video/kho", e);
+      }
+    }
+    const vk = vd && req.method === "POST" ? path.match(/^\/video\/kho\/(?:(download|read)|(k-\d+)\/(skip|keep))$/) : null;
+    if (vk && vd) {
+      try {
+        if (vk[1] === "download") {
+          const n = vd.stock.download();
+          return redirect(res, withNote("/video/kho", "ok", n ? t("Đang tải ảnh cho {n} ý.", { n }) : t("Ảnh đã tải đủ.")));
+        }
+        if (vk[1] === "read") {
+          const form = await readForm(req);
+          const n = vd.stock.readDays(Math.min(60, Math.max(1, Number(form.get("days")) || 7)));
+          return redirect(res, withNote("/video/kho", "ok", n ? t("Máy đang đọc {n} ý.", { n }) : t("Không còn ý nào chờ đọc trong mấy ngày này.")));
+        }
+        vd.stock.setSkip(vk[2], vk[3] === "skip");
+        return redirect(res, "/video/kho");
+      } catch (e) {
+        return fail("/video/kho", e);
       }
     }
     if (vd && req.method === "POST" && path === "/video/new") {

@@ -93,3 +93,13 @@ The **Làm từ chữ hoặc ảnh** box at the top of the Video screen takes wh
 - Typed text with no picture is split without losing a word (`splitBeats`).
 - The proposal page shows the pictures beside the text read from them. The fields are editable. **Làm clip chữ** creates the text clip, and **Làm tranh 1 khung** creates and starts a one-panel episode in Studio.
 - A video step that dies on the network (`fetch failed`, reset, timeout) runs once more before the run stops.
+
+## Kho ý (a stock of ideas from a scrape)
+
+**Video → Kho ý** (`/video/kho`) takes a JSON file of posts scraped from another page (one object per post: `source_id`, `content`, `reactions_count`, `share_count`, `comment_count`, `attachments_detail`).
+
+- Videos are left out (somebody else's footage), and so are politics, the page talking about itself, ads, death, crude words and repeats. Pictures and text posts are kept.
+- Ranked by reactions + 5 × shares + 3 × comments, then spread over the days ahead (4 a day by default), with one topic per day where possible. Dated posts (20/10, 8/3, Noel, Trung thu, Tết) wait until a few days before their date.
+- Each item is a drop-in of the **Làm từ chữ hoặc ảnh** box (`data/video/_ideas/y-k-0001/`). Pictures download right away, because scraped links stop working after a few days. A text post is the joke itself; a picture's caption is only a teaser, so the picture is read alone.
+- **Cho máy đọc** runs `talk idea --kind meme` for the next days: Muse Spark reads the words exactly and proposes a two-beat text clip with our cast in our office. Nothing is made until the owner opens the proposal and presses the button. Captions never name the page.
+- **Bỏ** drops an item; adding the same file again adds only new posts.

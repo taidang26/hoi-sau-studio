@@ -30,6 +30,7 @@ import { readApproval, type EpisodePost } from "@hoi-sau/channel";
 import { approveVideo } from "@hoi-sau/studio";
 import { t } from "./i18n.js";
 import { button, esc, flash, layout } from "./views.js";
+import { IdeaStock, stockLink } from "./kho.js";
 
 /** Runs one of the repo's scripts (relative to the repo root) and resolves with its output. */
 export type Exec = (script: string, args: string[], log: (s: string) => void, env?: Record<string, string>) => Promise<string>;
@@ -50,6 +51,8 @@ export interface VideoOptions {
   exec: Exec;
   /** Upload the site after copying the media; off in tests and demos. */
   deploy: boolean;
+  /** Downloads for the stock of ideas (scraped picture links); fetch by default. */
+  fetch?: (url: string) => Promise<{ ok: boolean; status: number; arrayBuffer(): Promise<ArrayBuffer> }>;
 }
 
 export type VideoKind = "illustrate" | "meme";
@@ -218,7 +221,11 @@ const sig = (files: string[]) => files.map((f) => (existsSync(f) ? `${statSync(f
 export class Videos {
   readonly jobs = new Map<string, Job>();
   private timer?: NodeJS.Timeout;
-  constructor(readonly opts: VideoOptions) {}
+  /** Kho ý: scraped posts waiting to be read into text memes. */
+  readonly stock: IdeaStock;
+  constructor(readonly opts: VideoOptions) {
+    this.stock = new IdeaStock(this, opts.fetch);
+  }
 
   folder = (id: string) => join(this.opts.dir, id);
   shotsDir = (id: string) => join(this.folder(id), "shots");
@@ -1134,7 +1141,7 @@ const stepBar = (steps: Array<[string, boolean]>) => `<ol class="vsteps">${steps
 /** The one box for what the owner would otherwise hand to Claude: text, pictures, or both. */
 function ideaBox(v: Videos): string {
   const recent = existsSync(v.ideasDir())
-    ? readdirSync(v.ideasDir()).filter((x) => x.startsWith("y-")).sort().reverse().slice(0, 5)
+    ? readdirSync(v.ideasDir()).filter((x) => x.startsWith("y-") && !x.startsWith("y-k-")).sort().reverse().slice(0, 5)
     : [];
   const list = recent.map((id) => {
     const i = v.idea(id)!;
@@ -1147,7 +1154,7 @@ function ideaBox(v: Videos): string {
 <textarea name="text" rows="3" placeholder="${esc(t("vd: Đi làm đã mệt rồi còn phải ăn bữa cơm dở ẹc do mình tự nấu mang theo"))}"></textarea>
 <label class="small">${esc(t("Đính kèm ảnh hoặc clip (không bắt buộc)"))}<input type="file" name="files" accept="image/*,video/*" multiple></label>
 ${samples.length ? `<details class="small"><summary>${esc(t("Hoặc dùng clip mẫu có sẵn"))}</summary><select name="sample"><option value="">${esc(t("— không dùng —"))}</option>${samples.map((x) => `<option value="${esc(x.path)}">${esc(x.label)}</option>`).join("")}</select></details>` : ""}
-<button class="btn on">${esc(t("Gửi"))}</button></form>${list ? `<ul class="small idealist">${list}</ul>` : ""}</section>`;
+<button class="btn on">${esc(t("Gửi"))}</button></form>${list ? `<ul class="small idealist">${list}</ul>` : ""}${stockLink(v.stock)}</section>`;
 }
 
 /** The cast member a note names (slug or name, any case), else Tũn, else the first. */

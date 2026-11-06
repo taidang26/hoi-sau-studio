@@ -11,15 +11,17 @@
  *   characters/<slug>/stock/stock.json   the entries: name, Vietnamese label, approved, when used
  *   characters/<slug>/stock/<name>.png   pose A; <name>-b2.png pose B on the same background
  *   characters/<slug>/stock/sheet.jpg    every pose A on one sheet, for the owner to approve
+ *   characters/<slug>/stock/<name>-blink.png, -s.png, -m.png   shut eyes and the talking mouth pair (stockExtras)
  */
 
-import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import sharp from "sharp";
 import type { Sam } from "@hoi-sau/dance";
 import { CHARACTERS_DIR, designChanged, noteDesign, type StudioContext } from "@hoi-sau/studio";
-import { drawPoses, drawShots, stabilizePoses, type Plan, type Shot } from "./illustrate.js";
-import { MEME_FRAME } from "./meme.js";
+import { facesBox } from "./cover.js";
+import { drawMouths, drawPoses, drawShots, stabilizePoses, type Plan, type Shot } from "./illustrate.js";
+import { MEME_FRAME, makeBlink } from "./meme.js";
 
 export interface Reaction {
   name: string;
@@ -57,6 +59,9 @@ export interface StockEntry {
   /** Clip folders that used it, with the day (yyyy-mm-dd). */
   used: Array<{ clip: string; on: string }>;
 }
+
+/** The files that go with a reaction picture into a clip: pose B, the blink and the mouth pairs. */
+const EXTRAS = ["-b2", "-blink", "-s", "-m", "-b2-s", "-b2-m"];
 
 export const stockDir = (charactersDir: string, slug: string) => join(charactersDir, slug, "stock");
 
@@ -115,6 +120,8 @@ export async function makeStock(ctx: StudioContext, sam: Sam, slug: string, opts
       opts.log?.(`${r.name}: not drawn`);
       continue;
     }
+    // A new picture: the old pose B, blink and mouths were made for the old one.
+    for (const x of EXTRAS) rmSync(join(dir, `${r.name}${x}.png`), { force: true });
     copyFileSync(a, join(dir, `${r.name}.png`));
     const b2 = join(work, `${r.name}-b2.png`);
     if (existsSync(b2)) copyFileSync(b2, join(dir, `${r.name}-b2.png`));
@@ -174,7 +181,7 @@ export function useStock(charactersDir: string, plan: Plan, shotsDir: string, cl
       continue;
     }
     copyFileSync(a, join(shotsDir, `${s.id}.png`));
-    if (existsSync(join(dir, `${s.stock}-b2.png`))) copyFileSync(join(dir, `${s.stock}-b2.png`), join(shotsDir, `${s.id}-b2.png`));
+    for (const x of EXTRAS) if (existsSync(join(dir, `${s.stock}${x}.png`))) copyFileSync(join(dir, `${s.stock}${x}.png`), join(shotsDir, `${s.id}${x}.png`));
     log?.(`${s.id}: ready-made reaction ${s.stock}, nothing to draw`);
     const e = entries.find((x) => x.name === s.stock);
     if (e && !e.used.some((u) => u.clip === clip)) {
@@ -183,4 +190,26 @@ export function useStock(charactersDir: string, plan: Plan, shotsDir: string, cl
     }
   }
   if (changed) saveStock(charactersDir, plan.slug, entries);
+}
+
+
+/**
+ * Ready eyes and mouths for every reaction picture, so a clip that takes one draws nothing more:
+ * a shut-eye copy for blinks (free, on the machine) and the shut/open mouth pair for lip-sync (the mouth kit first).
+ */
+export async function stockExtras(ctx: StudioContext, sam: Sam, slug: string, opts: { only?: string[]; log?: (s: string) => void } = {}): Promise<{ blinks: number; mouths: number }> {
+  const cdir = ctx.charactersDir ?? CHARACTERS_DIR, dir = stockDir(cdir, slug);
+  const species = (ctx.profiles.get(slug)?.species ?? "character").split("(")[0].trim();
+  const have = REACTIONS.filter((r) => existsSync(join(dir, `${r.name}.png`)) && (!opts.only || opts.only.includes(r.name)));
+  let blinks = 0;
+  for (const r of have) {
+    const a = join(dir, `${r.name}.png`), out = join(dir, `${r.name}-blink.png`);
+    if (existsSync(out) && !opts.only) { blinks++; continue; }
+    const rgb = new Uint8Array(await sharp(a).resize(1080, 1920, { fit: "cover" }).removeAlpha().raw().toBuffer());
+    const face = await facesBox(sam, rgb, species);
+    if (face && makeBlink(a, out, face, opts.log)) blinks++;
+  }
+  const report = await drawMouths(sam, ctx, stockPlan(slug, have), dir, { only: opts.only, log: opts.log });
+  opts.log?.(`${slug}: ${report.filter((x) => x.ok).length} new mouth pairs`);
+  return { blinks, mouths: have.filter((r) => existsSync(join(dir, `${r.name}-m.png`))).length };
 }

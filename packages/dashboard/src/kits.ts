@@ -72,6 +72,7 @@ export class ReadyMade {
 
   /** Redraws reactions: one by name, "missing" (the ones without a picture) or "all". */
   redrawStock(slug: string, what: string): void {
+    if (what === "extras") return this.run(`stock:${slug}`, ["stock", slug, "--extras"]);
     const names = what === "all" ? this.stock(slug).map((e) => e.name) : what === "missing" ? [] : [what];
     if (what === "all" && !names.length) return this.run(`stock:${slug}`, ["stock", slug]);
     this.run(`stock:${slug}`, ["stock", slug, ...(names.length ? ["--only", names.join(",")] : [])]);
@@ -129,7 +130,7 @@ export function readyPage(r: ReadyMade, view: { err?: string; ok?: string } = {}
     return `<section class="card" id="${esc(slug)}"><h2>${esc(name)}</h2>
 ${stale ? `<p class="flash err">${esc(t("Thiết kế nhân vật đã đổi từ lúc vẽ đồ làm sẵn: nên vẽ lại để khớp."))} ${post(`/video/san/${slug}/redraw/all`, t("Vẽ lại hết"), true)} ${post(`/video/san/${slug}/mouthkit/all`, t("Vẽ lại bộ mồm"), true)}</p>` : ""}
 <h3>${esc(t("Phản ứng"))} <span class="muted small">${esc(t("{ok}/{n} đã duyệt", { ok, n: drawn.length }))}</span></h3>
-<p class="small">${drawn.length && ok < drawn.length ? post(`/video/san/${slug}/approve/all`, t("Duyệt hết"), true) : ""} ${post(`/video/san/${slug}/redraw/missing`, t(drawn.length ? "Vẽ phần còn thiếu" : "Vẽ kho phản ứng"))}</p>
+<p class="small">${drawn.length && ok < drawn.length ? post(`/video/san/${slug}/approve/all`, t("Duyệt hết"), true) : ""} ${post(`/video/san/${slug}/redraw/missing`, t(drawn.length ? "Vẽ phần còn thiếu" : "Vẽ kho phản ứng"))} ${drawn.length ? post(`/video/san/${slug}/redraw/extras`, t("Làm mắt chớp + mồm nói ({n}/{all})", { n: drawn.filter((e) => existsSync(join(sdir, `${e.name}-m.png`))).length, all: drawn.length })) : ""}</p>
 ${jobLine(`stock:${slug}`)}<ul class="ready-grid">${tiles}</ul>
 <h3>${esc(t("Bộ mồm"))}</h3>${kitSheet}
 <p class="small">${post(`/video/san/${slug}/mouthkit/missing`, t(existsSync(join(kdir, "kit.json")) ? "Vẽ mồm còn thiếu" : "Làm bộ mồm"))} ${existsSync(join(kdir, "kit.json")) ? post(`/video/san/${slug}/mouthkit/all`, t("Vẽ lại bộ mồm")) : ""}</p>${jobLine(`kit:${slug}`)}</section>`;

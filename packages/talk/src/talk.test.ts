@@ -546,3 +546,18 @@ test("illustrate: a whole sung line is one caption, held to the next; a too-shor
   assert.equal((svg.match(/#FFE14D/g) ?? []).length, 3, "the sung words stay lit");
   assert.equal(new Set([...svg.matchAll(/ y="([0-9.]+)"/g)].map((m) => m[1])).size, 2, "two rows");
 });
+
+test("illustrate: a retried open mouth asks for a smaller one, set lower", async () => {
+  const { mouthPrompt } = await import("./illustrate.js");
+  assert.match(mouthPrompt("Lolo", true, 1), /small oval/);
+  assert.doesNotMatch(mouthPrompt("Lolo", true, 0), /small oval/);
+  assert.match(mouthPrompt("Lolo", false, 2), /closed line/);
+});
+
+test("illustrate: the mouth is edited in a face-sized square crop that stays inside the frame", async () => {
+  const { mouthCrop } = await import("./illustrate.js");
+  assert.deepEqual(mouthCrop({ x: 500, y: 1000, w: 24, h: 12 }, 1080, 1920), { x: 392, y: 886, w: 240, h: 240 });
+  const edge = mouthCrop({ x: 1060, y: 5, w: 60, h: 30 }, 1080, 1920);
+  assert.deepEqual(edge, { x: 1080 - 480, y: 0, w: 480, h: 480 });
+  assert.equal(mouthCrop({ x: 0, y: 0, w: 200, h: 200 }, 1080, 1920).w, 640);
+});

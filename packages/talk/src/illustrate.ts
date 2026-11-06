@@ -55,6 +55,8 @@ export interface Shot {
   moving?: string[];
   /** Reuse another shot's pictures (a cut back to it). */
   src?: string;
+  /** A ready-made reaction of the lead (characters/<slug>/stock/<name>.png) used instead of drawing. */
+  stock?: string;
 }
 
 export interface Plan {

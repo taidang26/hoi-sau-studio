@@ -1,0 +1,178 @@
+/**
+ * Kho phản ứng: reaction pictures of each character, drawn once, checked by the
+ * owner, then reused as the punchline scene of text memes. A meme that takes one
+ * draws only its first scene, so it costs about half and skips the drawing
+ * mistakes a new picture can bring (the owner already approved this one).
+ *
+ * Each reaction is a full-frame picture in the Hồi Sau office with the meme
+ * layout (empty wall on top for the text) plus its second pose, made by the
+ * same draw, poses and stabilize steps as any meme, so it plays the same way.
+ *
+ *   characters/<slug>/stock/stock.json   the entries: name, Vietnamese label, approved, when used
+ *   characters/<slug>/stock/<name>.png   pose A; <name>-b2.png pose B on the same background
+ *   characters/<slug>/stock/sheet.jpg    every pose A on one sheet, for the owner to approve
+ */
+
+import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import sharp from "sharp";
+import type { Sam } from "@hoi-sau/dance";
+import { CHARACTERS_DIR, type StudioContext } from "@hoi-sau/studio";
+import { drawPoses, drawShots, stabilizePoses, type Plan, type Shot } from "./illustrate.js";
+import { MEME_FRAME } from "./meme.js";
+
+export interface Reaction {
+  name: string;
+  /** What the owner reads on the sheet and the dashboard. */
+  vi: string;
+  /** English for Muse Image: the picture. */
+  act: string;
+  /** English: the second pose. */
+  pose: string;
+  /** For SAM: what moves between the poses. */
+  moving: string[];
+}
+
+/** The reactions office jokes land on most (from the Than Thở stock): one clear body and face each. */
+export const REACTIONS: Reaction[] = [
+  { name: "do-mat", vi: "Đơ mặt", act: "sits at the desk staring blankly straight ahead, face frozen, eyes dead, mouth a flat line", pose: "blinks slowly, the face still frozen", moving: ["character"] },
+  { name: "om-dau", vi: "Ôm đầu", act: "stands by the desk clutching the head with both hands in despair", pose: "squeezes the head harder and leans forward", moving: ["character"] },
+  { name: "guc-ban", vi: "Gục bàn", act: "slumps face down on the desk next to the laptop, arms hanging, defeated", pose: "one arm twitches weakly on the desk", moving: ["character"] },
+  { name: "cuoi-guong", vi: "Cười gượng", act: "sits at the desk with a forced awkward smile, eyebrows up, hands together", pose: "the smile wobbles and the eyes look sideways", moving: ["character"] },
+  { name: "tron-man-hinh", vi: "Trốn sau màn hình", act: "hides behind the desk monitor, only the eyes and the top of the head peeking over its edge (the screen faces the character, away from us)", pose: "sinks a little lower behind the monitor", moving: ["character"] },
+  { name: "ha-hoc", vi: "Há hốc", act: "stands shocked with the jaw dropped and both hands raised, eyes wide", pose: "leans back a little more, hands higher", moving: ["character"] },
+  { name: "ngua-ghe", vi: "Ngửa ghế, hồn lìa khỏi xác", act: "leans far back in the office chair staring at the ceiling, arms hanging, completely drained; the chair stands on the floor", pose: "slides a little lower in the chair", moving: ["character", "chair"] },
+  { name: "dem-tien", vi: "Đếm tiền lẻ", act: "sits at the desk sadly counting a few small coins in one open palm", pose: "turns one coin over with a finger", moving: ["character", "coins"] },
+  { name: "gat-gu", vi: "Gật gù biết thừa", act: "stands with arms crossed nodding knowingly, eyes half closed, a small smug smile", pose: "the head dips in a nod", moving: ["character"] },
+  { name: "khoc-rong", vi: "Khóc ròng", act: "sits at the desk crying comically, two streams of tears, mouth wobbling", pose: "wipes the eyes with the back of one hand", moving: ["character"] },
+  { name: "an-mung", vi: "Ăn mừng", act: "jumps up beside the desk with a fist pump, big happy grin", pose: "lands with both fists up", moving: ["character"] },
+  { name: "lau-mo-hoi", vi: "Lau mồ hôi", act: "stands nervously wiping the forehead with the back of one hand, an uneasy smile", pose: "glances sideways while still wiping", moving: ["character"] },
+];
+
+export interface StockEntry {
+  name: string;
+  vi: string;
+  act: string;
+  approved: boolean;
+  /** Clip folders that used it, with the day (yyyy-mm-dd). */
+  used: Array<{ clip: string; on: string }>;
+}
+
+export const stockDir = (charactersDir: string, slug: string) => join(charactersDir, slug, "stock");
+
+export function loadStock(charactersDir: string, slug: string): StockEntry[] {
+  const f = join(stockDir(charactersDir, slug), "stock.json");
+  return existsSync(f) ? (JSON.parse(readFileSync(f, "utf8")) as StockEntry[]) : [];
+}
+
+function saveStock(charactersDir: string, slug: string, entries: StockEntry[]): void {
+  mkdirSync(stockDir(charactersDir, slug), { recursive: true });
+  writeFileSync(join(stockDir(charactersDir, slug), "stock.json"), `${JSON.stringify(entries, null, 1)}\n`);
+}
+
+const day = (d = new Date()) => new Date(d.getTime() + 7 * 3600000).toISOString().slice(0, 10);
+
+/** Approved reactions with their picture, minus those used in the last `rest` days (so the feed does not repeat itself). */
+export function availableStock(charactersDir: string, slug: string, today = day(), rest = 5): StockEntry[] {
+  const cut = new Date(Date.parse(`${today}T00:00:00Z`) - rest * 86400000).toISOString().slice(0, 10);
+  return loadStock(charactersDir, slug).filter((e) => e.approved && existsSync(join(stockDir(charactersDir, slug), `${e.name}.png`)) && !e.used.some((u) => u.on > cut));
+}
+
+/** The reactions as a plan of one shot each, laid out like a meme picture. */
+export function stockPlan(slug: string, reactions: Reaction[]): Plan {
+  const shots: Shot[] = reactions.map((r) => ({ id: r.name, t: 0, act: `In the Hồi Sau office, alone in the picture: ${r.act}. ${MEME_FRAME}`, pose: r.pose, bubble: "", cast: [], moving: r.moving }));
+  return { slug, clip: "", end: 1, lines: [], shots };
+}
+
+/**
+ * Draws the missing reactions (or `only`), with their second poses, and keeps the new ones unapproved.
+ * Drawing again (`only`) replaces the pictures and takes the approval back.
+ */
+export async function makeStock(ctx: StudioContext, sam: Sam, slug: string, opts: { only?: string[]; log?: (s: string) => void } = {}): Promise<StockEntry[]> {
+  if (!ctx.profiles.has(slug)) throw new Error(`No character "${slug}".`);
+  const cdir = ctx.charactersDir ?? CHARACTERS_DIR;
+  const dir = stockDir(cdir, slug), work = join(dir, "_work");
+  mkdirSync(work, { recursive: true });
+  const have = loadStock(cdir, slug);
+  const todo = REACTIONS.filter((r) => (opts.only ? opts.only.includes(r.name) : !existsSync(join(dir, `${r.name}.png`))));
+  if (!todo.length) return have;
+  const plan = stockPlan(slug, todo);
+  writeFileSync(join(work, "plan.json"), JSON.stringify(plan, null, 2));
+  const only = opts.only ? todo.map((r) => r.name) : undefined;
+  await drawShots(ctx, plan, work, { only, log: opts.log });
+  await drawPoses(ctx, plan, work, { only, log: opts.log });
+  await stabilizePoses(sam, ctx, plan, work, { only, log: opts.log });
+  const entries = [...have];
+  for (const r of todo) {
+    const a = join(work, `${r.name}.png`);
+    if (!existsSync(a)) {
+      opts.log?.(`${r.name}: not drawn`);
+      continue;
+    }
+    copyFileSync(a, join(dir, `${r.name}.png`));
+    const b2 = join(work, `${r.name}-b2.png`);
+    if (existsSync(b2)) copyFileSync(b2, join(dir, `${r.name}-b2.png`));
+    const old = entries.findIndex((e) => e.name === r.name);
+    const entry: StockEntry = { name: r.name, vi: r.vi, act: r.act, approved: false, used: old >= 0 ? entries[old].used : [] };
+    if (old >= 0) entries[old] = entry;
+    else entries.push(entry);
+  }
+  saveStock(cdir, slug, entries);
+  await stockSheet(cdir, slug);
+  return entries;
+}
+
+/** Every reaction's pose A on one sheet with its name, for the owner to look over before approving. */
+export async function stockSheet(charactersDir: string, slug: string): Promise<string | undefined> {
+  const dir = stockDir(charactersDir, slug);
+  const entries = loadStock(charactersDir, slug).filter((e) => existsSync(join(dir, `${e.name}.png`)));
+  if (!entries.length) return undefined;
+  const tw = 270, th = 480, label = 56, cols = 4, rows = Math.ceil(entries.length / cols);
+  const tiles = await Promise.all(
+    entries.map(async (e, i) => {
+      const pic = await sharp(join(dir, `${e.name}.png`)).resize(tw, th, { fit: "cover" }).png().toBuffer();
+      const text = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${tw}" height="${label}"><rect width="100%" height="100%" fill="${e.approved ? "#dff3e3" : "#ffffff"}"/><text x="${tw / 2}" y="36" font-family="sans-serif" font-size="22" font-weight="700" text-anchor="middle" fill="#222">${e.approved ? "✓ " : ""}${e.vi.replace(/&/g, "&amp;").replace(/</g, "&lt;")}</text></svg>`);
+      const x = (i % cols) * tw, y = Math.floor(i / cols) * (th + label);
+      return [{ input: pic, left: x, top: y }, { input: text, left: x, top: y + th }];
+    }),
+  );
+  const out = join(dir, "sheet.jpg");
+  await sharp({ create: { width: cols * tw, height: rows * (th + label), channels: 3, background: "#ffffff" } }).composite(tiles.flat()).jpeg({ quality: 85 }).toFile(out);
+  return out;
+}
+
+/** The owner's word on reactions: approved ones may go into memes. `names` "all" means every one that has a picture. */
+export function approveStock(charactersDir: string, slug: string, names: string[] | "all", approved = true): StockEntry[] {
+  const entries = loadStock(charactersDir, slug);
+  for (const e of entries) if (names === "all" || names.includes(e.name)) e.approved = approved;
+  saveStock(charactersDir, slug, entries);
+  return entries;
+}
+
+/**
+ * Puts the chosen reaction into a meme's shots folder as its pictures, so draw and poses skip
+ * that shot, and notes the use (the same reaction then rests a few days).
+ */
+export function useStock(charactersDir: string, plan: Plan, shotsDir: string, clip: string, log?: (s: string) => void): void {
+  const entries = loadStock(charactersDir, plan.slug);
+  let changed = false;
+  mkdirSync(shotsDir, { recursive: true });
+  for (const s of plan.shots) {
+    if (!s.stock || existsSync(join(shotsDir, `${s.id}.png`))) continue;
+    const dir = stockDir(charactersDir, plan.slug), a = join(dir, `${s.stock}.png`);
+    if (!existsSync(a)) {
+      log?.(`${s.id}: reaction ${s.stock} has no picture; drawing the scene instead`);
+      s.stock = undefined;
+      continue;
+    }
+    copyFileSync(a, join(shotsDir, `${s.id}.png`));
+    if (existsSync(join(dir, `${s.stock}-b2.png`))) copyFileSync(join(dir, `${s.stock}-b2.png`), join(shotsDir, `${s.id}-b2.png`));
+    log?.(`${s.id}: ready-made reaction ${s.stock}, nothing to draw`);
+    const e = entries.find((x) => x.name === s.stock);
+    if (e && !e.used.some((u) => u.clip === clip)) {
+      e.used.push({ clip, on: day() });
+      changed = true;
+    }
+  }
+  if (changed) saveStock(charactersDir, plan.slug, entries);
+}

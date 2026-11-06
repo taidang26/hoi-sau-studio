@@ -104,3 +104,10 @@ The **Làm từ chữ hoặc ảnh** box at the top of the Video screen takes wh
 - **Cho máy đọc** runs `talk idea --kind meme` for the next days: Muse Spark reads the words exactly and proposes a two-beat text clip with our cast in our office. Nothing is made until the owner opens the proposal and presses the button. Captions never name the page.
 - **Bỏ** drops an item; adding the same file again adds only new posts.
 - **Làm clip cả tuần tới** makes the week in one batch: every proposal of the next 7 days becomes a text clip (plan, draw, second poses, render), 3 at a time. The owner reviews and approves the whole week once on the Video screen; nothing is approved or posted by the batch. Each stock item links to its clip.
+
+## Kho phản ứng (ready-made reactions)
+
+`talk stock <slug|all>` draws 12 reactions per character once (đơ mặt, ôm đầu, gục bàn, cười gượng, trốn sau màn hình, há hốc, ngửa ghế, đếm tiền lẻ, gật gù, khóc ròng, ăn mừng, lau mồ hôi): full-frame office pictures in the meme layout, with a second pose on the same background, through the usual draw, poses and stabilize checks. They land in `characters/<slug>/stock/` with `sheet.jpg` for the owner and start unapproved.
+
+- `talk stock <slug> --approve guc-ban,om-dau` (or `all`), `--unapprove`, `--only <names>` to draw again (which takes the approval back), `--list`.
+- When planning a two-scene meme, Muse Spark is offered the approved reactions of the lead and may take one for the punchline scene. That scene is then copied in, not drawn, so the meme costs about half. A reaction rests 5 days after a use.

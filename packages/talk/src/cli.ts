@@ -19,7 +19,7 @@
  */
 
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { isAbsolute, join, resolve } from "node:path";
+import { basename, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { probeVideo, reelsProblems } from "@hoi-sau/motion";
 import { episodeDir, openStudio } from "@hoi-sau/studio";
@@ -36,6 +36,7 @@ import { mouthTrack, RATE, ttsArg, voiceFor, type Tts } from "./voice.js";
 import { facesBox, makeCover } from "./cover.js";
 import sharp from "sharp";
 import { makeBlink, makeMusic, planMeme, readMeme, renderMeme, retimeMeme } from "./meme.js";
+import { approveStock, availableStock, loadStock, makeStock, REACTIONS, stockSheet, useStock } from "./stock.js";
 import { askFixes, speechGaps } from "./fixes.js";
 import { ideaImages, readIdea } from "./idea.js";
 import { drawMouths, drawPoses, drawShots, reviewShots, fixShot, gateToWords, groupLines, hearWords, planShots, renderIllustrated, sceneCuts, shotSpans, stabilizePoses, timeWords, type Line, type Plan } from "./illustrate.js";
@@ -364,7 +365,7 @@ async function main() {
         return;
       }
       if (run("plan") && (step === "plan" || !existsSync(planFile))) {
-        writeFileSync(planFile, JSON.stringify(await planMeme(ctx, slug, spec), null, 2) + "\n");
+        writeFileSync(planFile, JSON.stringify(await planMeme(ctx, slug, spec, availableStock(ctx.charactersDir ?? CHARACTERS, slug)), null, 2) + "\n");
         log(`${planFile}: ${spec.scenes.length} scene(s)`);
       }
       const plan: Plan = JSON.parse(readFileSync(planFile, "utf8"));
@@ -376,7 +377,10 @@ async function main() {
         log(`${join(out, "fixes.json")}: written`);
         return;
       }
-      if (run("draw")) await drawShots(ctx, plan, shots, { only, log });
+      if (run("draw")) {
+        useStock(ctx.charactersDir ?? CHARACTERS, plan, shots, basename(out), log);
+        await drawShots(ctx, plan, shots, { only, log });
+      }
       if (run("poses")) await drawPoses(ctx, plan, shots, { only, log });
       // With --only a report keeps the other shots' rows, so separate --only runs never wipe each other's.
       const report = <T extends Record<string, unknown>>(name: string, key: keyof T, rows: T[]) => {
@@ -421,6 +425,25 @@ async function main() {
         const problems = reelsProblems(await probeVideo(video));
         log(problems.length ? `Reels check: ${problems.join("; ")}` : "Reels check: ok for Facebook/Instagram Reels and TikTok");
         console.log(video);
+      }
+      return;
+    }
+    case "stock": {
+      // Ready-made reactions: talk stock <slug|all> [--only a,b] | --approve a,b|all | --unapprove a,b | --list
+      const [who] = pos;
+      if (!who) throw new Error("Usage: talk stock <slug|all> [--only do-mat,om-dau] [--approve names|all] [--unapprove names] [--list]");
+      const ctx = openStudio({ log });
+      const slugs = who === "all" ? [...ctx.profiles.keys()] : [who];
+      const names = (v: unknown) => (String(v) === "all" ? "all" : String(v).split(",")) as string[] | "all";
+      for (const slug of slugs) {
+        if (opt.approve || opt.unapprove) {
+          approveStock(ctx.charactersDir ?? CHARACTERS, slug, names(opt.approve ?? opt.unapprove), Boolean(opt.approve));
+          log(`${slug}: ${await stockSheet(ctx.charactersDir ?? CHARACTERS, slug)}`);
+        } else if (!opt.list) {
+          await makeStock(ctx, Sam.fromEnv(), slug, { only: opt.only ? String(opt.only).split(",") : undefined, log });
+        }
+        const e = loadStock(ctx.charactersDir ?? CHARACTERS, slug);
+        console.log(`${slug}: ${e.length}/${REACTIONS.length} drawn, ${e.filter((x) => x.approved).length} approved`);
       }
       return;
     }

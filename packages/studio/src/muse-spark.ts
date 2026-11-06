@@ -7,7 +7,22 @@
 
 import { DEFAULT_BASE_URL, MuseImageError, type Transport } from "./muse-image.js";
 
-export const MUSE_SPARK_MODEL = "muse-spark-1.3";
+/**
+ * Contributor mode: same Muse Spark 1.3, about 95% cheaper per token, and Meta
+ * may train on the prompts. MUSE_SPARK_MODEL=muse-spark-1.3 switches back to
+ * Standard mode. If the account cannot use Contributor (403/404, e.g. region),
+ * calls fall back to MUSE_SPARK_FALLBACK_MODEL (default Standard; "none" = off).
+ */
+export const MUSE_SPARK_MODEL = "muse-spark-1.3-contributor";
+export const MUSE_SPARK_STANDARD_MODEL = "muse-spark-1.3";
+
+/** Wait before retry `attempt`: Retry-After when the API sends it, else exponential backoff; capped at 60 s. */
+export function retryDelayMs(attempt: number, retryAfter?: string | null): number {
+  const secs = retryAfter ? Number(retryAfter) : NaN;
+  const fromHeader = Number.isFinite(secs) && secs >= 0 ? secs * 1000 : 0;
+  const backoff = 1000 * 2 ** attempt + Math.random() * 250;
+  return Math.min(60_000, Math.max(fromHeader, backoff));
+}
 
 export type JsonSchema = Record<string, unknown>;
 
@@ -23,15 +38,22 @@ export interface MuseSparkOptions {
   baseUrl?: string;
   model?: string;
   transport?: Transport;
+  /** Retries for 5xx. */
   retries?: number;
+  /** Retries for 429 (token rate limit): Contributor mode has tighter limits. */
+  rateLimitRetries?: number;
+  /** Model used once if `model` is refused with 403/404. Empty = no fallback. */
+  fallbackModel?: string;
   sleep?: (ms: number) => Promise<void>;
 }
 
 export class MuseSpark {
   private readonly baseUrl: string;
-  readonly model: string;
+  model: string;
   private readonly transport: Transport;
   private readonly retries: number;
+  private readonly rateLimitRetries: number;
+  private fallbackModel: string;
   private readonly sleep: (ms: number) => Promise<void>;
 
   constructor(private readonly opts: MuseSparkOptions) {
@@ -40,6 +62,8 @@ export class MuseSpark {
     this.model = opts.model ?? MUSE_SPARK_MODEL;
     this.transport = opts.transport ?? ((url, init) => fetch(url, init));
     this.retries = opts.retries ?? 3;
+    this.rateLimitRetries = opts.rateLimitRetries ?? 6;
+    this.fallbackModel = opts.fallbackModel ?? "";
     this.sleep = opts.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
   }
 
@@ -48,18 +72,21 @@ export class MuseSpark {
       apiKey: env.META_API_KEY || env.MODEL_API_KEY || "",
       baseUrl: env.META_API_BASE_URL || undefined,
       model: env.MUSE_SPARK_MODEL || undefined,
+      fallbackModel: env.MUSE_SPARK_FALLBACK_MODEL === "none" ? "" : env.MUSE_SPARK_FALLBACK_MODEL || MUSE_SPARK_STANDARD_MODEL,
       transport,
     });
   }
 
   /** One structured call: returns the parsed JSON object that matches `schema`. */
   async json<T>(name: string, schema: JsonSchema, messages: ChatMessage[]): Promise<T> {
-    const body = JSON.stringify({
-      model: this.model,
-      messages,
-      response_format: { type: "json_schema", json_schema: { name, schema, strict: true } },
-    });
-    for (let attempt = 0; ; attempt++) {
+    const bodyFor = (model: string) =>
+      JSON.stringify({
+        model,
+        messages,
+        response_format: { type: "json_schema", json_schema: { name, schema, strict: true } },
+      });
+    let body = bodyFor(this.model);
+    for (let server = 0, limited = 0; ; ) {
       const res = await this.transport(`${this.baseUrl}/chat/completions`, {
         method: "POST",
         headers: { Authorization: `Bearer ${this.opts.apiKey}`, "Content-Type": "application/json" },
@@ -75,10 +102,23 @@ export class MuseSpark {
           throw new MuseImageError(`Muse Spark returned invalid JSON for ${name}`);
         }
       }
-      if (!(res.status === 429 || res.status >= 500) || attempt >= this.retries) {
-        throw new MuseImageError(`Muse Spark ${res.status}: ${json?.error?.message ?? "request failed"}`, res.status);
+      const message = json?.error?.message ?? "request failed";
+      if ((res.status === 403 || res.status === 404) && this.fallbackModel && this.fallbackModel !== this.model) {
+        console.warn(`Muse Spark: ${this.model} refused (${res.status}: ${message}); using ${this.fallbackModel}`);
+        this.model = this.fallbackModel;
+        this.fallbackModel = "";
+        body = bodyFor(this.model);
+        server = limited = 0;
+        continue;
       }
-      await this.sleep(1000 * 2 ** attempt + Math.random() * 250);
+      if (res.status === 429 && limited < this.rateLimitRetries) {
+        await this.sleep(retryDelayMs(limited++, res.headers?.get("retry-after")));
+        continue;
+      }
+      if (!(res.status >= 500) || server >= this.retries) {
+        throw new MuseImageError(`Muse Spark ${this.model} ${res.status}: ${message}`, res.status);
+      }
+      await this.sleep(retryDelayMs(server++));
     }
   }
 }

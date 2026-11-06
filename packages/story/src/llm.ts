@@ -26,6 +26,7 @@ export interface Llm {
 export type Transport = (url: string, init: { method: string; headers: Record<string, string>; body: string }) => Promise<{
   status: number;
   json(): Promise<unknown>;
+  headers?: { get(name: string): string | null };
 }>;
 
 export class LlmError extends Error {
@@ -39,15 +40,29 @@ interface HttpOptions {
   baseUrl: string;
   model: string;
   transport?: Transport;
+  /** Retries for 5xx. */
   retries?: number;
+  /** Retries for 429 (token rate limit), waiting Retry-After when sent. */
+  rateLimitRetries?: number;
+  /** Model used once if `model` is refused with 403/404 (e.g. Contributor not offered in the region). */
+  fallbackModel?: string;
   sleep?: (ms: number) => Promise<void>;
 }
 
+/** Wait before retry `attempt`: Retry-After when sent, else exponential backoff; capped at 60 s. */
+export function retryDelayMs(attempt: number, retryAfter?: string | null): number {
+  const secs = retryAfter ? Number(retryAfter) : NaN;
+  const fromHeader = Number.isFinite(secs) && secs >= 0 ? secs * 1000 : 0;
+  return Math.min(60_000, Math.max(fromHeader, 1000 * 2 ** attempt + Math.random() * 250));
+}
+
 abstract class HttpLlm implements Llm {
-  readonly model: string;
+  model: string;
   protected readonly baseUrl: string;
   private readonly transport: Transport;
   private readonly retries: number;
+  private readonly rateLimitRetries: number;
+  private fallbackModel: string;
   private readonly sleep: (ms: number) => Promise<void>;
 
   constructor(protected readonly opts: HttpOptions) {
@@ -56,6 +71,8 @@ abstract class HttpLlm implements Llm {
     this.baseUrl = opts.baseUrl.replace(/\/$/, "");
     this.transport = opts.transport ?? ((url, init) => fetch(url, init));
     this.retries = opts.retries ?? 3;
+    this.rateLimitRetries = opts.rateLimitRetries ?? 6;
+    this.fallbackModel = opts.fallbackModel ?? "";
     this.sleep = opts.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
   }
 
@@ -64,8 +81,8 @@ abstract class HttpLlm implements Llm {
   abstract parse(json: any): LlmResult;
 
   async complete(req: LlmRequest): Promise<LlmResult> {
-    const body = JSON.stringify(this.requestBody(req));
-    for (let attempt = 0; ; attempt++) {
+    let body = JSON.stringify(this.requestBody(req));
+    for (let server = 0, limited = 0; ; ) {
       const res = await this.transport(`${this.baseUrl}${this.path}`, {
         method: "POST",
         headers: { Authorization: `Bearer ${this.opts.apiKey}`, "Content-Type": "application/json" },
@@ -73,11 +90,23 @@ abstract class HttpLlm implements Llm {
       });
       const json = (await res.json().catch(() => ({}))) as any;
       if (res.status >= 200 && res.status < 300) return this.parse(json);
-      const retriable = res.status === 429 || res.status >= 500;
-      if (!retriable || attempt >= this.retries) {
-        throw new LlmError(`${this.model} ${res.status}: ${json?.error?.message ?? "request failed"}`, res.status);
+      const message = json?.error?.message ?? "request failed";
+      if ((res.status === 403 || res.status === 404) && this.fallbackModel && this.fallbackModel !== this.model) {
+        console.warn(`${this.model} refused (${res.status}: ${message}); using ${this.fallbackModel}`);
+        this.model = this.fallbackModel;
+        this.fallbackModel = "";
+        body = JSON.stringify(this.requestBody(req));
+        server = limited = 0;
+        continue;
       }
-      await this.sleep(1000 * 2 ** attempt + Math.random() * 250);
+      if (res.status === 429 && limited < this.rateLimitRetries) {
+        await this.sleep(retryDelayMs(limited++, res.headers?.get("retry-after")));
+        continue;
+      }
+      if (res.status < 500 || server >= this.retries) {
+        throw new LlmError(`${this.model} ${res.status}: ${message}`, res.status);
+      }
+      await this.sleep(retryDelayMs(server++));
     }
   }
 }
@@ -152,9 +181,12 @@ export async function askJson<T>(llm: Llm, req: LlmRequest, check: (value: unkno
 export type Role = "writer" | "judge" | "listener";
 
 export const DEFAULT_BASE_URL = "https://api.meta.ai/v1";
+/** Muse Spark Standard mode: Meta does not train on it, ~20x the Contributor price. */
+export const STANDARD_SPARK_MODEL = "muse-spark-1.3";
+/** Contributor mode by default (cheaper; Meta may train on prompts). MUSE_SPARK_MODEL=muse-spark-1.3 switches back. */
 export const DEFAULT_MODELS: Record<Role, string> = {
-  writer: "muse-spark-1.3",
-  judge: "muse-spark-1.3",
+  writer: "muse-spark-1.3-contributor",
+  judge: "muse-spark-1.3-contributor",
   listener: "meta-models/muse-spark-open-1026",
 };
 
@@ -176,5 +208,6 @@ export function llmFromEnv(role: Role, env: NodeJS.ProcessEnv = process.env, tra
   const apiKey = env.META_API_KEY || env.MODEL_API_KEY;
   if (!apiKey) return undefined;
   const model = (role === "writer" && env.MUSE_WRITER_MODEL) || env.MUSE_SPARK_MODEL || DEFAULT_MODELS.judge;
-  return new ChatLlm({ apiKey, baseUrl: env.META_API_BASE_URL || DEFAULT_BASE_URL, model, transport });
+  const fallbackModel = env.MUSE_SPARK_FALLBACK_MODEL === "none" ? "" : env.MUSE_SPARK_FALLBACK_MODEL || STANDARD_SPARK_MODEL;
+  return new ChatLlm({ apiKey, baseUrl: env.META_API_BASE_URL || DEFAULT_BASE_URL, model, fallbackModel, transport });
 }

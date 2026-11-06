@@ -96,7 +96,7 @@ From Larkpulse's "reply in your voice" and "first comment" features, kept behind
 | Env | Used for |
 | --- | --- |
 | `MUSE_SPARK_OPEN_URL`, `MUSE_SPARK_OPEN_KEY` (`MUSE_SPARK_OPEN_MODEL`, default `meta-models/muse-spark-open-1026`) | scoring comments |
-| `META_API_KEY` (`MUSE_SPARK_MODEL`, default `muse-spark-1.3`) | scoring when Spark Open is not set; recap |
+| `META_API_KEY` (`MUSE_SPARK_MODEL`, default `muse-spark-1.3-contributor`) | scoring when Spark Open is not set; recap |
 | none, or `--mock` / `MUSE_MOCK=1` | offline mock with keyword rules |
 
 All calls are OpenAI-compatible `POST /chat/completions`; 429 and 5xx are retried with backoff.

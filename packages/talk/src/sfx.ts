@@ -66,5 +66,5 @@ export function makeSfx(root: string, opts: { only?: string[]; log?: (s: string)
 export function sfxMix(music: boolean, at: number, end: number): string {
   const ms = Math.max(0, Math.round(at * 1000));
   const m = music ? `[1:a]afade=t=in:d=0.3,afade=t=out:st=${(end - 1.2).toFixed(2)}:d=1.2[m]` : "[1:a]anull[m]";
-  return `${m};[2:a]aformat=sample_rates=44100:channel_layouts=stereo,adelay=${ms}|${ms},volume=0.9[s];[m]aformat=sample_rates=44100:channel_layouts=stereo[m2];[m2][s]amix=inputs=2:duration=first:normalize=0[a]`;
+  return `${m};[2:a]loudnorm=I=-20:TP=-3,aformat=sample_rates=44100:channel_layouts=stereo,adelay=${ms}|${ms},volume=0.9[s];[m]aformat=sample_rates=44100:channel_layouts=stereo[m2];[m2][s]amix=inputs=2:duration=first:normalize=0[a]`;
 }

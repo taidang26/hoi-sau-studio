@@ -28,7 +28,7 @@ import { poseSwitches, snapShots } from "./beats.js";
 import { chunkWords, OUT, SAFE, type Chunk, type Word } from "./timeline.js";
 import { align, grow, maskBox, unionBox, writePng, type Box, type Raster } from "./patch.js";
 import { python } from "./voice.js";
-import { KIT_MIN_MOUTH, loadKit, noseOffset, pasteKit, pickAngle } from "./mouthkit.js";
+import { KIT_MIN_MOUTH, KIT_OPEN, kitDrops, loadKit, noseOffset, pasteKit, pickAngle } from "./mouthkit.js";
 
 export interface Line {
   text: string;
@@ -1009,18 +1009,31 @@ export async function drawMouths(sam: Sam, ctx: StudioContext, plan: Plan, dir: 
       const { keep, nearNose, noseBox } = await faceKeep(rgb);
       const pick = kit && mouth.box.w >= KIT_MIN_MOUTH ? pickAngle(kit, noseOffset(mouth.box, noseBox)) : undefined;
       if (kit && pick) {
-        const pair: Record<"shut" | "open", Made | undefined> = { shut: undefined, open: undefined };
-        for (const kind of ["shut", "open"] as const) {
-          const img = await pasteKit(cdir, kit, base, mouth, kind, pick, keep);
+        const made1 = async (img: Raster | undefined): Promise<Made | undefined> => {
           const found = img && (await findMouth(img.data));
-          if (img && found) pair[kind] = { img, size: area(found.mask), box: found.box, onFace: overlapShare(found.mask, keep, w, h), nearNose: overlapShare(found.mask, nearNose, w, h) };
+          return img && found ? { img, size: area(found.mask), box: found.box, onFace: overlapShare(found.mask, keep, w, h), nearNose: overlapShare(found.mask, nearNose, w, h) } : undefined;
+        };
+        const shutK = await made1(await pasteKit(cdir, kit, base, mouth, "shut", pick, keep));
+        let kp = "the kit has no shut mouth", used = "";
+        // Each open shape, moved down step by step while it sits too close to the nose; the first pair that passes is kept.
+        for (const shape of shutK ? KIT_OPEN : []) {
+          for (const drop of kitDrops(mouth.box.h)) {
+            const openK = await made1(await pasteKit(cdir, kit, base, mouth, shape, pick, keep, drop));
+            if (!openK) { kp = `no ${shape} mouth in the kit`; break; }
+            kp = await pairProblem(mouth, shutK, openK);
+            if (!kp) {
+              await sharp(shutK!.img.data, { raw: { width: w, height: h, channels: 3 } }).png().toFile(shutFile);
+              await sharp(openK.img.data, { raw: { width: w, height: h, channels: 3 } }).png().toFile(openFile);
+              used = `${shape}${drop ? `, ${drop} px lower` : ""}`;
+              break;
+            }
+            if (!kp.includes("nose")) break;
+          }
+          if (used) break;
         }
-        const kp = await pairProblem(mouth, pair.shut, pair.open);
-        if (!kp) {
-          await sharp(pair.shut!.img.data, { raw: { width: w, height: h, channels: 3 } }).png().toFile(shutFile);
-          await sharp(pair.open!.img.data, { raw: { width: w, height: h, channels: 3 } }).png().toFile(openFile);
+        if (used) {
           report.push({ pic, ok: true, kit: true });
-          opts.log?.(`${pic}: mouth pair from the kit (${pick.angle.angle}${pick.mirror ? ", mirrored" : ""}), nothing drawn`);
+          opts.log?.(`${pic}: mouth pair from the kit (${pick.angle.angle}${pick.mirror ? ", mirrored" : ""}, ${used}), nothing drawn`);
           continue;
         }
         opts.log?.(`${pic}: kit mouth did not pass (${kp}); drawing the mouth instead`);

@@ -29,7 +29,7 @@ export const SHAPES: Array<{ name: string; say: string }> = [
   { name: "shut", say: "" },
   { name: "open", say: "open it mid-word as if talking, clearly showing the dark inside of the mouth, no taller than it is wide, staying well below the nose" },
   { name: "wide", say: "open it wide as if shouting a loud 'A', showing the dark inside and the tongue, still below the nose with a gap of skin" },
-  { name: "o", say: "round it into a small 'O' as if saying 'ô', a small dark oval" },
+  { name: "o", say: "round the lips into a small 'O' as if saying 'ô', a small dark oval, the corners pulled in, not smiling" },
   { name: "smile", say: "a closed happy smile, the corners turned up, lips together" },
   { name: "teeth", say: "a talking 'E' with the upper teeth showing in a flat wide opening" },
 ];
@@ -111,15 +111,22 @@ export function placeShape(angle: KitAngle, shape: KitShape, box: Box, mirror: b
   return { s, x: Math.round(box.x + box.w / 2 + ox * s), y: Math.round(box.y + shape.oy * s), w, h };
 }
 
+/**
+ * The open shapes to try, in order, and how far down (px) to move one that lands too close to the nose.
+ * "wide" leads: the kit's "open" is often a thin slit, not clearly bigger than the shut mouth (first try on Tũn).
+ */
+export const KIT_OPEN = ["wide", "open", "teeth"];
+export const kitDrops = (mouthH: number) => [0, Math.max(2, Math.round(mouthH * 0.5)), Math.max(4, Math.round(mouthH))];
+
 /** The picture with its mouth erased and the kit's `shape` pasted in its place. */
-export async function pasteKit(charactersDir: string, kit: MouthKit, base: Raster, mouth: { mask: Uint8Array; box: Box }, shapeName: string, pick: { angle: KitAngle; mirror: boolean }, keep?: Uint8Array): Promise<Raster | undefined> {
+export async function pasteKit(charactersDir: string, kit: MouthKit, base: Raster, mouth: { mask: Uint8Array; box: Box }, shapeName: string, pick: { angle: KitAngle; mirror: boolean }, keep?: Uint8Array, drop = 0): Promise<Raster | undefined> {
   const shape = pick.angle.shapes.find((x) => x.name === shapeName);
   if (!shape) return undefined;
   const at = placeShape(pick.angle, shape, mouth.box, pick.mirror);
   let img = sharp(join(kitDir(charactersDir, kit.slug), shape.file)).ensureAlpha().resize(at.w, at.h, { fit: "fill" });
   if (pick.mirror) img = img.flop();
   const rgba = await img.raw().toBuffer();
-  return blendPatch(eraseMouth(base, mouth.mask, 3, keep), rgba, at.w, at.h, at.x, at.y, keep);
+  return blendPatch(eraseMouth(base, mouth.mask, 3, keep), rgba, at.w, at.h, at.x, at.y + drop, keep);
 }
 
 const dataUrl = (png: Buffer) => `data:image/png;base64,${png.toString("base64")}`;

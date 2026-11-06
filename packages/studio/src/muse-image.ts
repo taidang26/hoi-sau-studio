@@ -41,6 +41,8 @@ export interface ImageResult {
 export type Transport = (url: string, init: { method: string; headers: Record<string, string>; body: string }) => Promise<{
   status: number;
   json(): Promise<unknown>;
+  /** fetch's Headers; read for Retry-After on a 429. Optional so test transports can leave it out. */
+  headers?: { get(name: string): string | null };
 }>;
 
 export class MuseImageError extends Error {

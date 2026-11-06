@@ -33,7 +33,7 @@ For each character this renders a character sheet, then three 4:5 panels chained
 
 ## Muse Spark
 
-`MuseSpark.json(name, schema, messages)` calls `POST /chat/completions` (model `muse-spark-1.3`) with `response_format: { type: "json_schema", strict: true }` and returns the parsed object. Messages may carry images (`image_url` with a data URL), which is how self-review sees a panel next to the model sheets. `S.obj/arr/str/...` build strict schemas: every property required, no extras.
+`MuseSpark.json(name, schema, messages)` calls `POST /chat/completions` (model `muse-spark-1.3-contributor` by default, `MUSE_SPARK_MODEL=muse-spark-1.3` for Standard mode; 429 waits Retry-After, a 403/404 falls back to Standard once) with `response_format: { type: "json_schema", strict: true }` and returns the parsed object. Messages may carry images (`image_url` with a data URL), which is how self-review sees a panel next to the model sheets. `S.obj/arr/str/...` build strict schemas: every property required, no extras.
 
 ## Creating a character
 

@@ -205,7 +205,7 @@ test("chat client posts to /chat/completions and retries 429", async () => {
 
 test("listening prefers Muse Spark Open, then Muse Spark, then nothing", () => {
   assert.equal(llmFromEnv("listener", { MUSE_SPARK_OPEN_URL: "https://b", MUSE_SPARK_OPEN_KEY: "k", META_API_KEY: "m" })?.model, "meta-models/muse-spark-open-1026");
-  assert.equal(llmFromEnv("listener", { META_API_KEY: "m" })?.model, "muse-spark-1.3");
+  assert.equal(llmFromEnv("listener", { META_API_KEY: "m" })?.model, "muse-spark-1.3-contributor");
   assert.equal(llmFromEnv("writer", { META_API_KEY: "m", MUSE_WRITER_MODEL: "muse-wonder" })?.model, "muse-wonder");
   assert.equal(llmFromEnv("judge", {}), undefined);
 });

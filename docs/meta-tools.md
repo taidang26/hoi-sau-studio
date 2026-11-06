@@ -8,7 +8,7 @@ Base `https://api.meta.ai/v1`, key in `META_API_KEY`. Every client has an offlin
 
 | Tool | Job in Hồi Sau | Why this model | Status |
 | --- | --- | --- | --- |
-| **Muse Spark** (`muse-spark-1.3`) | Writes, checks and remembers: every text step below | Strict JSON schemas (`response_format: json_schema, strict: true`) make every output machine-checkable; fast enough for many short calls | Real runs from 27 Oct |
+| **Muse Spark** (`muse-spark-1.3-contributor` from 6 Nov; `muse-spark-1.3` before) | Writes, checks and remembers: every text step below | Strict JSON schemas (`response_format: json_schema, strict: true`) make every output machine-checkable; fast enough for many short calls | Real runs from 27 Oct |
 | **Muse Spark vision** | Reviews every panel against the locked sheets; reads reference images for recipes | Compares a picture to a reference picture, not just a description | Real runs from 27 Oct |
 | **Muse Image** (`muse-image-1.0`) | Draws: series style, model and pose sheets, brand art, every panel, edit-only redraws | A locked sheet as reference plus chained turns (`previous_response_id`) keep a character on-model; an edit turn changes one detail and keeps the rest | Real runs from 27 Oct |
 | **Muse Voice Transcribe** (`muse-voice-transcribe-1.0`) | Time-aligned subtitles for the motion comic; word times of a sound a character lip-syncs to | Timing comes from the real audio, not an estimate | Wired 27/10 (`packages/talk/src/transcribe.ts`); the current key gets 404, so lip-sync uses `--lyrics` until it opens |

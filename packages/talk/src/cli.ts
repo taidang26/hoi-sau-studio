@@ -9,7 +9,7 @@
  *   npm run talk -- cut <slug> [--phrase "cartoon character"] [--keep desk|none] [--force]  SAM 3.1 cuts the character (and desk) out
  *   npm run talk -- sets [--only office,cafe] [--force]                    Muse Image draws empty background sets in series/sets/
  *                    make/sync take --bg plain[:#hex], office|pantry|phong-tro|cafe, or photo.jpg: the cut-out character stands in front of it
- *   npm run talk -- illustrate <slug> <clip.mp4> [--vocals stem.wav] [--lines lines.json (corrected lines; also lets the plan run without the speech recogniser)] [--end s] [--step plan|draw|fix|ask|gaps|poses|stabilize|mouths|render|all] [--find <thing>] [--at <s>] [--only s01] [--note <what to change>] [--mouth] [--no-beats (cuts stay where the plan puts them, not on the beat)] [--max-shot s (longest shot the plan makes; 3 for a fast song)] [--retries n (pose B redraws before a shot keeps one pose; default 2). TALK_MOUTH_TRIES=n: open-mouth tries, default 3] [--only s01,s02] [--out dir]
+ *   npm run talk -- illustrate <slug> <clip.mp4> [--vocals stem.wav] [--lines lines.json (corrected lines; also lets the plan run without the speech recogniser)] [--end s] [--step plan|draw|fix|ask|gaps|poses|stabilize|mouths|review|render|all] [--find <thing>] [--at <s>] [--only s01] [--note <what to change>] [--mouth] [--no-beats (cuts stay where the plan puts them, not on the beat)] [--max-shot s (longest shot the plan makes; 3 for a fast song)] [--retries n (pose B redraws before a shot keeps one pose; default 2). TALK_MOUTH_TRIES=n: open-mouth tries, default 3] [--only s01,s02] [--out dir]
  *                    the clip's voice and cuts, one picture per shot of <slug> acting it out (Muse Image, checked by Muse Spark), two poses on one background (SAM 3.1)
  *   npm run talk -- cover <slug> --out <illustrate dir> --quote "“line|line *key*.”" [--shot s08] [--episode <id>]
  *                    TikTok cover: the line on a white badge (key words red) + "Hồi Sau" tag over a shot, inside the grid's safe zone and off the faces (SAM 3.1)
@@ -38,7 +38,7 @@ import sharp from "sharp";
 import { makeBlink, makeMusic, planMeme, readMeme, renderMeme, retimeMeme } from "./meme.js";
 import { askFixes, speechGaps } from "./fixes.js";
 import { ideaImages, readIdea } from "./idea.js";
-import { drawMouths, drawPoses, drawShots, fixShot, gateToWords, groupLines, hearWords, planShots, renderIllustrated, sceneCuts, shotSpans, stabilizePoses, timeWords, type Line, type Plan } from "./illustrate.js";
+import { drawMouths, drawPoses, drawShots, reviewShots, fixShot, gateToWords, groupLines, hearWords, planShots, renderIllustrated, sceneCuts, shotSpans, stabilizePoses, timeWords, type Line, type Plan } from "./illustrate.js";
 import { detectBeats } from "./beats.js";
 
 const ROOT = fileURLToPath(new URL("../../..", import.meta.url));
@@ -255,7 +255,7 @@ async function main() {
     }
     case "illustrate": {
       const [slug, clip] = pos;
-      if (!slug || !clip) throw new Error("Usage: talk illustrate <slug> <clip.mp4> [--vocals stem.wav] [--lines lines.json] [--step plan|draw|fix|ask|gaps|poses|stabilize|mouths|render|all] [--find <thing>] [--at <s>] [--only s01] [--note <what to change>] [--mouth]");
+      if (!slug || !clip) throw new Error("Usage: talk illustrate <slug> <clip.mp4> [--vocals stem.wav] [--lines lines.json] [--step plan|draw|fix|ask|gaps|poses|stabilize|mouths|review|render|all] [--find <thing>] [--at <s>] [--only s01] [--note <what to change>] [--mouth]");
       const out = opt.out ? fromCwd(opt.out as string) : join(ROOT, "data", "talk", `${slug}-illustrate-${stamp()}`);
       mkdirSync(out, { recursive: true });
       const step = String(opt.step ?? "all");
@@ -300,6 +300,12 @@ async function main() {
       // --mouth: the lead talks; without it the clip renders as before.
       const mouth = !!opt.mouth || step === "mouths";
       if (mouth && run("mouths")) report("mouths.json", "pic", await drawMouths(Sam.fromEnv(), ctx, plan, shots, { only, log }));
+      // --step review: Spark looks at every picture the render will show and lists what is broken (review.json).
+      if (step === "review" || step === "all") {
+        report("review.json", "pic", await reviewShots(ctx, plan, shots, { only, log }));
+        const bad = (JSON.parse(readFileSync(join(out, "review.json"), "utf8")) as Array<{ pic: string; pass: boolean }>).filter((r) => !r.pass);
+        log(bad.length ? `Review: ${bad.length} picture(s) need a fix: ${bad.map((r) => r.pic).join(", ")}` : "Review: every picture passed");
+      }
       if (run("render") || step === "gaps") {
         const pcm = await readSound(opt.vocals ? fromCwd(opt.vocals as string) : plan.clip, join(out, "voice.m4a"));
         writeFileSync(join(out, "gaps.json"), JSON.stringify(speechGaps(pcm, plan.lines)));

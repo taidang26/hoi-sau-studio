@@ -329,6 +329,7 @@ export async function checkPicture(ctx: StudioContext, slug: string, act: string
         `Fail it for: ${p.name} off-model (${p.look.signature.join("; ")}); ${p.name} drawn more than once (unless the scene asks for a copy such as a ghost); any drawn text, letters, numbers or speech bubble; a human, or a realistic or recognisable real person (a named singer or idol may only be a tiny faceless silhouette);`,
         "extra arms or hands, a paw holding something wrongly; objects facing the wrong way (a monitor or phone screen must face the character using it, his body must face what he works on; eyes may look at the viewer); a clock when the frame does not ask for a time, a clock with more or fewer than two hands, or a clock showing a different time from the one asked;",
         "a busy background (crowds, many props) or sparkles, sweat drops, motion lines; a glowing screen facing the viewer while the character uses it; a misshapen or broken prop (a wallet must look like a normal bifold wallet); empty colour bands across the top or bottom.",
+        "Also fail it for editing damage and staging errors: a hard straight seam, or a patch whose lines or colours do not match, around a character or prop; a ghost, smear, blur or half-transparent area; a solid thing drawn see-through (a door, a wall, a body); the same prop twice when there is one job for it (two mops, two badges); a character, or the head or a limb of one, cut by the frame edge; a character or furniture floating, or resting on the wrong thing (a chair standing on a table); a hand or arm passing through a door, wall or furniture.",
         "If it fails, write the fix as a short edit instruction.",
       ].join(" "),
     },
@@ -336,6 +337,26 @@ export async function checkPicture(ctx: StudioContext, slug: string, act: string
     ...(sheet ? [{ type: "image_url" as const, image_url: { url: sheet } }] : []),
   ];
   return ctx.spark.json("frame_check", CHECK, [{ role: "user", content }]);
+}
+
+/**
+ * The last look before a render: Muse Spark checks every picture that will be on screen (each pose, with the
+ * mouth the render uses) for what the drawing checks catch plus what the later steps can break: seams, ghosts
+ * and smears from a pasted pose or mouth, a removed prop leaving a smudge. Returns one row per picture.
+ */
+export async function reviewShots(ctx: StudioContext, plan: Plan, dir: string, opts: { only?: string[]; log?: (s: string) => void } = {}): Promise<Array<{ pic: string; pass: boolean; problems: string[]; fix: string }>> {
+  const rows: Array<{ pic: string; pass: boolean; problems: string[]; fix: string }> = [];
+  await eachShot(plan.shots, async (s) => {
+    if (s.src || (opts.only && !opts.only.includes(s.id))) return;
+    for (const pic of [s.id, `${s.id}-b2`]) {
+      const file = [`${pic}-s.png`, `${pic}.png`].map((f) => join(dir, f)).find((f) => existsSync(f));
+      if (!file || (pic !== s.id && !existsSync(join(dir, `${pic}.png`)))) continue;
+      const v = await checkPicture(ctx, plan.slug, pic === s.id ? s.act : `${s.act}; now: ${s.pose}`, readFileSync(file));
+      opts.log?.(`${pic}: ${v.pass ? "review passed" : `review failed: ${v.problems.join("; ")}`}`);
+      rows.push({ pic, ...v });
+    }
+  });
+  return rows.sort((a, b) => a.pic.localeCompare(b.pic));
 }
 
 /**

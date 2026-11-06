@@ -25,7 +25,7 @@ test("Contributor is the default; MUSE_SPARK_MODEL switches back", () => {
   assert.equal(MuseSpark.fromEnv({ META_API_KEY: "k", MUSE_SPARK_MODEL: "muse-spark-1.3" }).model, "muse-spark-1.3");
 });
 
-test("429 waits Retry-After and does not use up the 5xx retries", async () => {
+test("one model: 429 waits Retry-After and does not use up the 5xx retries", async () => {
   const waits: number[] = [];
   const { transport } = scripted([{ status: 429, retryAfter: "7" }, { status: 429 }, { status: 503 }, ok]);
   const spark = new MuseSpark({ apiKey: "k", transport, retries: 1, sleep: async (ms) => void waits.push(ms) });
@@ -34,9 +34,17 @@ test("429 waits Retry-After and does not use up the 5xx retries", async () => {
   assert.equal(waits.length, 3);
 });
 
-test("a refused Contributor model falls back to Standard once", async () => {
-  const { transport, models } = scripted([{ status: 403, body: { error: { message: "not available in your region" } } }, ok, ok]);
+test("default rotation: Contributor 1.3, then 1.2 Contributor, then Standard", () => {
+  assert.deepEqual(MuseSpark.fromEnv({ META_API_KEY: "k" }).rotation.models, ["muse-spark-1.3-contributor", "muse-spark-1.2-contributor", "muse-spark-1.3"]);
+  assert.deepEqual(MuseSpark.fromEnv({ META_API_KEY: "k", MUSE_SPARK_MODELS: "a, b" }).rotation.models, ["a", "b"]);
+  assert.deepEqual(MuseSpark.fromEnv({ META_API_KEY: "k", MUSE_SPARK_FALLBACK_MODEL: "none" }).rotation.models, ["muse-spark-1.3-contributor"]);
+});
+
+test("a rate-limited model hands over to the next at once, without waiting", async () => {
+  const waits: number[] = [];
+  const { transport, models } = scripted([{ status: 429, retryAfter: "30" }, ok, ok]);
   const spark = MuseSpark.fromEnv({ META_API_KEY: "k" }, transport);
+  (spark as any).sleep = async (ms: number) => void waits.push(ms);
   const warn = console.warn;
   console.warn = () => {};
   try {
@@ -45,10 +53,25 @@ test("a refused Contributor model falls back to Standard once", async () => {
   } finally {
     console.warn = warn;
   }
-  assert.deepEqual(models, ["muse-spark-1.3-contributor", "muse-spark-1.3", "muse-spark-1.3"]);
+  assert.deepEqual(models, ["muse-spark-1.3-contributor", "muse-spark-1.2-contributor", "muse-spark-1.2-contributor"]);
+  assert.equal(waits.length, 0);
 });
 
-test("fallback off: the 403 surfaces", async () => {
+test("a refused model is skipped; failing 5xx moves on after its retries", async () => {
+  const { transport, models } = scripted([{ status: 403, body: { error: { message: "not available in your region" } } }, { status: 500 }, { status: 500 }, ok]);
+  const spark = new MuseSpark({ apiKey: "k", transport, model: ["a", "b", "c"], retries: 1, sleep: async () => {} });
+  const warn = console.warn;
+  console.warn = () => {};
+  try {
+    await spark.json("t", {}, []);
+  } finally {
+    console.warn = warn;
+  }
+  assert.deepEqual(models, ["a", "b", "b", "c"]);
+  assert.equal(spark.model, "c");
+});
+
+test("no rotation: the 403 surfaces", async () => {
   const { transport } = scripted([{ status: 403 }]);
   const spark = MuseSpark.fromEnv({ META_API_KEY: "k", MUSE_SPARK_FALLBACK_MODEL: "none" }, transport);
   await assert.rejects(spark.json("t", {}, []), /403/);

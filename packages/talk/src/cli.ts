@@ -9,7 +9,7 @@
  *   npm run talk -- cut <slug> [--phrase "cartoon character"] [--keep desk|none] [--force]  SAM 3.1 cuts the character (and desk) out
  *   npm run talk -- sets [--only office,cafe] [--force]                    Muse Image draws empty background sets in series/sets/
  *                    make/sync take --bg plain[:#hex], office|pantry|phong-tro|cafe, or photo.jpg: the cut-out character stands in front of it
- *   npm run talk -- illustrate <slug> <clip.mp4> [--vocals stem.wav] [--lines lines.json (corrected lines; also lets the plan run without the speech recogniser)] [--end s] [--step plan|draw|fix|ask|gaps|poses|stabilize|mouths|review|render|all] [--find <thing>] [--at <s>] [--only s01] [--note <what to change>] [--mouth] [--no-beats (cuts stay where the plan puts them, not on the beat)] [--max-shot s (longest shot the plan makes; 3 for a fast song)] [--retries n (pose B redraws before a shot keeps one pose; default 2). TALK_MOUTH_TRIES=n: open-mouth tries, default 3] [--only s01,s02] [--out dir]
+ *   npm run talk -- illustrate <slug> <clip.mp4> [--vocals stem.wav] [--lines lines.json (corrected lines; also lets the plan run without the speech recogniser)] [--end s] [--step plan|draw|fix|ask|gaps|poses|stabilize|mouths|review|render|all] [--find <thing>] [--at <s>] [--only s01] [--note <what to change>] [--mouth] [--no-beats (cuts stay where the plan puts them, not on the beat)] [--max-shot s (longest shot the plan makes; 3 for a fast song)] [--accept-review (render although the review flagged blocking faults)] [--retries n (pose B redraws before a shot keeps one pose; default 2). TALK_MOUTH_TRIES=n: open-mouth tries, default 3] [--only s01,s02] [--out dir]
  *                    the clip's voice and cuts, one picture per shot of <slug> acting it out (Muse Image, checked by Muse Spark), two poses on one background (SAM 3.1)
  *   npm run talk -- cover <slug> --out <illustrate dir> --quote "“line|line *key*.”" [--shot s08] [--episode <id>]
  *                    TikTok cover: the line on a white badge (key words red) + "Hồi Sau" tag over a shot, inside the grid's safe zone and off the faces (SAM 3.1)
@@ -315,6 +315,9 @@ async function main() {
         const reviewFile = join(out, "review.json");
         const failed = existsSync(reviewFile) ? (JSON.parse(readFileSync(reviewFile, "utf8")) as Array<{ pic: string; pass: boolean; problems: string[] }>).filter((r) => !r.pass) : undefined;
         log(!failed ? "Review: not run; run --step review and look at every flag before sending" : failed.length ? `Review: ${failed.length} picture(s) still flagged: ${failed.map((r) => `${r.pic} (${r.problems[0] ?? ""})`).join("; ")}` : "Review: every picture passed");
+        // Extra limbs, duplicates, seams and the like are never waved through: redraw, or say so with --accept-review.
+        const blocking = (failed ?? []).filter((r) => (r as { blocking?: boolean }).blocking !== false);
+        if (blocking.length && !opt["accept-review"]) throw new Error(`Review found blocking faults in ${blocking.map((r) => r.pic).join(", ")}; redraw them and run --step review again (only cosmetic flags can be accepted, with --accept-review)`);
         const heard = JSON.parse(readFileSync(wordsFile, "utf8"));
         const words = timeWords(plan.lines, heard);
         let track: boolean[] | undefined;

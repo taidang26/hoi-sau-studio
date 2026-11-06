@@ -28,7 +28,7 @@ import { poseSwitches, snapShots } from "./beats.js";
 import { chunkWords, OUT, SAFE, type Chunk, type Word } from "./timeline.js";
 import { align, grow, maskBox, unionBox, writePng, type Box, type Raster } from "./patch.js";
 import { python } from "./voice.js";
-import { colourGap, KIT_MIN_MOUTH, KIT_OPEN, KIT_SKIN_GAP, kitDrops, kitSkin, loadKit, ringColour, noseOffset, pasteKit, pickAngle } from "./mouthkit.js";
+import { colourGap, KIT_MIN_MOUTH, KIT_SKIN_GAP, openShapes, kitDrops, kitSkin, loadKit, ringColour, noseOffset, pasteKit, pickAngle } from "./mouthkit.js";
 
 export interface Line {
   text: string;
@@ -1027,7 +1027,7 @@ export async function drawMouths(sam: Sam, ctx: StudioContext, plan: Plan, dir: 
         const shutK = await made1(base);
         let kp = "the kit has no shut mouth", used = "";
         // Each open shape, moved down step by step while it sits too close to the nose; the first pair that passes is kept.
-        for (const shape of shutK ? KIT_OPEN : []) {
+        for (const shape of shutK ? openShapes(`${s.act} ${pic.endsWith("-b2") ? s.pose : ""}`) : []) {
           for (const drop of kitDrops(mouth.box.h)) {
             const openK = await made1(await pasteKit(cdir, kit, base, mouth, shape, pick, keepK, drop));
             if (!openK) { kp = `no ${shape} mouth in the kit`; break; }

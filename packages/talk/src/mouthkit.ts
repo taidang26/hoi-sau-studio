@@ -32,7 +32,24 @@ export const SHAPES: Array<{ name: string; say: string }> = [
   { name: "o", say: "round the lips into a small 'O' as if saying 'ô', a small dark oval, the corners pulled in, not smiling" },
   { name: "smile", say: "a closed happy smile, the corners turned up, lips together" },
   { name: "teeth", say: "a talking 'E' with the upper teeth showing in a flat wide opening" },
+  { name: "laugh", say: "a big open laugh, the corners up high, the dark inside and the tongue showing, still below the nose" },
+  { name: "cry", say: "a wailing open mouth turned down at the corners like a crying cartoon, the dark inside showing, still below the nose" },
+  { name: "pout", say: "a trembling pout about to cry (mếu): lips pushed together, the corners pulled down in a wobbly line" },
+  { name: "angry", say: "gritted teeth in an angry snarl, the corners pulled down, both rows of teeth showing" },
+  { name: "shout", say: "an angry shout, the mouth open wide and square, the corners down, the dark inside showing, still below the nose" },
 ];
+
+/**
+ * The open shapes to try for a picture, from its mood (the shot's English act and pose): a sad face talks with
+ * a crying mouth, an angry one shouts, a happy one laughs. Each list ends on the plain talking shapes.
+ */
+export function openShapes(text: string): string[] {
+  const t = text.toLowerCase(), plain = ["wide", "open", "teeth"];
+  if (/\b(cr(y|ies|ying)|tears?|sob|wail|sad|despair|defeated|miserable|upset|gloomy)\b/.test(t)) return ["cry", ...plain];
+  if (/\b(angry|anger|furious|rage|shout|yell|scold|mad|annoyed|glare)/.test(t)) return ["shout", "angry", ...plain];
+  if (/\b(laugh|happy|grin|joy|celebrat|cheer|excited|delighted|smug|smil)/.test(t)) return ["laugh", ...plain];
+  return plain;
+}
 
 export interface KitShape { name: string; file: string; ox: number; oy: number; w: number; h: number }
 export interface KitAngle {
@@ -135,10 +152,9 @@ export function placeShape(angle: KitAngle, shape: KitShape, box: Box, mirror: b
 }
 
 /**
- * The open shapes to try, in order, and how far down (px) to move one that lands too close to the nose.
- * "wide" leads: the kit's "open" is often a thin slit, not clearly bigger than the shut mouth (first try on Tũn).
+ * How far down (px) to move an open shape that lands too close to the nose.
+ * The kit's "open" is often a thin slit, so the plain list in openShapes leads with "wide" (first try on Tũn).
  */
-export const KIT_OPEN = ["wide", "open", "teeth"];
 export const kitDrops = (mouthH: number) => [0, Math.max(2, Math.round(mouthH * 0.5)), Math.max(4, Math.round(mouthH))];
 
 /** The picture with its mouth erased and the kit's `shape` pasted in its place. */
@@ -194,22 +210,27 @@ export async function makeMouthKit(ctx: StudioContext, sam: Sam, slug: string, o
     return m;
   };
   for (const angle of ANGLES) {
-    if (opts.only ? !opts.only.includes(angle) : kit.angles.some((a) => a.angle === angle)) continue;
+    const had = kit.angles.find((a) => a.angle === angle);
+    if (!opts.only && had && SHAPES.every((x) => had.shapes.some((y) => y.name === x.name))) continue;
+    if (opts.only && !opts.only.includes(angle)) continue;
     const view = angle === "front" ? "facing straight at the viewer" : "turned three-quarters to the viewer's right, the face still clearly visible";
-    opts.log?.(`${slug} ${angle}: portrait`);
-    const portrait = await generateSoftly(ctx.image, {
+    // A kit made before new shapes were added keeps its portrait and only draws the missing shapes.
+    const keepOld = !opts.only && had && existsSync(join(dir, `${angle}.png`));
+    if (!keepOld) opts.log?.(`${slug} ${angle}: portrait`);
+    const portrait = keepOld ? { image: readFileSync(join(dir, `${angle}.png`)) } : await generateSoftly(ctx.image, {
       prompt: `A big head-and-shoulders portrait of ${p.name} (${species}), ${view}, calm face, the mouth closed in a simple line, the face large in the middle of the picture, plain light grey background, nothing else. Exactly the same character design, colours and line style as the references. No text.`,
       size: `${n}x${n}`,
       references: characterRefs(ctx, slug),
     }, opts.log);
-    writeFileSync(join(dir, `${angle}.png`), portrait.image);
+    if (!keepOld) writeFileSync(join(dir, `${angle}.png`), portrait.image);
     const baseImg = await rawOf(portrait.image, n), baseUrl = dataUrl(portrait.image), lead = await leadOf(baseUrl);
     const shut = await mouthIn(seg(baseUrl), [`mouth of the cartoon ${species}`, "mouth"], lead, n, n);
     if (!shut) { opts.log?.(`${slug} ${angle}: no mouth found on the portrait; skipped`); continue; }
     const noseMask = leadFeatures(await sam.segment(`nose of the cartoon ${species}`, baseUrl, n, n), lead, n, n);
-    const base = { w: shut.box.w, cx: shut.box.x + shut.box.w / 2, top: shut.box.y };
-    const entry: KitAngle = { angle, base, nose: noseOffset(shut.box, maskBox(noseMask, n, n)) ?? 0, shapes: [] };
+    const base = keepOld ? had!.base : { w: shut.box.w, cx: shut.box.x + shut.box.w / 2, top: shut.box.y };
+    const entry: KitAngle = keepOld ? { ...had!, shapes: [...had!.shapes] } : { angle, base, nose: noseOffset(shut.box, maskBox(noseMask, n, n)) ?? 0, shapes: [] };
     for (const shape of SHAPES) {
+      if (entry.shapes.some((x) => x.name === shape.name)) continue;
       let img = baseImg, mask = shut.mask;
       if (shape.say) {
         opts.log?.(`${slug} ${angle}: mouth ${shape.name}`);

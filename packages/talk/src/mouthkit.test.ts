@@ -77,3 +77,11 @@ test("the skin round a mouth tells one character's face from another's", async (
   assert.deepEqual(a, [210, 160, 110]);
   assert.ok(colourGap(a, b) > KIT_SKIN_GAP);
 });
+
+test("a sad face talks with a crying mouth, an angry one shouts, a happy one laughs", async () => {
+  const { openShapes } = await import("./mouthkit.js");
+  assert.equal(openShapes("sits at the desk crying comically, two streams of tears")[0], "cry");
+  assert.deepEqual(openShapes("the boss shouts angrily").slice(0, 2), ["shout", "angry"]);
+  assert.equal(openShapes("jumps up with a big happy grin")[0], "laugh");
+  assert.deepEqual(openShapes("stands by the desk"), ["wide", "open", "teeth"]);
+});

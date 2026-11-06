@@ -17,7 +17,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from
 import { join } from "node:path";
 import sharp from "sharp";
 import type { Sam } from "@hoi-sau/dance";
-import { CHARACTERS_DIR, type StudioContext } from "@hoi-sau/studio";
+import { CHARACTERS_DIR, designChanged, noteDesign, type StudioContext } from "@hoi-sau/studio";
 import { drawPoses, drawShots, stabilizePoses, type Plan, type Shot } from "./illustrate.js";
 import { MEME_FRAME } from "./meme.js";
 
@@ -94,11 +94,17 @@ export async function makeStock(ctx: StudioContext, sam: Sam, slug: string, opts
   const dir = stockDir(cdir, slug), work = join(dir, "_work");
   mkdirSync(work, { recursive: true });
   const have = loadStock(cdir, slug);
-  const todo = REACTIONS.filter((r) => (opts.only ? opts.only.includes(r.name) : !existsSync(join(dir, `${r.name}.png`))));
-  if (!todo.length) return have;
+  // A changed design (profile look or model sheet) redraws every reaction, and they wait for approval again.
+  const stale = designChanged(dir, slug, cdir);
+  if (stale) opts.log?.(`${slug}: the design changed since the reactions were drawn; drawing them all again`);
+  const todo = REACTIONS.filter((r) => (stale ? true : opts.only ? opts.only.includes(r.name) : !existsSync(join(dir, `${r.name}.png`))));
+  if (!todo.length) {
+    noteDesign(dir, slug, cdir);
+    return have;
+  }
   const plan = stockPlan(slug, todo);
   writeFileSync(join(work, "plan.json"), JSON.stringify(plan, null, 2));
-  const only = opts.only ? todo.map((r) => r.name) : undefined;
+  const only = opts.only || stale ? todo.map((r) => r.name) : undefined;
   await drawShots(ctx, plan, work, { only, log: opts.log });
   await drawPoses(ctx, plan, work, { only, log: opts.log });
   await stabilizePoses(sam, ctx, plan, work, { only, log: opts.log });
@@ -118,6 +124,8 @@ export async function makeStock(ctx: StudioContext, sam: Sam, slug: string, opts
     else entries.push(entry);
   }
   saveStock(cdir, slug, entries);
+  // Not stale (or just redrawn in full): the pictures match the design as it is now.
+  noteDesign(dir, slug, cdir);
   await stockSheet(cdir, slug);
   return entries;
 }

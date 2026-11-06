@@ -3,7 +3,8 @@
  * the same profile, so the look, voice and limits are written down once.
  */
 
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse } from "yaml";
@@ -136,3 +137,36 @@ export function listCharacters(dir = CHARACTERS_DIR): string[] {
     .map((d) => d.name)
     .sort();
 }
+
+/**
+ * A fingerprint of how a character is drawn: the look's description, signature, palette, props and the
+ * bytes of the model sheet. Ready-made pictures (reactions, mouths) note it when drawn; a different one
+ * later means the design changed and they should be drawn again.
+ */
+export function designHash(slug: string, dir = CHARACTERS_DIR): string {
+  const p = loadProfile(slug, dir);
+  const h = createHash("sha1").update(JSON.stringify([p.look.description, p.look.signature, p.look.palette, p.look.props, p.species]));
+  const sheet = p.look.character_sheet ? join(dir, slug, p.look.character_sheet) : "";
+  if (sheet && existsSync(sheet)) h.update(readFileSync(sheet));
+  return h.digest("hex").slice(0, 12);
+}
+
+/** The design a folder of ready-made pictures was drawn for (`design.json`), or undefined. */
+export const madeForDesign = (folder: string): string | undefined => {
+  try {
+    return (JSON.parse(readFileSync(join(folder, "design.json"), "utf8")) as { design?: string }).design;
+  } catch {
+    return undefined;
+  }
+};
+
+/** Notes the current design in a folder of ready-made pictures. */
+export function noteDesign(folder: string, slug: string, dir = CHARACTERS_DIR): void {
+  if (existsSync(folder)) writeFileSync(join(folder, "design.json"), `${JSON.stringify({ design: designHash(slug, dir), on: new Date().toISOString() })}\n`);
+}
+
+/** True when the pictures in `folder` were drawn for an older design of the character. */
+export const designChanged = (folder: string, slug: string, dir = CHARACTERS_DIR): boolean => {
+  const was = madeForDesign(folder);
+  return !!was && was !== designHash(slug, dir);
+};

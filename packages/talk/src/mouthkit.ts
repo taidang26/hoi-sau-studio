@@ -17,7 +17,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import sharp from "sharp";
 import type { Sam } from "@hoi-sau/dance";
-import { characterRefs, CHARACTERS_DIR, generateSoftly, type StudioContext } from "@hoi-sau/studio";
+import { characterRefs, CHARACTERS_DIR, designChanged, generateSoftly, noteDesign, type StudioContext } from "@hoi-sau/studio";
 import { dilate, leadFeatures, mouthIn } from "./illustrate.js";
 import { align, grow, maskBox, unionBox, type Box, type Raster } from "./patch.js";
 
@@ -209,6 +209,11 @@ export async function makeMouthKit(ctx: StudioContext, sam: Sam, slug: string, o
     }
     return m;
   };
+  // A changed design draws the whole kit again from new portraits.
+  if (designChanged(dir, slug, cdir)) {
+    opts.log?.(`${slug}: the design changed since the mouths were drawn; drawing the kit again`);
+    opts = { ...opts, only: [...ANGLES] };
+  }
   for (const angle of ANGLES) {
     const had = kit.angles.find((a) => a.angle === angle);
     if (!opts.only && had && SHAPES.every((x) => had.shapes.some((y) => y.name === x.name))) continue;
@@ -262,6 +267,7 @@ export async function makeMouthKit(ctx: StudioContext, sam: Sam, slug: string, o
     writeFileSync(join(dir, "kit.json"), `${JSON.stringify(kit, null, 1)}\n`);
     opts.log?.(`${slug} ${angle}: ${entry.shapes.map((s) => s.name).join(", ")}`);
   }
+  noteDesign(dir, slug, cdir);
   await kitSheet(cdir, slug);
   return kit;
 }

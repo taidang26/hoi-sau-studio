@@ -27,10 +27,11 @@ import { appendFileSync, copyFileSync, cpSync, existsSync, mkdirSync, readdirSyn
 import { basename, extname, join } from "node:path";
 import sharp from "sharp";
 import { readApproval, type EpisodePost } from "@hoi-sau/channel";
-import { approveVideo } from "@hoi-sau/studio";
+import { approveVideo, CHARACTERS_DIR, SERIES_DIR } from "@hoi-sau/studio";
 import { t } from "./i18n.js";
 import { button, esc, flash, layout } from "./views.js";
 import { IdeaStock, stockLink } from "./kho.js";
+import { ReadyMade, readyLink } from "./kits.js";
 
 /** Runs one of the repo's scripts (relative to the repo root) and resolves with its output. */
 export type Exec = (script: string, args: string[], log: (s: string) => void, env?: Record<string, string>) => Promise<string>;
@@ -49,6 +50,9 @@ export interface VideoOptions {
   /** Characters to choose from: slug and display name. */
   cast: () => Array<{ slug: string; name: string }>;
   exec: Exec;
+  /** Where the characters and the series live (the ready-made pictures are kept there). */
+  charactersDir?: string;
+  seriesDir?: string;
   /** Upload the site after copying the media; off in tests and demos. */
   deploy: boolean;
   /** Downloads for the stock of ideas (scraped picture links); fetch by default. */
@@ -223,8 +227,10 @@ export class Videos {
   private timer?: NodeJS.Timeout;
   /** Kho ý: scraped posts waiting to be read into text memes. */
   readonly stock: IdeaStock;
+  readonly ready: ReadyMade;
   constructor(readonly opts: VideoOptions) {
     this.stock = new IdeaStock(this, opts.fetch);
+    this.ready = new ReadyMade({ charactersDir: () => opts.charactersDir ?? CHARACTERS_DIR, seriesDir: () => opts.seriesDir ?? SERIES_DIR, exec: opts.exec, cast: opts.cast });
   }
 
   folder = (id: string) => join(this.opts.dir, id);
@@ -1154,7 +1160,7 @@ function ideaBox(v: Videos): string {
 <textarea name="text" rows="3" placeholder="${esc(t("vd: Đi làm đã mệt rồi còn phải ăn bữa cơm dở ẹc do mình tự nấu mang theo"))}"></textarea>
 <label class="small">${esc(t("Đính kèm ảnh hoặc clip (không bắt buộc)"))}<input type="file" name="files" accept="image/*,video/*" multiple></label>
 ${samples.length ? `<details class="small"><summary>${esc(t("Hoặc dùng clip mẫu có sẵn"))}</summary><select name="sample"><option value="">${esc(t("— không dùng —"))}</option>${samples.map((x) => `<option value="${esc(x.path)}">${esc(x.label)}</option>`).join("")}</select></details>` : ""}
-<button class="btn on">${esc(t("Gửi"))}</button></form>${list ? `<ul class="small idealist">${list}</ul>` : ""}${stockLink(v.stock)}</section>`;
+<button class="btn on">${esc(t("Gửi"))}</button></form>${list ? `<ul class="small idealist">${list}</ul>` : ""}${stockLink(v.stock)}${readyLink(v.ready)}</section>`;
 }
 
 /** The cast member a note names (slug or name, any case), else Tũn, else the first. */

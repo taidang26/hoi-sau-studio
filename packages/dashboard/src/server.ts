@@ -21,6 +21,7 @@ import { characterNotes, compareSection, inspirationField, researchPage, type Id
 import { episodeStudioPage, friendly, Studio, studioPage, stylePage } from "./studio.js";
 import { ideaPage, leadFromText, videoPage, videosPage, type Videos } from "./video.js";
 import { stockPage, type ScrapedPost } from "./kho.js";
+import { readyPage } from "./kits.js";
 import { CHARACTERS_DIR, loadProfile, readStep, SERIES_DIR, type EpisodeStep } from "@hoi-sau/studio";
 import {
   automationPage,
@@ -134,7 +135,7 @@ function send(res: ServerResponse, status: number, body: string, type = "text/ht
 /** Every picture on a page asks for a WebP sized to how it is shown; the full file stays one click away. */
 const sizedImages = (html: string) =>
   html.replace(
-    /<img([^>]*?) src="(\/(?:studio-media|sheet|media|brand-art|style-media|series-media|research-media|video-media)\/[^"?]+\.(?:png|jpe?g|webp))"/g,
+    /<img([^>]*?) src="(\/(?:studio-media|sheet|media|brand-art|style-media|series-media|research-media|video-media|ready-media)\/[^"?]+\.(?:png|jpe?g|webp))"/g,
     (_, pre: string, src: string) => `<img${pre} decoding="async" src="${src}?w=${/^\/(sheet|brand-art)\//.test(src) ? 1400 : /^\/video-media\//.test(src) ? 640 : 960}"`,
   );
 
@@ -660,6 +661,30 @@ export function handler(opts: DashboardOptions) {
       } catch (e) {
         return fail("/video/kho", e);
       }
+    }
+    // Đồ làm sẵn: reactions, mouth kits and office rooms drawn once per character, approved or redrawn with a tap.
+    if (vd && path === "/video/san" && req.method === "GET") return page(res, 200, readyPage(vd.ready, { err, ok }));
+    const vr = vd && req.method === "POST" ? path.match(/^\/video\/san\/([a-z0-9-]+|_bg)\/(approve|unapprove|redraw|mouthkit|backgrounds)\/([a-z0-9-]+)$/) : null;
+    if (vr && vd) {
+      const back = `/video/san#${vr[1] === "_bg" ? "phong" : vr[1]}`;
+      try {
+        const [, slug, act, what] = vr;
+        if (slug !== "_bg" && !vd.opts.cast().some((c) => c.slug === slug)) throw new Error(t("Không có nhân vật này."));
+        if (act === "approve" || act === "unapprove") {
+          const n = vd.ready.approve(slug, what, act === "approve");
+          return redirect(res, withNote(back, "ok", act === "approve" ? t("Đã duyệt {n} tranh.", { n }) : t("Đã bỏ duyệt {n} tranh.", { n })));
+        }
+        if (act === "redraw") vd.ready.redrawStock(slug, what);
+        else if (act === "mouthkit") vd.ready.redrawKit(slug, what === "all");
+        else vd.ready.redrawBackgrounds(what === "missing" ? undefined : what);
+        return redirect(res, withNote(back, "ok", t("Máy đang vẽ. Tranh mới vẽ lại phải duyệt lại.")));
+      } catch (e) {
+        return fail(back, e);
+      }
+    }
+    if (vd && path.startsWith("/ready-media/")) {
+      const file = vd.ready.file(path.slice("/ready-media/".length));
+      return file ? sendFile(req, res, file) : send(res, 404, notFoundPage());
     }
     if (vd && req.method === "POST" && path === "/video/new") {
       try {

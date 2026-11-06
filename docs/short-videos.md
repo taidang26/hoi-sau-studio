@@ -111,3 +111,7 @@ The **Làm từ chữ hoặc ảnh** box at the top of the Video screen takes wh
 
 - `talk stock <slug> --approve guc-ban,om-dau` (or `all`), `--unapprove`, `--only <names>` to draw again (which takes the approval back), `--list`.
 - When planning a two-scene meme, Muse Spark is offered the approved reactions of the lead and may take one for the punchline scene. That scene is then copied in, not drawn, so the meme costs about half. A reaction rests 5 days after a use.
+
+## Thư viện nhạc (music library)
+
+`talk music-lib [--count 4]` makes 4 tracks per mood once with MusicGen (vui nhộn, chán, hí hửng, deadline, buồn cười ra nước mắt), 22 s each, in `series/music/`. A meme's music step then copies the least used track of its mood instead of running MusicGen for every clip; with no library, or a clip longer than a track, it makes its own as before.

@@ -141,9 +141,9 @@ export const MEME_FRAME = "The top third of the frame is plain empty office wall
 const MUSICGEN = fileURLToPath(new URL("../scripts/musicgen.py", import.meta.url));
 
 /** Instrumental music from MusicGen, on the GPU; slightly longer than the clip so it never runs out. */
-export function makeMusic(prompt: string, seconds: number, out: string, log?: (s: string) => void): string {
+export function makeMusic(prompt: string, seconds: number, out: string, log?: (s: string) => void, seed?: number): string {
   log?.(`music: MusicGen "${prompt}"`);
-  const r = spawnSync(python(), [MUSICGEN, out, String(seconds + 1), prompt], { encoding: "utf8" });
+  const r = spawnSync(python(), [MUSICGEN, out, String(seconds + 1), prompt, ...(seed !== undefined ? [String(seed)] : [])], { encoding: "utf8" });
   if (r.status !== 0 || !existsSync(out)) throw new Error(`MusicGen failed: ${(r.stderr || r.stdout || "").trim().split("\n").slice(-3).join(" ")}`);
   return out;
 }

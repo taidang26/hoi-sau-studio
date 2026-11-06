@@ -36,6 +36,7 @@ import { mouthTrack, RATE, ttsArg, voiceFor, type Tts } from "./voice.js";
 import { facesBox, makeCover } from "./cover.js";
 import sharp from "sharp";
 import { makeBlink, makeMusic, planMeme, readMeme, renderMeme, retimeMeme } from "./meme.js";
+import { makeLibrary, MOODS, takeTrack } from "./music-lib.js";
 import { approveStock, availableStock, loadStock, makeStock, REACTIONS, stockSheet, useStock } from "./stock.js";
 import { askFixes, speechGaps } from "./fixes.js";
 import { ideaImages, readIdea } from "./idea.js";
@@ -394,7 +395,8 @@ async function main() {
       const promptFile = join(out, "music.prompt");
       const fresh = existsSync(music) && existsSync(promptFile) && readFileSync(promptFile, "utf8") === spec.music;
       if (spec.music.trim() && (step === "music" || ((step === "all" || step === "render") && !fresh))) {
-        makeMusic(spec.music, plan.end, music, log);
+        // A ready track of the same mood when the library has one (talk music-lib), else MusicGen for this clip.
+        if (!takeTrack(ROOT, spec.music, music, plan.end, log)) makeMusic(spec.music, plan.end, music, log);
         writeFileSync(promptFile, spec.music);
       }
       // Faces once per picture (faces.json, keyed by picture signature): where to lower each picture, and where its eyes are.
@@ -426,6 +428,13 @@ async function main() {
         log(problems.length ? `Reels check: ${problems.join("; ")}` : "Reels check: ok for Facebook/Instagram Reels and TikTok");
         console.log(video);
       }
+      return;
+    }
+    case "music-lib": {
+      // Thư viện nhạc: talk music-lib [--count 4]: the missing tracks, `count` per mood (MusicGen on the GPU).
+      const count = Number(opt.count ?? 4);
+      const made = makeLibrary(ROOT, (out, secs, prompt, seed) => void makeMusic(prompt, secs - 1, out, log, seed), count, log);
+      console.log(`${made} new track(s); ${MOODS.length} moods × ${count}`);
       return;
     }
     case "stock": {

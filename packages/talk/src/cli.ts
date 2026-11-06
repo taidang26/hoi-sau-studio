@@ -311,6 +311,10 @@ async function main() {
         writeFileSync(join(out, "gaps.json"), JSON.stringify(speechGaps(pcm, plan.lines)));
       }
       if (run("render")) {
+        // The render says which pictures the last review failed (or that none ran), so nothing ships unchecked.
+        const reviewFile = join(out, "review.json");
+        const failed = existsSync(reviewFile) ? (JSON.parse(readFileSync(reviewFile, "utf8")) as Array<{ pic: string; pass: boolean; problems: string[] }>).filter((r) => !r.pass) : undefined;
+        log(!failed ? "Review: not run; run --step review and look at every flag before sending" : failed.length ? `Review: ${failed.length} picture(s) still flagged: ${failed.map((r) => `${r.pic} (${r.problems[0] ?? ""})`).join("; ")}` : "Review: every picture passed");
         const heard = JSON.parse(readFileSync(wordsFile, "utf8"));
         const words = timeWords(plan.lines, heard);
         let track: boolean[] | undefined;

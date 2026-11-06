@@ -6,9 +6,9 @@
  *   characters/<slug>/seasons/<key>.png
  */
 
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { characterRefs, CHARACTERS_DIR, generateSoftly, type StudioContext } from "@hoi-sau/studio";
+import { CHARACTERS_DIR, generateSoftly, modelSheet, type StudioContext } from "@hoi-sau/studio";
 
 export interface Outfit { key: string; season: string; vi: string; text: string }
 
@@ -40,14 +40,20 @@ export async function makeSeasons(ctx: StudioContext, slug: string, opts: { only
   const dir = seasonsDir(ctx.charactersDir ?? CHARACTERS_DIR, slug);
   mkdirSync(dir, { recursive: true });
   let made = 0;
+  // One picture of the character in one pose as the reference: given the model and pose sheets, Muse Image drew a
+  // whole sheet back (several copies with labels, Bống every time). The mouth kit's front portrait or a reaction
+  // picture is one character; the model sheet is the last resort.
+  const cdir = ctx.charactersDir ?? CHARACTERS_DIR;
+  const single = [join(cdir, slug, "mouthkit", "front.png"), join(cdir, slug, "stock", "gat-gu.png"), join(cdir, slug, "stock", "do-mat.png")].find((f) => existsSync(f));
+  const refs = single ? [`data:image/png;base64,${readFileSync(single).toString("base64")}`] : [modelSheet(ctx, slug)].filter((x): x is string => !!x);
   for (const o of OUTFITS) {
     const file = join(dir, `${o.key}.png`);
     if (opts.only ? !opts.only.includes(o.key) : existsSync(file)) continue;
     opts.log?.(`${slug} ${o.key}: drawing`);
     const res = await generateSoftly(ctx.image, {
-      prompt: `Full-body character sheet of ${p.name} (${p.species}) standing facing the viewer on a plain light grey background: ${p.look.description.replace(/\s+/g, " ")} For ${o.vi}: ${o.text}. Exactly the same character design, face, colours and line style as the references; only the seasonal item is added. Nothing else in the picture, no text.`,
+      prompt: `One single full-body picture of ${p.name} (${p.species}), ONE character in ONE pose, standing facing the viewer in the middle of a plain light grey background: ${p.look.description.replace(/\s+/g, " ")} For ${o.vi}: ${o.text}. The same character design, face, colours and line style as the reference; only the seasonal item is added. Not a character sheet: no turnaround, no second copy, no labels, no captions, no text anywhere.`,
       size: "1024x1024",
-      references: characterRefs(ctx, slug),
+      references: refs,
     }, opts.log);
     writeFileSync(file, res.image);
     made++;

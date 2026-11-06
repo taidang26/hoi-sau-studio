@@ -64,9 +64,13 @@ export interface MouthKit { slug: string; angles: KitAngle[] }
 
 export const kitDir = (charactersDir: string, slug: string) => join(charactersDir, slug, "mouthkit");
 
+/** The kit, without shapes whose picture is missing (moved aside by hand, say), and without angles left empty. */
 export function loadKit(charactersDir: string, slug: string): MouthKit | undefined {
-  const f = join(kitDir(charactersDir, slug), "kit.json");
-  return existsSync(f) ? (JSON.parse(readFileSync(f, "utf8")) as MouthKit) : undefined;
+  const dir = kitDir(charactersDir, slug), f = join(dir, "kit.json");
+  if (!existsSync(f)) return undefined;
+  const kit = JSON.parse(readFileSync(f, "utf8")) as MouthKit;
+  kit.angles = kit.angles.map((a) => ({ ...a, shapes: a.shapes.filter((x) => existsSync(join(dir, x.file))) })).filter((a) => a.shapes.length);
+  return kit.angles.length ? kit : undefined;
 }
 
 /** Below this width (px in the 1080x1920 picture) a pasted mouth is too small to read; the old way draws it. */

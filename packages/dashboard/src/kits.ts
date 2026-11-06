@@ -155,7 +155,7 @@ ${jobLine(`stock:${slug}`)}<ul class="ready-grid">${tiles}</ul>
 <p class="muted">${esc(t("Tranh vẽ một lần rồi dùng lại trong clip: phản ứng cho meme (chỉ tranh đã duyệt), bộ mồm cho clip nhép, phông các phòng. Tranh mới vẽ lại phải duyệt lại."))}</p>
 <p class="small">${r.opts.cast().map((c) => `<a href="#${esc(c.slug)}">${esc(c.name)}</a>`).join(" · ")} · <a href="#phong">${esc(t("Phông"))}</a></p></section>
 ${people}${rooms}
-<style>.ready-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px;list-style:none;padding:0}.ready-tile img{width:100%;aspect-ratio:9/16;object-fit:cover;border-radius:8px;border:2px solid transparent}.ready-tile.ok img{border-color:#3a9d5d}.ready-tile img.square{aspect-ratio:1}.ready-sheet{max-width:100%;border-radius:8px}</style>`;
+<style>.ready-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(130px,calc(50% - 5px)),1fr));gap:10px;list-style:none;padding:0;margin:0}.ready-tile{min-width:0;overflow-wrap:anywhere}.ready-tile form.inline{display:inline-block;margin:2px 0}.card .flash{overflow-wrap:anywhere}.ready-tile img{width:100%;aspect-ratio:9/16;object-fit:cover;border-radius:8px;border:2px solid transparent}.ready-tile.ok img{border-color:#3a9d5d}.ready-tile img.square{aspect-ratio:1}.ready-sheet{max-width:100%;border-radius:8px}</style>`;
   return layout(t("Đồ làm sẵn"), "/video", body);
 }
 

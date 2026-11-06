@@ -302,7 +302,7 @@ export async function planShots(ctx: StudioContext, slug: string, lines: Line[],
 /** The look Tài asked for: big character with a strong expression, a lazy sketchy background, nothing extra. */
 export const LOOK = [
   "Comic approach like a simple webcomic: flat colours and a thick dark outline in the series line style; the main character is clearly the subject but does not crowd the frame: medium size, about a third of the frame's height (head to feet when standing, head to seat when sitting), with room around him so the place reads on a phone; never a giant close-up of the face; a strong, clear facial expression that sells the joke.",
-  "The background is drawn loosely and lazily: a few sketchy lines and pale flat colour washes, with at most two to four simple props, only the ones the scene needs. No crowd, no extra people; anyone else is drawn simply and faded.",
+  "The background is drawn loosely and lazily: a few sketchy lines and pale flat colour washes, with at most two to four simple props, only the ones the scene needs. No crowd and no humans at all: the office is empty except the cast the scene names, and no extra animal characters.",
   "No sparkles, stars, hearts, sweat drops, anger marks, motion lines, speed lines, dust puffs or emoji-like symbols.",
   "Objects face the right way: a screen faces whoever is using it, a character's body faces what he works on, paws hold things naturally, every character has exactly two arms.",
   "The picture fills the whole frame edge to edge: no borders, no empty colour bands at the top or bottom. Keep the top fifth and the bottom fifth calm (a speech bubble and captions go there).",

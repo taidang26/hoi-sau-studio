@@ -37,6 +37,7 @@ import { facesBox, makeCover } from "./cover.js";
 import sharp from "sharp";
 import { makeBlink, makeMusic, planMeme, readMeme, renderMeme, retimeMeme } from "./meme.js";
 import { makeLibrary, MOODS, takeTrack } from "./music-lib.js";
+import { availableSfx, makeSfx, SOUNDS, sfxFile } from "./sfx.js";
 import { backgroundsDir, loadRooms, makeBackgrounds, ROOMS } from "./backgrounds.js";
 import { kitSheet, loadKit, makeMouthKit, type Angle } from "./mouthkit.js";
 import { approveStock, availableStock, loadStock, makeStock, REACTIONS, stockExtras, stockSheet, useStock } from "./stock.js";
@@ -368,7 +369,7 @@ async function main() {
         return;
       }
       if (run("plan") && (step === "plan" || !existsSync(planFile))) {
-        writeFileSync(planFile, JSON.stringify(await planMeme(ctx, slug, spec, availableStock(ctx.charactersDir ?? CHARACTERS, slug)), null, 2) + "\n");
+        writeFileSync(planFile, JSON.stringify(await planMeme(ctx, slug, spec, availableStock(ctx.charactersDir ?? CHARACTERS, slug), availableSfx(ROOT)), null, 2) + "\n");
         log(`${planFile}: ${spec.scenes.length} scene(s)`);
       }
       const plan: Plan = JSON.parse(readFileSync(planFile, "utf8"));
@@ -425,7 +426,7 @@ async function main() {
         }
       }
       if (run("render")) {
-        const video = await renderMeme(plan, shots, spec.music.trim() ? music : undefined, join(out, `${slug}.mp4`), log, faceTop);
+        const video = await renderMeme(plan, shots, spec.music.trim() ? music : undefined, join(out, `${slug}.mp4`), log, faceTop, sfxFile(ROOT, plan.sfx));
         const problems = reelsProblems(await probeVideo(video));
         log(problems.length ? `Reels check: ${problems.join("; ")}` : "Reels check: ok for Facebook/Instagram Reels and TikTok");
         console.log(video);
@@ -437,6 +438,12 @@ async function main() {
       const count = Number(opt.count ?? 4);
       const made = makeLibrary(ROOT, (out, secs, prompt, seed) => void makeMusic(prompt, secs - 1, out, log, seed), count, log);
       console.log(`${made} new track(s); ${MOODS.length} moods × ${count}`);
+      return;
+    }
+    case "sfx": {
+      // Sound effects made once with AudioGen on the GPU: talk sfx [--only ting,boing]
+      const made = makeSfx(ROOT, { only: opt.only ? String(opt.only).split(",") : undefined, log });
+      console.log(`${made} new; ${availableSfx(ROOT).length}/${SOUNDS.length} sounds ready`);
       return;
     }
     case "backgrounds": {

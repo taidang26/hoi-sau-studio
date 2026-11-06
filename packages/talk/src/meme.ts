@@ -27,6 +27,7 @@ import { lowerPicture } from "./cover.js";
 import { popScale, type Line, type Plan, type Shot } from "./illustrate.js";
 import { OUT, SAFE } from "./timeline.js";
 import { python } from "./voice.js";
+import { sfxMix } from "./sfx.js";
 
 export interface MemeSpec {
   /** The set-up, shown from the start. */
@@ -85,7 +86,7 @@ const MEME_PLAN = S.obj({
     }),
     1,
     2,
-  ),
+  ),  sfx: S.str("name of one sound effect from the offered list for the moment the punchline appears, or empty for none"),
 });
 
 /** Muse Spark writes the shots; the words become the plan's two lines. */
@@ -93,7 +94,7 @@ const MEME_PLAN = S.obj({
  * `stock`: approved ready-made reactions of the lead. With two scenes, Muse Spark may take one
  * for the punchline scene when it fits, and that scene is then not drawn.
  */
-export async function planMeme(ctx: StudioContext, slug: string, spec: MemeSpec, stock: Array<{ name: string; vi: string; act: string }> = []): Promise<Plan> {
+export async function planMeme(ctx: StudioContext, slug: string, spec: MemeSpec, stock: Array<{ name: string; vi: string; act: string }> = [], sounds: Array<{ name: string; vi: string; prompt: string }> = []): Promise<Plan> {
   const p = ctx.profiles.get(slug);
   if (!p) throw new Error(`No character "${slug}".`);
   const cast = [...ctx.profiles.values()].filter((c) => c.slug !== slug).map((c) => `${c.slug} = ${c.name} (${c.species}, ${c.role})`).join("; ");
@@ -110,11 +111,14 @@ export async function planMeme(ctx: StudioContext, slug: string, spec: MemeSpec,
         ...(stock.length && spec.scenes.length === 2
           ? [`For scene 2 only, instead of a new drawing you may pick one of these ready-made pictures of ${p.name} alone in the office, when it acts out the punchline well (and the scene note does not ask for something else or for other characters). Put its name in \`stock\` for scene 2, else leave \`stock\` empty:\n${stock.map((e) => `- ${e.name}: ${e.act}`).join("\n")}`]
           : []),
+        ...(sounds.length
+          ? [`You may add one sound effect when the punchline appears, only if it makes the joke land harder (most memes need none). Put its name in \`sfx\`, else leave it empty:\n${sounds.map((x) => `- ${x.name}: ${x.prompt}`).join("\n")}`]
+          : []),
         `Rules: ${p.name} wears the usual outfit from the reference sheet; the setting is the Hồi Sau office unless a scene note says otherwise; one clear action and a strong expression; nothing with lettering on it (no shirts, signs or screens with words); no clocks; every scene has the same time of day and lighting (daytime office unless a note says night). Call ${p.name} by name, never "he" or "she". Other cast if needed: ${cast}.${boss ? ` When the text says "sếp" (the boss), the boss is ${boss.name} (${boss.slug}): put ${boss.slug} in cast and draw ${boss.name}, not another colleague.` : ""}`,
       ].join("\n\n"),
     },
   ];
-  const r = await ctx.spark.json<{ shots: Array<Pick<Shot, "act" | "pose" | "cast" | "moving"> & { stock?: string }> }>("meme_plan", MEME_PLAN, messages);
+  const r = await ctx.spark.json<{ shots: Array<Pick<Shot, "act" | "pose" | "cast" | "moving"> & { stock?: string }>; sfx?: string }>("meme_plan", MEME_PLAN, messages);
   const { punchAt, end } = memeTiming(spec);
   const lines: Line[] = [
     { text: spec.top.trim(), start: 0, end: punchAt },
@@ -132,7 +136,8 @@ export async function planMeme(ctx: StudioContext, slug: string, spec: MemeSpec,
   // A ready-made reaction only for the punchline scene, only one that was offered, and with the lead alone.
   const pick = spec.scenes.length === 2 ? stock.find((e) => e.name === r.shots[1]?.stock?.trim()) : undefined;
   if (pick) Object.assign(shots[1], { stock: pick.name, act: `${pick.act} ${MEME_FRAME}`, pose: "", cast: [], moving: undefined });
-  return { slug, clip: "", end, lines, shots };
+  const sfx = sounds.find((x) => x.name === r.sfx?.trim())?.name;
+  return { slug, clip: "", end, lines, shots, ...(sfx ? { sfx } : {}) };
 }
 
 /** Added to every meme picture: room for the text on top, and none of what went wrong in tests. */
@@ -245,7 +250,7 @@ export function makeBlink(src: string, out: string, box: { x: number; y: number;
 }
 
 /** Frames where something changes, then ffmpeg with the music (or silence) at 30 fps CFR. */
-export async function renderMeme(plan: Plan, dir: string, music: string | undefined, out: string, log?: (s: string) => void, faceTop: Record<string, number | undefined> = {}): Promise<string> {
+export async function renderMeme(plan: Plan, dir: string, music: string | undefined, out: string, log?: (s: string) => void, faceTop: Record<string, number | undefined> = {}, sfx?: string): Promise<string> {
   const [top, punch] = plan.lines;
   const topImg = top ? beatSvg(top.text, false) : undefined;
   const punchImg = punch ? beatSvg(punch.text, true) : undefined;
@@ -312,7 +317,9 @@ export async function renderMeme(plan: Plan, dir: string, music: string | undefi
   const audio = music && existsSync(music) ? ["-i", music] : ["-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo"];
   const fade = music && existsSync(music) ? ["-af", `afade=t=in:d=0.3,afade=t=out:st=${(plan.end - 1.2).toFixed(2)}:d=1.2`] : [];
   mkdirSync(dirname(out), { recursive: true });
-  const r = spawnSync(process.env.FFMPEG_PATH || "ffmpeg", ["-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", listFile, ...audio, "-map", "0:v", "-map", "1:a", "-vf", "fps=30,format=yuv420p", "-fps_mode", "cfr", "-r", "30", ...fade, "-c:v", "libx264", "-preset", "medium", ...DELIVERY, "-t", String(plan.end), out], { encoding: "utf8" });
+  // A sound effect (talk sfx) lands as the punchline appears, over the music.
+  const withSfx = sfx && existsSync(sfx) ? ["-i", sfx, "-filter_complex", sfxMix(!!fade.length, plan.lines[1]?.start ?? 0, plan.end), "-map", "0:v", "-map", "[a]"] : undefined;
+  const r = spawnSync(process.env.FFMPEG_PATH || "ffmpeg", ["-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", listFile, ...audio, ...(withSfx ?? ["-map", "0:v", "-map", "1:a"]), "-vf", "fps=30,format=yuv420p", "-fps_mode", "cfr", "-r", "30", ...(withSfx ? [] : fade), "-c:v", "libx264", "-preset", "medium", ...DELIVERY, "-t", String(plan.end), out], { encoding: "utf8" });
   if (r.status !== 0) throw new Error(`ffmpeg failed: ${r.stderr}`);
   log?.(`${out}: ${cache.size} distinct frames`);
   return out;

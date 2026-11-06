@@ -67,6 +67,8 @@ export interface Plan {
   end: number;
   lines: Line[];
   shots: Shot[];
+  /** A sound effect from series/sfx for the punchline of a meme (talk sfx). */
+  sfx?: string;
 }
 
 // ---------------------------------------------------------------- pure parts

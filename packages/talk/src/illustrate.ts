@@ -246,6 +246,43 @@ export function alignBackground(a: Uint8Array, b: Uint8Array, w: number, h: numb
   return best;
 }
 
+/**
+ * Lays B back over A's camera: the scale and shift that best match B's background to A's, then B resampled
+ * into A's frame (uniform scale only, never stretched); where B has nothing, A shows through. Muse Image edits
+ * of a whole picture come back zoomed in up to ~17 % about the lower middle, and a pose that was fixed twice
+ * jumped in size against its pair, which the owner saw as a zoom at every switch (7/11, "lướt tóp tóp").
+ */
+export function relayOnto(a: Uint8Array, b: Uint8Array, w: number, h: number, opts: { scales?: [number, number]; search?: number } = {}): { image: Uint8Array; warp: Warp } {
+  // The search runs on a small copy (the background is big and flat, so a quarter size is plenty).
+  const f = Math.max(1, Math.round(w / (opts.search ?? 270)));
+  const sw = Math.floor(w / f), sh = Math.floor(h / f);
+  const small = (src: Uint8Array) => {
+    const o = new Uint8Array(sw * sh * 3);
+    for (let y = 0; y < sh; y++) for (let x = 0; x < sw; x++) for (let c = 0; c < 3; c++) o[(y * sw + x) * 3 + c] = src[(y * f * w + x * f) * 3 + c];
+    return o;
+  };
+  const t = alignBackground(small(a), small(b), sw, sh, new Uint8Array(sw * sh).fill(1), { range: Math.round(sh * 0.12), scales: opts.scales ?? [0.78, 1.12] });
+  const warp: Warp = { k: t.k, dx: t.dx * f, dy: t.dy * f, err: t.err };
+  const image = new Uint8Array(w * h * 3);
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++) {
+      const i = y * w + x, j = warpIndex(w, h, warp, x, y);
+      const src = j < 0 ? a : b, k = j < 0 ? i : j;
+      image[i * 3] = src[k * 3]; image[i * 3 + 1] = src[k * 3 + 1]; image[i * 3 + 2] = src[k * 3 + 2];
+    }
+  return { image, warp };
+}
+
+/** A whole-picture edit put back on the picture's own camera; `null` when it already sits within half a percent. */
+async function sameCamera(before: Buffer, edited: Buffer, log?: (s: string) => void, id = ""): Promise<Buffer | null> {
+  const { w, h } = OUT;
+  const raw = async (x: Buffer) => new Uint8Array(await sharp(x).resize(w, h, { fit: "cover" }).removeAlpha().raw().toBuffer());
+  const { image, warp } = relayOnto(await raw(before), await raw(edited), w, h);
+  log?.(`${id}: edit camera vs before: scale ${warp.k.toFixed(3)}, shift ${Math.round(warp.dx)},${Math.round(warp.dy)} px`);
+  if (Math.abs(warp.k - 1) < 0.005 && Math.abs(warp.dx) <= 3 && Math.abs(warp.dy) <= 3) return null;
+  return sharp(Buffer.from(image), { raw: { width: w, height: h, channels: 3 } }).png().toBuffer();
+}
+
 // ---------------------------------------------------------------- the steps
 
 const ASR = fileURLToPath(new URL("../tts/asr.py", import.meta.url));
@@ -423,6 +460,8 @@ export async function fixShot(ctx: StudioContext, plan: Plan, dir: string, id: s
       opts.log?.(`${id}: fixing (${note.trim()})${fix ? ` again (${fix})` : ""}`);
       const res = await generateSoftly(ctx.image, { prompt: prompt + (fix ? ` Make sure: ${fix}` : ""), size: `${OUT.w}x${OUT.h}`, references: [dataUrl(before)] }, opts.log);
       writeFileSync(join(dir, `${id}-fix${attempt + 1}.raw.png`), res.image);
+      // The edit comes back on its own camera (often zoomed in): put it back on the picture's before anything else.
+      res.image = (await sameCamera(before, res.image, opts.log, id)) ?? res.image;
       // With a thing to find, only that place changes: the edit is pasted back under its (grown, feathered) mask.
       const pasted = opts.find && opts.sam ? await pasteRegion(opts.sam, before, res.image, opts.find, opts.log, box, isRemoval(note)) : { image: res.image, problem: "" };
       if (pasted.problem) {

@@ -561,3 +561,24 @@ test("illustrate: the mouth is edited in a face-sized square crop that stays ins
   assert.deepEqual(edge, { x: 1080 - 480, y: 0, w: 480, h: 480 });
   assert.equal(mouthCrop({ x: 0, y: 0, w: 200, h: 200 }, 1080, 1920).w, 640);
 });
+
+test("illustrate: a whole-picture edit that came back zoomed in is laid back on the picture's camera", async () => {
+  const { relayOnto } = await import("./illustrate.js");
+  const w = 108, h = 192;
+  const a = new Uint8Array(w * h * 3);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const v = (Math.floor(x / 9) * 53 + Math.floor(y / 11) * 97) % 255;
+    a[(y * w + x) * 3] = v; a[(y * w + x) * 3 + 1] = 255 - v; a[(y * w + x) * 3 + 2] = (v * 3) % 255;
+  }
+  // B = A zoomed in 15 % about the centre, as Muse Image returns an edit.
+  const b = new Uint8Array(w * h * 3);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const sx = Math.round((x - w / 2) / 1.15 + w / 2), sy = Math.round((y - h / 2) / 1.15 + h / 2);
+    for (let c = 0; c < 3; c++) b[(y * w + x) * 3 + c] = a[(sy * w + sx) * 3 + c];
+  }
+  const { image, warp } = relayOnto(a, b, w, h, { search: w });
+  assert.ok(Math.abs(warp.k - 1 / 1.15) < 0.02, `scale ${warp.k}`);
+  let d = 0;
+  for (let i = 0; i < a.length; i++) d += Math.abs(a[i] - image[i]);
+  assert.ok(d / a.length < 20, `mean diff ${d / a.length}`);
+});

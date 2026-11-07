@@ -158,7 +158,7 @@ export const MEME_MAX = 3;
  *   music A  loudnorm -21, fade in 0.2; to the end with a 1.2 s fade, or cut at cut-0.05 (0.1 s fade)
  *   music B  from cut+0.35, loudnorm -22, fade in 0.4, out over the last 1.3 s
  *   sounds   (trim with a 0.3 s fade) loudnorm -15, volume, at cut+at
- *   all      amix without normalising, cut to the clip, limiter 0.7 (about -14 to -16 LUFS)
+ *   all      amix without normalising, cut to the clip, limiter 0.6 (about -15 to -16 LUFS, peaks under 0 dBTP after AAC)
  */
 export function houseMix(o: { music: boolean; turn: MusicTurn; musicB: boolean; cut: number; end: number; sounds: Array<{ at: number; volume?: number; trim?: number }> }): string {
   const fmt = "aformat=sample_rates=44100:channel_layouts=stereo";
@@ -180,7 +180,7 @@ export function houseMix(o: { music: boolean; turn: MusicTurn; musicB: boolean; 
     parts.push(`[${next + i}:a]${trim}loudnorm=I=-15:TP=-2,volume=${(s.volume ?? 1).toFixed(2)},${fmt},adelay=${ms}|${ms}[s${i}]`);
     mix.push(`[s${i}]`);
   });
-  parts.push(`${mix.join("")}amix=inputs=${mix.length}:duration=longest:normalize=0,atrim=0:${o.end.toFixed(2)},alimiter=limit=0.7[a]`);
+  parts.push(`${mix.join("")}amix=inputs=${mix.length}:duration=longest:normalize=0,atrim=0:${o.end.toFixed(2)},alimiter=limit=0.6[a]`);
   return parts.join(";");
 }
 

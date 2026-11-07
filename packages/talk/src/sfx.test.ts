@@ -44,7 +44,7 @@ test("the library resolves a name to the meme sound, then Envato, Freesound, Aud
   assert.match(f, /\[3:a\]loudnorm=I=-15.*volume=1\.00.*adelay=3000\|3000\[s0\]/);
   assert.match(f, /\[4:a\]atrim=0:3\.00,afade=t=out:st=2\.70:d=0\.3,loudnorm.*volume=0\.80.*adelay=4600\|4600/);
   assert.match(f, /adelay=0\|0\[s2\]/);
-  assert.match(f, /amix=inputs=5:duration=longest:normalize=0,atrim=0:9\.00,alimiter=limit=0\.7\[a\]/);
+  assert.match(f, /amix=inputs=5:duration=longest:normalize=0,atrim=0:9\.00,alimiter=limit=0\.6\[a\]/);
   const keep = houseMix({ music: true, turn: "keep", musicB: false, cut: 3, end: 9, sounds: [{ at: 0 }] });
   assert.match(keep, /afade=t=out:st=7\.80:d=1\.2/);
   assert.match(keep, /\[2:a\]loudnorm=I=-15/);

@@ -30,7 +30,7 @@ import { align, grow, maskBox, unionBox, writePng, type Box, type Raster } from 
 import { python } from "./voice.js";
 import { roomFor, roomPrompt } from "./backgrounds.js";
 import { seasonRef } from "./seasons.js";
-import { colourGap, KIT_MIN_MOUTH, KIT_SKIN_GAP, openShapes, kitDrops, kitSkin, loadKit, ringColour, noseOffset, pasteKit, pickAngle } from "./mouthkit.js";
+import { colourGap, KIT_MIN_MOUTH, KIT_SKIN_GAP, openShapes, kitDrops, kitSkin, loadKit, noseOffset, pasteKit, pickAngle, stripSkin } from "./mouthkit.js";
 
 export interface Line {
   text: string;
@@ -1027,7 +1027,7 @@ export async function drawMouths(sam: Sam, ctx: StudioContext, plan: Plan, dir: 
       const own = pick ? await maskOf(sam, rgb, [`cartoon ${species}`]) : undefined;
       const onLead = !!own && own[Math.round(mouth.box.y + mouth.box.h / 2) * w + Math.round(mouth.box.x + mouth.box.w / 2)] === 1;
       const skin = pick && onLead ? await kitSkin(cdir, kit!, pick.angle) : undefined;
-      const gap = skin ? colourGap(ringColour(base, mouth.mask, 3, keep), skin) : Infinity;
+      const gap = skin ? colourGap(stripSkin(base, mouth.box, keep), skin) : Infinity;
       if (pick && !(onLead && gap <= KIT_SKIN_GAP)) opts.log?.(`${pic}: ${onLead ? `the skin round the mouth is off the kit's (${Math.round(gap)})` : "the mouth is not on the lead"}; not using the kit`);
       if (kit && pick && onLead && gap <= KIT_SKIN_GAP) {
         // Nothing is pasted off the lead (a cup or a hand held at the mouth stays as drawn).

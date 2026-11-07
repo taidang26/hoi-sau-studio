@@ -87,3 +87,13 @@ test("a sad face talks with a crying mouth, an angry one shouts, a happy one lau
   assert.equal(openShapes("jumps up with a big happy grin")[0], "laugh");
   assert.deepEqual(openShapes("stands by the desk"), ["wide", "open", "teeth"]);
 });
+
+test("the skin round a mouth is read just round its top strip, so a small white muzzle in a dark face reads white", async () => {
+  const { stripSkin } = await import("./mouthkit.js");
+  const w = 200, h = 200, data = Buffer.alloc(w * h * 3);
+  for (let i = 0; i < w * h; i++) data.set([70, 45, 30], i * 3); // dark brown face
+  for (let y = 80; y < 130; y++) for (let x = 70; x < 130; x++) data.set([245, 240, 235], (y * w + x) * 3); // white muzzle
+  for (let y = 100; y < 110; y++) for (let x = 85; x < 115; x++) data.set([40, 10, 10], (y * w + x) * 3); // the mouth
+  const skin = stripSkin({ data, width: w, height: h }, { x: 85, y: 100, w: 30 });
+  assert.ok(skin[0] > 200, `muzzle white, got ${skin}`);
+});

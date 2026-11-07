@@ -109,9 +109,9 @@ export function eraseMouth(base: Raster, mouth: Uint8Array, growPx = 3, keep?: U
 }
 
 /** The median colour of a ring of skin around `mouth` (`grow`+1 to `grow`+6 px out), skipping `keep`. */
-export function ringColour(img: Raster, mouth: Uint8Array, growPx = 3, keep?: Uint8Array): [number, number, number] {
+export function ringColour(img: Raster, mouth: Uint8Array, growPx = 3, keep?: Uint8Array, widthPx = 6): [number, number, number] {
   const { width: w, height: h } = img;
-  const hole = dilate(mouth, w, h, growPx), outer = dilate(mouth, w, h, growPx + 6);
+  const hole = dilate(mouth, w, h, growPx), outer = dilate(mouth, w, h, growPx + widthPx);
   const ch: number[][] = [[], [], []];
   for (let i = 0; i < hole.length; i++) if (outer[i] && !hole[i] && !keep?.[i]) for (let c = 0; c < 3; c++) ch[c].push(img.data[i * 3 + c]);
   return ch.map((v) => v.sort((a, b) => a - b)[v.length >> 1] ?? 0) as [number, number, number];
@@ -125,10 +125,21 @@ export const KIT_SKIN_GAP = 70;
 export async function kitSkin(charactersDir: string, kit: MouthKit, angle: KitAngle): Promise<[number, number, number] | undefined> {
   const file = join(kitDir(charactersDir, kit.slug), `${angle.angle}.png`);
   if (!existsSync(file)) return undefined;
-  const img = await rawOf(readFileSync(file), KIT_SIZE), n = KIT_SIZE, m = new Uint8Array(n * n);
-  const x0 = Math.round(angle.base.cx - angle.base.w / 2), h = Math.max(4, Math.round(angle.base.w / 4));
-  for (let y = angle.base.top; y < Math.min(n, angle.base.top + h); y++) for (let x = Math.max(0, x0); x < Math.min(n, x0 + angle.base.w); x++) m[y * n + x] = 1;
-  return ringColour(img, m, 3);
+  const img = await rawOf(readFileSync(file), KIT_SIZE);
+  return stripSkin(img, { x: Math.round(angle.base.cx - angle.base.w / 2), y: angle.base.top, w: angle.base.w });
+}
+
+/**
+ * The skin just round the top strip of a mouth box, measured the same way on the kit portrait and on
+ * a picture (a ring as thick as a tenth of the mouth's width). Sa's small white muzzle sits in a dark
+ * brown face: a fixed 6 px ring round the whole found mouth reached the brown, so her kit was never used.
+ */
+export function stripSkin(img: Raster, box: { x: number; y: number; w: number }, keep?: Uint8Array): [number, number, number] {
+  const { width: w, height: h } = img, m = new Uint8Array(w * h);
+  const sh = Math.max(4, Math.round(box.w / 4));
+  for (let y = Math.max(0, box.y); y < Math.min(h, box.y + sh); y++) for (let x = Math.max(0, box.x); x < Math.min(w, box.x + box.w); x++) m[y * w + x] = 1;
+  const t = Math.max(2, Math.round(box.w / 10));
+  return ringColour(img, m, 1, keep, t);
 }
 
 /** Alpha-blends an RGBA patch onto `base` with its top-left at (x, y), never over `keep`. */

@@ -20,7 +20,7 @@ import sharp from "sharp";
 import type { Sam } from "@hoi-sau/dance";
 import { CHARACTERS_DIR, designChanged, noteDesign, type StudioContext } from "@hoi-sau/studio";
 import { facesBox } from "./cover.js";
-import { drawMouths, drawPoses, drawShots, stabilizePoses, type Plan, type Shot } from "./illustrate.js";
+import { drawMouths, drawPoses, drawShots, maskOf, stabilizePoses, type Plan, type Shot } from "./illustrate.js";
 import { MEME_FRAME, makeBlink } from "./meme.js";
 
 export interface Reaction {
@@ -237,6 +237,13 @@ export function useStock(charactersDir: string, plan: Plan, shotsDir: string, cl
  * Ready eyes and mouths for every reaction picture, so a clip that takes one draws nothing more:
  * a shut-eye copy for blinks (free, on the machine) and the shut/open mouth pair for lip-sync (the mouth kit first).
  */
+/** Whether SAM sees the character's eyes inside its face box. */
+async function eyesIn(sam: Sam, rgb: Uint8Array, species: string, face: { x: number; y: number; w: number; h: number }): Promise<boolean> {
+  const eyes = await maskOf(sam, rgb, [`eyes of the cartoon ${species}`]);
+  for (let y = face.y; y < face.y + face.h; y++) for (let x = face.x; x < face.x + face.w; x++) if (eyes[y * 1080 + x]) return true;
+  return false;
+}
+
 export async function stockExtras(ctx: StudioContext, sam: Sam, slug: string, opts: { only?: string[]; log?: (s: string) => void } = {}): Promise<{ blinks: number; mouths: number }> {
   const cdir = ctx.charactersDir ?? CHARACTERS_DIR, dir = stockDir(cdir, slug);
   const species = (ctx.profiles.get(slug)?.species ?? "character").split("(")[0].trim();
@@ -247,6 +254,8 @@ export async function stockExtras(ctx: StudioContext, sam: Sam, slug: string, op
     if (existsSync(out) && !opts.only) { blinks++; continue; }
     const rgb = new Uint8Array(await sharp(a).resize(1080, 1920, { fit: "cover" }).removeAlpha().raw().toBuffer());
     const face = await facesBox(sam, rgb, species);
+    // Eyes hidden (behind a monitor, say) get no blink: blink.py would paint shut eyes on the forehead.
+    if (face && !(await eyesIn(sam, rgb, species, face))) { opts.log?.(`${r.name}: no eyes to be seen; no blink`); continue; }
     if (face && makeBlink(a, out, face, opts.log)) blinks++;
   }
   const report = await drawMouths(sam, ctx, stockPlan(slug, have, ctx), dir, { only: opts.only, log: opts.log });

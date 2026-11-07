@@ -99,3 +99,14 @@ test("the skin round a mouth is read just round its top strip, so a small white 
   const skin = stripSkin({ data, width: w, height: h }, { x: 85, y: 100, w: 30 });
   assert.ok(skin[0] > 200, `muzzle white, got ${skin}`);
 });
+
+test("a mouth is never looked for on the others in the picture: the cast by species and the director's cat", async () => {
+  const { othersIn } = await import("./illustrate.js");
+  const profiles = new Map<string, any>([
+    ["cu-li", { slug: "cu-li", species: "slow loris (cu li)", look: "yellow hoodie" }],
+    ["cay-muc", { slug: "cay-muc", species: "binturong (cầy mực)", look: "holds a white cat" }],
+  ]);
+  assert.deepEqual(othersIn({ profiles } as any, "cu-li", ["cay-muc"]), ["cartoon binturong", "white cat"]);
+  assert.deepEqual(othersIn({ profiles } as any, "cu-li", []), []);
+  assert.deepEqual(othersIn({ profiles } as any, "cay-muc", []), ["white cat"]);
+});

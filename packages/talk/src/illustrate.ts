@@ -973,6 +973,20 @@ export async function mouthIn(segment: (phrase: string) => Promise<Array<{ mask:
 export async function leadOr(first: Uint8Array, fallback: () => Promise<Uint8Array>): Promise<Uint8Array> {
   return first.some((v) => v) ? first : fallback();
 }
+/**
+ * SAM phrases for everyone in a picture but the lead: the cast by species, and a pet carried by anyone
+ * in it (the director's white cat Tuyết), so a mouth is never found or pasted on them.
+ */
+export function othersIn(ctx: Pick<StudioContext, "profiles">, lead: string, cast: string[]): string[] {
+  const out: string[] = [];
+  for (const slug of cast) {
+    const c = ctx.profiles.get(slug);
+    if (slug !== lead && c) out.push(`cartoon ${c.species.split("(")[0].trim()}`);
+  }
+  if ([lead, ...cast].some((slug) => /\bcat\b/i.test(JSON.stringify(ctx.profiles.get(slug) ?? {})))) out.push("white cat");
+  return out;
+}
+
 export async function drawMouths(sam: Sam, ctx: StudioContext, plan: Plan, dir: string, opts: { only?: string[]; mouthTries?: number; kit?: boolean; log?: (s: string) => void } = {}): Promise<Array<{ pic: string; ok: boolean; problem?: string; kit?: boolean }>> {
   const { w, h } = OUT;
   const p = ctx.profiles.get(plan.slug)!;
@@ -982,17 +996,27 @@ export async function drawMouths(sam: Sam, ctx: StudioContext, plan: Plan, dir: 
   const cdir = ctx.charactersDir ?? CHARACTERS_DIR;
   const kit = opts.kit === false ? undefined : loadKit(cdir, plan.slug);
   const pngOf = (rgb: Uint8Array) => sharp(Buffer.from(rgb), { raw: { width: w, height: h, channels: 3 } }).png().toBuffer();
-  const leadMask = async (rgb: Uint8Array) => leadOr(await maskOf(sam, rgb, [`cartoon ${species}`]), () => maskOf(sam, rgb, ["cartoon character"]));
-  const findMouth = async (rgb: Uint8Array) => {
+  /**
+   * The lead in the picture, minus everyone else in it (`others`, SAM phrases): with the boss in the shot, SAM's
+   * lead often takes in Bino or his cat too, and Tũn's mouth was pasted on them. When the two cannot be told apart
+   * the lead comes out empty and the picture keeps its mouth as drawn.
+   */
+  const leadMask = async (rgb: Uint8Array, others: string[] = []) => {
+    const lead = await leadOr(await maskOf(sam, rgb, [`cartoon ${species}`]), () => maskOf(sam, rgb, ["cartoon character"]));
+    if (!others.length) return lead;
+    const o = await maskOf(sam, rgb, others);
+    return lead.map((v, i) => (v && !o[i] ? 1 : 0));
+  };
+  const findMouth = async (rgb: Uint8Array, others: string[] = []) => {
     const url = dataUrl(await pngOf(rgb));
-    return mouthIn((ph) => sam.segment(ph, url, w, h), [`mouth of the cartoon ${species}`, "mouth"], await leadMask(rgb), w, h);
+    return mouthIn((ph) => sam.segment(ph, url, w, h), [`mouth of the cartoon ${species}`, "mouth"], await leadMask(rgb, others), w, h);
   };
   /**
    * The lead's nose, eyes and eye markings in the picture, grown 3 px: never pasted over, and an open mouth must not reach them.
    * `nearNose` is the nose grown by NOSE_GAP: an open mouth touching it leaves a thin seam under the nose.
    */
-  const faceKeep = async (rgb: Uint8Array) => {
-    const url = dataUrl(await pngOf(rgb)), lead = await leadMask(rgb);
+  const faceKeep = async (rgb: Uint8Array, others: string[] = []) => {
+    const url = dataUrl(await pngOf(rgb)), lead = await leadMask(rgb, others);
     const keep = new Uint8Array(w * h), nose = new Uint8Array(w * h);
     for (const ph of [`nose of the cartoon ${species}`, `eyes of the cartoon ${species}`, `eye patches of the cartoon ${species}`]) {
       const m = leadFeatures(await sam.segment(ph, url, w, h), lead, w, h);
@@ -1018,17 +1042,18 @@ export async function drawMouths(sam: Sam, ctx: StudioContext, plan: Plan, dir: 
       if (!existsSync(file) || (!opts.only && existsSync(openFile))) continue;
       const rgb = await rgbOf(file);
       const base: Raster = { data: Buffer.from(rgb), width: w, height: h };
-      const mouth = await findMouth(rgb);
+      const others = othersIn(ctx, plan.slug, s.cast ?? []);
+      const mouth = await findMouth(rgb, others);
       if (!mouth) {
         report.push({ pic, ok: false, problem: `no mouth of ${p.name} found` });
         opts.log?.(`${pic}: no mouth of ${p.name} found; this picture keeps its mouth as drawn`);
         continue;
       }
-      const { keep, nearNose, noseBox } = await faceKeep(rgb);
+      const { keep, nearNose, noseBox } = await faceKeep(rgb, others);
       const pick = kit && mouth.box.w >= KIT_MIN_MOUTH ? pickAngle(kit, noseOffset(mouth.box, noseBox)) : undefined;
       // The kit is only for the lead's own face: its mouth must lie on the lead found by species (not the "cartoon character" fallback,
       // which takes in everyone), and the skin round it must match the kit portrait's (Tũn's mouth once landed on Bống and on Bino).
-      const own = pick ? await maskOf(sam, rgb, [`cartoon ${species}`]) : undefined;
+      const own = pick ? await leadMask(rgb, others) : undefined;
       const onLead = !!own && own[Math.round(mouth.box.y + mouth.box.h / 2) * w + Math.round(mouth.box.x + mouth.box.w / 2)] === 1;
       const skin = pick && onLead ? await kitSkin(cdir, kit!, pick.angle) : undefined;
       const gap = skin ? colourGap(stripSkin(base, mouth.box, keep), skin) : Infinity;
@@ -1038,7 +1063,7 @@ export async function drawMouths(sam: Sam, ctx: StudioContext, plan: Plan, dir: 
         const keepK = Uint8Array.from(keep);
         for (let i = 0; i < keepK.length; i++) if (!own![i]) keepK[i] = 1;
         const made1 = async (img: Raster | undefined): Promise<Made | undefined> => {
-          const found = img && (await findMouth(img.data));
+          const found = img && (await findMouth(img.data, others));
           return img && found ? { img, size: area(found.mask), box: found.box, onFace: overlapShare(found.mask, keep, w, h), nearNose: overlapShare(found.mask, nearNose, w, h) } : undefined;
         };
         // The shut frame is the picture as drawn, so its own expression (a sad line, a grin) stays; only the open frame comes from the kit.
@@ -1089,7 +1114,7 @@ export async function drawMouths(sam: Sam, ctx: StudioContext, plan: Plan, dir: 
         const patch = await sharp(res.image).resize(crop.w, crop.h, { fit: "fill" }).removeAlpha().raw().toBuffer();
         const editRgb = Uint8Array.from(rgb);
         for (let y = 0; y < crop.h; y++) editRgb.set(patch.subarray(y * crop.w * 3, (y + 1) * crop.w * 3), ((crop.y + y) * w + crop.x) * 3);
-        const found = await findMouth(editRgb);
+        const found = await findMouth(editRgb, others);
         if (!found) { opts.log?.(`${pic}: no mouth found in the ${kind} edit`); continue; }
         const edit: Raster = { data: Buffer.from(editRgb), width: w, height: h };
         const shift = align(base, edit, grow(unionBox([mouth.box, found.box])!, 1.6, w, h, 48));

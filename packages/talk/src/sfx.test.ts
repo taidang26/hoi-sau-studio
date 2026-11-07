@@ -41,8 +41,8 @@ test("the library resolves a name to the meme sound, then Envato, Freesound, Aud
   const f = houseMix({ music: true, turn: "switch", musicB: true, cut: 3, end: 9, sounds: [{ at: 0 }, { at: 1.6, volume: 0.8, trim: 3 }, { at: -5 }] });
   assert.match(f, /\[1:a\]loudnorm=I=-21.*afade=t=out:st=2\.95:d=0\.1/);
   assert.match(f, /\[2:a\]loudnorm=I=-22.*adelay=3350\|3350\[mb\]/);
-  assert.match(f, /\[3:a\]loudnorm=I=-15.*volume=1\.00.*adelay=3000\|3000\[s0\]/);
-  assert.match(f, /\[4:a\]atrim=0:3\.00,afade=t=out:st=2\.70:d=0\.3,loudnorm.*volume=0\.80.*adelay=4600\|4600/);
+  assert.match(f, /\[3:a\]loudnorm=I=-15.*volume=1\.00.*adelay=2930\|2930\[s0\]/);
+  assert.match(f, /\[4:a\]atrim=0:3\.00,afade=t=out:st=2\.70:d=0\.3,loudnorm.*volume=0\.80.*adelay=4530\|4530/);
   assert.match(f, /adelay=0\|0\[s2\]/);
   assert.match(f, /amix=inputs=5:duration=longest:normalize=0,atrim=0:9\.00,alimiter=limit=0\.6,loudnorm=I=-14\.5:TP=-1\.5:LRA=11,aresample=44100\[a\]/);
   const keep = houseMix({ music: true, turn: "keep", musicB: false, cut: 3, end: 9, sounds: [{ at: 0 }] });

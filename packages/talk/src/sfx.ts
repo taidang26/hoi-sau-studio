@@ -160,6 +160,9 @@ export const MEME_MAX = 3;
  *   sounds   (trim with a 0.3 s fade) loudnorm -15, volume, at cut+at
  *   all      amix without normalising, cut to the clip, limiter 0.6, then loudnorm -14.5 LUFS, true peak -1.5 dBTP (stays under 0 after AAC)
  */
+/** How much earlier than the picture a sound starts. */
+export const LEAD = 0.07;
+
 export function houseMix(o: { music: boolean; turn: MusicTurn; musicB: boolean; cut: number; end: number; sounds: Array<{ at: number; volume?: number; trim?: number }> }): string {
   const fmt = "aformat=sample_rates=44100:channel_layouts=stereo";
   const parts: string[] = [];
@@ -175,7 +178,8 @@ export function houseMix(o: { music: boolean; turn: MusicTurn; musicB: boolean; 
     next = 3;
   }
   o.sounds.forEach((s, i) => {
-    const ms = Math.max(0, Math.round((o.cut + s.at) * 1000));
+    // A sound lands 2 frames (0.07 s) before the picture: on time to the ear; late by 0.2 s already feels off.
+    const ms = Math.max(0, Math.round((o.cut + s.at - LEAD) * 1000));
     const trim = s.trim ? `atrim=0:${s.trim.toFixed(2)},afade=t=out:st=${Math.max(0, s.trim - 0.3).toFixed(2)}:d=0.3,` : "";
     parts.push(`[${next + i}:a]${trim}loudnorm=I=-15:TP=-2,volume=${(s.volume ?? 1).toFixed(2)},${fmt},adelay=${ms}|${ms}[s${i}]`);
     mix.push(`[s${i}]`);

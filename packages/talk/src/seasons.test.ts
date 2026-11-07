@@ -1,15 +1,17 @@
 import assert from "node:assert/strict";
-import { cpSync, existsSync, mkdtempSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { test } from "node:test";
+import { after, test } from "node:test";
 import { CHARACTERS_DIR, openStudio } from "@hoi-sau/studio";
 import { planMeme } from "./meme.js";
 import { makeSeasons, OUTFITS, outfitOf, seasonRef, seasonsDir } from "./seasons.js";
 
 test("an occasion's meme dresses the lead from the seasonal picture and takes no everyday reaction", async () => {
   const chars = mkdtempSync(join(tmpdir(), "hoisau-seasons-"));
-  cpSync(CHARACTERS_DIR, chars, { recursive: true });
+  after(() => rmSync(chars, { recursive: true, force: true }));
+  // Profiles and model sheets only: the real stock, kits and outfits are large and would change the answers.
+  cpSync(CHARACTERS_DIR, chars, { recursive: true, filter: (src) => !/[\\/](stock|mouthkit|seasons|talk)([\\/]|$)/.test(src.slice(CHARACTERS_DIR.length)) });
   const ctx = openStudio({ mock: true, charactersDir: chars });
   assert.equal(await makeSeasons(ctx, "cu-li", { only: ["tet"] }), 1);
   assert.ok(existsSync(join(seasonsDir(chars, "cu-li"), "tet.png")));

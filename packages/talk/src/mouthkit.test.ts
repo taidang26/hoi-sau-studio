@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
-import { cpSync, existsSync, mkdtempSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { test } from "node:test";
+import { after, test } from "node:test";
 import { CHARACTERS_DIR, openStudio } from "@hoi-sau/studio";
 import type { Sam } from "@hoi-sau/dance";
 import { blendPatch, eraseMouth, kitDir, loadKit, makeMouthKit, noseOffset, pasteKit, pickAngle, placeShape, SHAPES, type MouthKit } from "./mouthkit.js";
@@ -42,7 +42,9 @@ test("erasing a mouth fills it with the skin around it and leaves the nose; a pa
 
 test("the kit is drawn once per angle, cut by SAM, and pasted in place of a picture's mouth", async () => {
   const chars = mkdtempSync(join(tmpdir(), "hoisau-kit-"));
-  cpSync(CHARACTERS_DIR, chars, { recursive: true });
+  after(() => rmSync(chars, { recursive: true, force: true }));
+  // Profiles and model sheets only: the real stock, kits and outfits are large and would change the answers.
+  cpSync(CHARACTERS_DIR, chars, { recursive: true, filter: (src) => !/[\\/](stock|mouthkit|seasons|talk)([\\/]|$)/.test(src.slice(CHARACTERS_DIR.length)) });
   const ctx = openStudio({ mock: true, charactersDir: chars });
   const sam = {
     segment: async (ph: string, _url: string, w: number, h: number) =>

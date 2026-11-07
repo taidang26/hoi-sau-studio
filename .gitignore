@@ -31,3 +31,12 @@ series/sets/
 # Built by `npm run studio -- tai` (and before every site deploy)
 site/public/tai/index.html
 site/public/feed.json
+
+# Ready-made reactions: big pictures, made on the machine (talk stock)
+characters/*/stock/
+characters/*/mouthkit/
+series/backgrounds/
+series/sfx/
+characters/*/seasons/
+series/music/
+assets/fonts/envato/

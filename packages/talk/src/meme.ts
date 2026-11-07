@@ -27,6 +27,8 @@ import { lowerPicture } from "./cover.js";
 import { popScale, type Line, type Plan, type Shot } from "./illustrate.js";
 import { OUT, SAFE } from "./timeline.js";
 import { python } from "./voice.js";
+import { houseMix, MEME_MAX, SOUND_RECIPE, sfxMix } from "./sfx.js";
+import { outfitOf } from "./seasons.js";
 
 export interface MemeSpec {
   /** The set-up, shown from the start. */
@@ -39,6 +41,8 @@ export interface MemeSpec {
   music: string;
   /** Total length; 0 lets the reading time decide (memeTiming). */
   seconds: number;
+  /** An occasion (Tết, Noel, Trung thu, 20/10, 8/3, 14/2): the lead wears that season's outfit (talk seasons). */
+  season?: string;
 }
 
 export const MEME_SECONDS = { min: 6, max: 20, default: 0 };
@@ -74,6 +78,20 @@ export function memeTiming(spec: Pick<MemeSpec, "top" | "punch" | "seconds">): {
   return { punchAt, end };
 }
 
+const SOUND_PLAN = S.obj({
+    turn: S.enum(["keep", "switch"], "keep: the music plays on; switch: it cuts at the punchline and music_b takes over to the end"),
+    music_b: S.str("for turn = switch: the mood of the second track from the offered moods; empty otherwise"),
+    fx: S.arr(
+      S.obj({
+        name: S.str("a sound name from the offered list"),
+        at: S.num("seconds from the punchline: 0 for the cut sound, -0.25 for a whoosh just before, +0.1 to +2.8 for reactions"),
+        volume: S.num("0.6 to 1; 1 for the cut sound"),
+      }),
+      0,
+      3,
+    ),
+  });
+
 const MEME_PLAN = S.obj({
   shots: S.arr(
     S.obj({
@@ -81,19 +99,28 @@ const MEME_PLAN = S.obj({
       pose: S.str("English: the next moment of the same picture, a small real movement (a blink, a hand moving, money being flicked, a head turn); same place, same props"),
       cast: S.arr(S.str("slug of another cast member, only if the joke needs one"), 0, 2),
       moving: S.arr(S.str("English noun for SAM: what moves between the two poses (the character, what it holds)"), 1, 4),
+      stock: S.str("name of a ready-made reaction picture for scene 2 when offered and it fits; empty otherwise"),
     }),
     1,
     2,
   ),
+  sound: SOUND_PLAN,
 });
 
 /** Muse Spark writes the shots; the words become the plan's two lines. */
-export async function planMeme(ctx: StudioContext, slug: string, spec: MemeSpec): Promise<Plan> {
+/**
+ * `stock`: approved ready-made reactions of the lead. With two scenes, Muse Spark may take one
+ * for the punchline scene when it fits, and that scene is then not drawn.
+ */
+export async function planMeme(ctx: StudioContext, slug: string, spec: MemeSpec, stock: Array<{ name: string; vi: string; act: string; cast?: string[] }> = [], sounds: Array<{ name: string; vi: string; prompt: string; kind?: string }> = [], moods: string[] = []): Promise<Plan> {
   const p = ctx.profiles.get(slug);
   if (!p) throw new Error(`No character "${slug}".`);
   const cast = [...ctx.profiles.values()].filter((c) => c.slug !== slug).map((c) => `${c.slug} = ${c.name} (${c.species}, ${c.role})`).join("; ");
   // "Sếp" in a joke is the most senior cast member (the director), never just any colleague.
   const boss = [...ctx.profiles.values()].find((c) => c.slug !== slug && /giám đốc|director|founder/i.test(c.role));
+  // An occasion's meme dresses the lead for it; the ready-made reactions wear the everyday outfit, so none is offered.
+  const outfit = outfitOf(spec.season);
+  if (outfit) stock = [];
   const scenes = spec.scenes.map((n, i) => `Scene ${i + 1}: ${n.trim() || "(your choice)"}`).join("\n");
   const messages: ChatMessage[] = [
     {
@@ -102,11 +129,17 @@ export async function planMeme(ctx: StudioContext, slug: string, spec: MemeSpec)
         `A silent Vietnamese text meme is being made with our cartoon character ${p.name} (${p.species}, ${p.role}). The joke is two lines of text shown in two beats; the pictures only act it out. Write exactly ${spec.scenes.length} shot(s).`,
         `Text 1 (set-up): ${spec.top}\nText 2 (punchline): ${spec.punch}`,
         scenes,
-        `Rules: ${p.name} wears the usual outfit from the reference sheet; the setting is the Hồi Sau office unless a scene note says otherwise; one clear action and a strong expression; nothing with lettering on it (no shirts, signs or screens with words); no clocks; every scene has the same time of day and lighting (daytime office unless a note says night). Call ${p.name} by name, never "he" or "she". Other cast if needed: ${cast}.${boss ? ` When the text says "sếp" (the boss), the boss is ${boss.name} (${boss.slug}): put ${boss.slug} in cast and draw ${boss.name}, not another colleague.` : ""}`,
+        ...(stock.length && spec.scenes.length === 2
+          ? [`For scene 2 only, instead of a new drawing you may pick one of these ready-made pictures of ${p.name} in the office (alone unless it says who is with them), when it acts out the punchline well (and the scene note does not ask for something else or for other characters). Put its name in \`stock\` for scene 2, else leave \`stock\` empty:\n${stock.map((e) => `- ${e.name}: ${e.act}`).join("\n")}`]
+          : []),
+        ...(sounds.length
+          ? [`Sound (the house recipe, every meme gets it): ${SOUND_RECIPE} Put it in \`sound\`: \`turn\`${moods.length ? `, \`music_b\` (one of: ${moods.join(", ")})` : ""} and 1-3 \`fx\` from these sounds:\n${sounds.map((x) => `- ${x.name}: ${x.prompt}`).join("\n")}`]
+          : []),
+        `Rules: ${p.name} wears the usual outfit from the reference sheet${outfit ? ` plus, for ${outfit.vi}, ${outfit.text}` : ""}; the setting is the Hồi Sau office unless a scene note says otherwise; one clear action and a strong expression; nothing with lettering on it (no shirts, signs or screens with words); no clocks; every scene has the same time of day and lighting (daytime office unless a note says night). Call ${p.name} by name, never "he" or "she". Other cast if needed: ${cast}.${boss ? ` When the text says "sếp" (the boss), the boss is ${boss.name} (${boss.slug}): put ${boss.slug} in cast and draw ${boss.name}, not another colleague.` : ""}`,
       ].join("\n\n"),
     },
   ];
-  const r = await ctx.spark.json<{ shots: Array<Pick<Shot, "act" | "pose" | "cast" | "moving">> }>("meme_plan", MEME_PLAN, messages);
+  const r = await ctx.spark.json<{ shots: Array<Pick<Shot, "act" | "pose" | "cast" | "moving"> & { stock?: string }>; sfx?: string; sound?: { turn?: string; music_b?: string; fx?: Array<{ name?: string; at?: number; volume?: number }> } }>("meme_plan", MEME_PLAN, messages);
   const { punchAt, end } = memeTiming(spec);
   const lines: Line[] = [
     { text: spec.top.trim(), start: 0, end: punchAt },
@@ -121,7 +154,64 @@ export async function planMeme(ctx: StudioContext, slug: string, spec: MemeSpec)
     cast: r.shots[i]?.cast ?? [],
     moving: r.shots[i]?.moving?.length ? r.shots[i].moving : undefined,
   }));
-  return { slug, clip: "", end, lines, shots };
+  // A ready-made reaction only for the punchline scene, only one that was offered, and with the lead alone.
+  const pick = spec.scenes.length === 2 ? stock.find((e) => e.name === r.shots[1]?.stock?.trim()) : undefined;
+  if (pick) Object.assign(shots[1], { stock: pick.name, act: `${pick.act} ${MEME_FRAME}`, pose: "", cast: pick.cast ?? [], moving: undefined });
+  const sound = soundPlan(r.sound, sounds, moods, end - punchAt);
+  return { slug, clip: "", end, lines, shots, ...(sound ? { sound } : {}), ...(outfit ? { season: outfit.season } : {}) };
+}
+
+/**
+ * Muse Spark's sound answer, kept to what exists: offered names only, at most 3, times inside the
+ * clip, meme sounds trimmed to 3 s, a switch only to an offered mood (else a stop).
+ */
+export function soundPlan(
+  raw: { turn?: string; music_b?: string; fx?: Array<{ name?: string; at?: number; volume?: number }> } | undefined,
+  sounds: Array<{ name: string; kind?: string }>,
+  moods: string[],
+  afterPunch: number,
+): NonNullable<Plan["sound"]> | undefined {
+  if (!raw || !sounds.length) return undefined;
+  const by = new Map(sounds.map((x) => [x.name, x]));
+  const fx = (raw.fx ?? [])
+    .filter((f) => f.name && by.has(f.name.trim()))
+    .slice(0, 3)
+    .map((f) => {
+      const name = f.name!.trim();
+      const at = Math.min(Math.max(Number(f.at) || 0, -3.5), Math.max(0, afterPunch - 0.4));
+      const volume = Math.min(Math.max(Number(f.volume) || 1, 0.4), 1);
+      return { name, at: +at.toFixed(2), volume: +volume.toFixed(2), ...(by.get(name)?.kind === "meme" ? { trim: MEME_MAX } : {}) };
+    });
+  // The end is never silent (Tài, 7/11: "3 giây cuối sao không có nhạc? Nghe cụt"): a stop at the
+  // punchline becomes a switch to another mood (the planner's, else "buon"), or the music plays on.
+  const want = raw.turn === "stop" || raw.turn === "switch";
+  const b = raw.music_b?.trim() ?? "";
+  const musicB = want ? (moods.includes(b) ? b : moods.includes("buon") ? "buon" : undefined) : undefined;
+  const turn: "keep" | "switch" = musicB ? "switch" : "keep";
+  if (!fx.length && turn === "keep") return undefined;
+  return { turn, ...(musicB ? { musicB } : {}), sounds: fx };
+}
+
+/** Only the sound of a meme already drawn (talk meme --step sound): the house recipe on an old clip. */
+export async function planSound(ctx: StudioContext, spec: Pick<MemeSpec, "top" | "punch">, plan: Plan, sounds: Array<{ name: string; prompt: string; kind?: string }>, moods: string[] = []): Promise<Plan> {
+  const punch = plan.lines[1]?.start ?? 0;
+  const messages: ChatMessage[] = [
+    {
+      role: "user",
+      content: [
+        `A silent Vietnamese text meme. Text 1 (set-up): ${spec.top}\nText 2 (punchline, appears at ${punch}s of ${plan.end}s): ${spec.punch}`,
+        `What the pictures show: ${plan.shots.map((s) => s.act.replace(MEME_FRAME, "").trim()).join(" / ")}`,
+        `Sound (the house recipe): ${SOUND_RECIPE} Answer \`turn\`${moods.length ? `, \`music_b\` (one of: ${moods.join(", ")})` : ""} and 1-3 \`fx\` from these sounds:\n${sounds.map((x) => `- ${x.name}: ${x.prompt}`).join("\n")}`,
+      ].join("\n\n"),
+    },
+  ];
+  const r = await ctx.spark.json<{ turn?: string; music_b?: string; fx?: Array<{ name?: string; at?: number; volume?: number }> }>("meme_sound", SOUND_PLAN, messages);
+  const sound = soundPlan(r, sounds, moods, plan.end - punch);
+  const next: Plan = { ...plan };
+  delete next.sfx;
+  if (sound) next.sound = sound;
+  else delete next.sound;
+  return next;
 }
 
 /** Added to every meme picture: room for the text on top, and none of what went wrong in tests. */
@@ -130,9 +220,9 @@ export const MEME_FRAME = "The top third of the frame is plain empty office wall
 const MUSICGEN = fileURLToPath(new URL("../scripts/musicgen.py", import.meta.url));
 
 /** Instrumental music from MusicGen, on the GPU; slightly longer than the clip so it never runs out. */
-export function makeMusic(prompt: string, seconds: number, out: string, log?: (s: string) => void): string {
+export function makeMusic(prompt: string, seconds: number, out: string, log?: (s: string) => void, seed?: number): string {
   log?.(`music: MusicGen "${prompt}"`);
-  const r = spawnSync(python(), [MUSICGEN, out, String(seconds + 1), prompt], { encoding: "utf8" });
+  const r = spawnSync(python(), [MUSICGEN, out, String(seconds + 1), prompt, ...(seed !== undefined ? [String(seed)] : [])], { encoding: "utf8" });
   if (r.status !== 0 || !existsSync(out)) throw new Error(`MusicGen failed: ${(r.stderr || r.stdout || "").trim().split("\n").slice(-3).join(" ")}`);
   return out;
 }
@@ -234,7 +324,7 @@ export function makeBlink(src: string, out: string, box: { x: number; y: number;
 }
 
 /** Frames where something changes, then ffmpeg with the music (or silence) at 30 fps CFR. */
-export async function renderMeme(plan: Plan, dir: string, music: string | undefined, out: string, log?: (s: string) => void, faceTop: Record<string, number | undefined> = {}): Promise<string> {
+export async function renderMeme(plan: Plan, dir: string, music: string | undefined, out: string, log?: (s: string) => void, faceTop: Record<string, number | undefined> = {}, sfx?: string, mix?: { musicB?: string; files: string[] }): Promise<string> {
   const [top, punch] = plan.lines;
   const topImg = top ? beatSvg(top.text, false) : undefined;
   const punchImg = punch ? beatSvg(punch.text, true) : undefined;
@@ -301,7 +391,19 @@ export async function renderMeme(plan: Plan, dir: string, music: string | undefi
   const audio = music && existsSync(music) ? ["-i", music] : ["-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo"];
   const fade = music && existsSync(music) ? ["-af", `afade=t=in:d=0.3,afade=t=out:st=${(plan.end - 1.2).toFixed(2)}:d=1.2`] : [];
   mkdirSync(dirname(out), { recursive: true });
-  const r = spawnSync(process.env.FFMPEG_PATH || "ffmpeg", ["-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", listFile, ...audio, "-map", "0:v", "-map", "1:a", "-vf", "fps=30,format=yuv420p", "-fps_mode", "cfr", "-r", "30", ...fade, "-c:v", "libx264", "-preset", "medium", ...DELIVERY, "-t", String(plan.end), out], { encoding: "utf8" });
+  // A sound effect (talk sfx) lands as the punchline appears, over the music.
+  // The house mix (plan.sound): music turn at the punchline plus 1-3 meme sounds; else the old single effect.
+  const sound = plan.sound, files = mix?.files ?? [];
+  const house =
+    sound && files.length === sound.sounds.length && files.every((f) => existsSync(f)) && (sound.sounds.length || sound.turn !== "keep")
+      ? (() => {
+          const b = sound.turn === "switch" && mix?.musicB && existsSync(mix.musicB) ? mix.musicB : undefined;
+          const filter = houseMix({ music: !!fade.length, turn: sound.turn === "keep" || !b ? "keep" : "switch", musicB: !!b, cut: plan.lines[1]?.start ?? 0, end: plan.end, sounds: sound.sounds });
+          return [...(b ? ["-i", b] : []), ...files.flatMap((f) => ["-i", f]), "-filter_complex", filter, "-map", "0:v", "-map", "[a]"];
+        })()
+      : undefined;
+  const withSfx = house ?? (sfx && existsSync(sfx) ? ["-i", sfx, "-filter_complex", sfxMix(!!fade.length, plan.lines[1]?.start ?? 0, plan.end), "-map", "0:v", "-map", "[a]"] : undefined);
+  const r = spawnSync(process.env.FFMPEG_PATH || "ffmpeg", ["-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", listFile, ...audio, ...(withSfx ?? ["-map", "0:v", "-map", "1:a"]), "-vf", "fps=30,format=yuv420p", "-fps_mode", "cfr", "-r", "30", ...(withSfx ? [] : fade), "-c:v", "libx264", "-preset", "medium", ...DELIVERY, "-t", String(plan.end), out], { encoding: "utf8" });
   if (r.status !== 0) throw new Error(`ffmpeg failed: ${r.stderr}`);
   log?.(`${out}: ${cache.size} distinct frames`);
   return out;

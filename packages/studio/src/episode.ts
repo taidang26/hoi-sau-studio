@@ -514,7 +514,7 @@ function sheetImage(ctx: StudioContext, slug: string, name: string | null | unde
   return `data:${imageSize(data).mime};base64,${data.toString("base64")}`;
 }
 
-function modelSheet(ctx: StudioContext, slug: string): string | undefined {
+export function modelSheet(ctx: StudioContext, slug: string): string | undefined {
   return sheetImage(ctx, slug, ctx.profiles.get(slug)?.look.character_sheet);
 }
 

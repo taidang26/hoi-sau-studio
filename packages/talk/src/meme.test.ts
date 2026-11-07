@@ -85,3 +85,16 @@ test("a two-scene meme renders at 1080x1920, 30 fps, for the whole length", { sk
   assert.equal(info.streams[0].r_frame_rate, "30/1");
   assert.ok(Math.abs(Number(info.format.duration) - 4) < 0.2);
 });
+
+test("the sound plan keeps only offered sounds, inside the clip, memes trimmed, a switch only to a mood on hand", async () => {
+  const { soundPlan } = await import("./meme.js");
+  const sounds = [{ name: "dia-xuoc" }, { name: "sad-violin", kind: "meme" }];
+  const p = soundPlan({ turn: "switch", music_b: "buon", fx: [{ name: "dia-xuoc", at: 0, volume: 1 }, { name: "nope", at: 1 }, { name: "sad-violin", at: 9, volume: 0.8 }] }, sounds, ["buon"], 4);
+  assert.deepEqual(p, { turn: "switch", musicB: "buon", sounds: [{ name: "dia-xuoc", at: 0, volume: 1 }, { name: "sad-violin", at: 3.6, volume: 0.8, trim: 3 }] });
+  // A stop never leaves the end silent: it switches to the planner's mood, else "buon", else the music plays on.
+  assert.deepEqual(soundPlan({ turn: "stop", music_b: "", fx: [] }, sounds, ["buon"], 4), { turn: "switch", musicB: "buon", sounds: [] });
+  assert.deepEqual(soundPlan({ turn: "switch", music_b: "lang-man", fx: [] }, sounds, ["buon"], 4), { turn: "switch", musicB: "buon", sounds: [] });
+  assert.equal(soundPlan({ turn: "stop", fx: [{ name: "dia-xuoc", at: 0 }] }, sounds, [], 4)?.turn, "keep");
+  assert.equal(soundPlan({ turn: "keep", fx: [] }, sounds, [], 4), undefined);
+  assert.equal(soundPlan(undefined, sounds, [], 4), undefined);
+});

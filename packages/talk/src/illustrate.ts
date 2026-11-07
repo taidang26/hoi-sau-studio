@@ -20,7 +20,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import sharp from "sharp";
 import { DELIVERY } from "@hoi-sau/motion";
-import { characterRefs, generateSoftly, houseRulesPrompt, S, styleReference, styleText, type ChatMessage, type StudioContext } from "@hoi-sau/studio";
+import { characterRefs, CHARACTERS_DIR, generateSoftly, houseRulesPrompt, S, styleReference, styleText, type ChatMessage, type StudioContext } from "@hoi-sau/studio";
 import type { Sam } from "@hoi-sau/dance";
 import { COMIC_FONT_PATH, escapeXml, loadFont, measure, svgToPng } from "@hoi-sau/svg-text";
 import { captionSvg } from "./captions.js";
@@ -28,6 +28,9 @@ import { poseSwitches, snapShots } from "./beats.js";
 import { chunkWords, OUT, SAFE, type Chunk, type Word } from "./timeline.js";
 import { align, grow, maskBox, unionBox, writePng, type Box, type Raster } from "./patch.js";
 import { python } from "./voice.js";
+import { roomFor, roomPrompt } from "./backgrounds.js";
+import { seasonRef } from "./seasons.js";
+import { colourGap, KIT_MIN_MOUTH, KIT_SKIN_GAP, KIT_SQUASH, openShapes, kitDrops, kitSkin, loadKit, noseOffset, pasteKit, pickAngle, stripSkin } from "./mouthkit.js";
 
 export interface Line {
   text: string;
@@ -55,6 +58,8 @@ export interface Shot {
   moving?: string[];
   /** Reuse another shot's pictures (a cut back to it). */
   src?: string;
+  /** A ready-made reaction of the lead (characters/<slug>/stock/<name>.png) used instead of drawing. */
+  stock?: string;
 }
 
 export interface Plan {
@@ -63,6 +68,12 @@ export interface Plan {
   end: number;
   lines: Line[];
   shots: Shot[];
+  /** A sound effect from series/sfx for the punchline of a meme (talk sfx). */
+  sfx?: string;
+  /** The house sound mix of a meme (talk sfx: music turn at the punchline + meme sounds). */
+  sound?: { turn: "keep" | "stop" | "switch"; musicB?: string; sounds: Array<{ name: string; at: number; volume?: number; trim?: number }> };
+  /** The occasion the lead dresses for (talk seasons). */
+  season?: string;
 }
 
 // ---------------------------------------------------------------- pure parts
@@ -379,13 +390,19 @@ export async function eachShot<T>(items: T[], fn: (item: T) => Promise<void>, li
 export async function drawShots(ctx: StudioContext, plan: Plan, dir: string, opts: { only?: string[]; tries?: number; log?: (s: string) => void } = {}): Promise<void> {
   mkdirSync(dir, { recursive: true });
   const p = ctx.profiles.get(plan.slug)!;
-  const lead = `${p.name}: ${p.look.description.replace(/\s+/g, " ")} Exactly as in the character reference sheet`;
+  // An occasion's outfit: the seasonal picture of the lead (talk seasons) joins the references.
+  const dressed = seasonRef(ctx.charactersDir ?? CHARACTERS_DIR, plan.slug, plan.season);
+  const lead = `${p.name}: ${p.look.description.replace(/\s+/g, " ")} Exactly as in the character reference sheet${dressed ? `, and for ${dressed.outfit.vi} wearing ${dressed.outfit.text}${dressed.file ? " exactly as in the seasonal reference picture" : ""}` : ""}`;
+  const seasonal = dressed?.file ? [dataUrl(readFileSync(dressed.file))] : [];
   const style = styleReference(ctx.style);
   await eachShot(plan.shots, async (s) => {
     const file = join(dir, `${s.id}.png`);
     if (s.src || (opts.only ? !opts.only.includes(s.id) : existsSync(file))) return;
-    const refs = [...characterRefs(ctx, plan.slug), ...s.cast.flatMap((c) => characterRefs(ctx, c)), ...(style ? [style] : [])];
-    const prompt = `Full-frame vertical illustration for a short comedy video, one scene. ${lead}. Scene: ${s.act}. ${LOOK} ${ctx.style ? `Style: ${styleText(ctx.style)}` : ""} Draw ${p.name} exactly once.`;
+    // A scene in one of the drawn office rooms gets that room as the last reference, so it looks the same in every clip.
+    const room = roomFor(s.act);
+    const refs = [...characterRefs(ctx, plan.slug), ...seasonal, ...s.cast.flatMap((c) => characterRefs(ctx, c)), ...(style ? [style] : []), ...(room ? [dataUrl(readFileSync(room.file))] : [])];
+    if (room) opts.log?.(`${s.id}: in ${room.room.name}`);
+    const prompt = `Full-frame vertical illustration for a short comedy video, one scene. ${lead}. Scene: ${s.act}. ${room ? `${roomPrompt(room.room)} ` : ""}${LOOK} ${ctx.style ? `Style: ${styleText(ctx.style)}` : ""} Draw ${p.name} exactly once.`;
     let fix = "";
     for (let attempt = 0; attempt < (opts.tries ?? 3); attempt++) {
       opts.log?.(`${s.id}: drawing${fix ? ` again (${fix})` : ""}`);
@@ -829,8 +846,11 @@ export function mouthCrop(b: Box, width: number, height: number): Box {
   return { x, y, w: side, h: side };
 }
 
+/** The open mouth may be at most this many times the shut one's area, and this many shut widths tall: a wide-open cartoon mouth reads creepy (Tài, 7/11). */
+export const OPEN_MAX = 2.0, OPEN_TALL = 0.7;
+
 export const mouthPrompt = (name: string, open: boolean, attempt = 0) =>
-  `Change only ${name}'s mouth: ${open ? (attempt ? "open it a little as if singing a vowel: a small oval about half as tall as it is wide, set low toward the chin, well below the nose with a wide gap of skin between them, clearly showing the dark inside; never touches the nose, eyes or eye markings" : "open it mid-word as if talking loudly, clearly showing the inside of the mouth; it opens downward from where the mouth is, stays below the nose with a clear gap of skin between them, never touches or covers the nose, eyes or eye markings, and is no taller than it is wide") : "close it, lips together in a calm closed line, no teeth, no smile"}. The mouth stays the same width and in the same place. Do not move the head, nose, eyes, eyebrows, cheeks, arms, anyone else or anything else. Keep the same framing, background, colours and line style. No text.`;
+  `Change only ${name}'s mouth: ${open ? (attempt ? "open it just a little as if saying a soft vowel: a small oval about a third as tall as it is wide, set low toward the chin, well below the nose with a wide gap of skin between them, showing a little of the dark inside; never touches the nose, eyes or eye markings" : "open it slightly mid-word as if chatting calmly, a small natural opening about half as tall as it is wide, showing a little of the dark inside; it opens downward from where the mouth is, stays below the nose with a clear gap of skin between them, never touches or covers the nose, eyes or eye markings; not a wide-open or shouting mouth") : "close it, lips together in a calm closed line, no teeth, no smile"}. The mouth stays the same width and in the same place. Do not move the head, nose, eyes, eyebrows, cheeks, arms, anyone else or anything else. Keep the same framing, background, colours and line style. No text.`;
 
 /**
  * The lead's mouth among SAM's finds: the biggest find whose centre lies on the
@@ -953,30 +973,66 @@ export async function mouthIn(segment: (phrase: string) => Promise<Array<{ mask:
 export async function leadOr(first: Uint8Array, fallback: () => Promise<Uint8Array>): Promise<Uint8Array> {
   return first.some((v) => v) ? first : fallback();
 }
-export async function drawMouths(sam: Sam, ctx: StudioContext, plan: Plan, dir: string, opts: { only?: string[]; mouthTries?: number; log?: (s: string) => void } = {}): Promise<Array<{ pic: string; ok: boolean; problem?: string }>> {
+/**
+ * SAM phrases for everyone in a picture but the lead: the cast by species, and a pet carried by anyone
+ * in it (the director's white cat Tuyết), so a mouth is never found or pasted on them.
+ */
+export function othersIn(ctx: Pick<StudioContext, "profiles">, lead: string, cast: string[]): string[] {
+  const out: string[] = [];
+  for (const slug of cast) {
+    const c = ctx.profiles.get(slug);
+    if (slug !== lead && c) out.push(`cartoon ${c.species.split("(")[0].trim()}`);
+  }
+  if ([lead, ...cast].some((slug) => /\bcat\b/i.test(JSON.stringify(ctx.profiles.get(slug) ?? {})))) out.push("white cat");
+  return out;
+}
+
+export async function drawMouths(sam: Sam, ctx: StudioContext, plan: Plan, dir: string, opts: { only?: string[]; mouthTries?: number; kit?: boolean; log?: (s: string) => void } = {}): Promise<Array<{ pic: string; ok: boolean; problem?: string; kit?: boolean }>> {
   const { w, h } = OUT;
   const p = ctx.profiles.get(plan.slug)!;
   const species = p.species.split("(")[0].trim();
-  const report: Array<{ pic: string; ok: boolean; problem?: string }> = [];
+  const report: Array<{ pic: string; ok: boolean; problem?: string; kit?: boolean }> = [];
+  // The character's ready-made mouths (talk mouthkit): pasted first, the Muse edit below only when they do not pass.
+  const cdir = ctx.charactersDir ?? CHARACTERS_DIR;
+  const kit = opts.kit === false ? undefined : loadKit(cdir, plan.slug);
   const pngOf = (rgb: Uint8Array) => sharp(Buffer.from(rgb), { raw: { width: w, height: h, channels: 3 } }).png().toBuffer();
-  const leadMask = async (rgb: Uint8Array) => leadOr(await maskOf(sam, rgb, [`cartoon ${species}`]), () => maskOf(sam, rgb, ["cartoon character"]));
-  const findMouth = async (rgb: Uint8Array) => {
+  /**
+   * The lead in the picture, minus everyone else in it (`others`, SAM phrases): with the boss in the shot, SAM's
+   * lead often takes in Bino or his cat too, and Tũn's mouth was pasted on them. When the two cannot be told apart
+   * the lead comes out empty and the picture keeps its mouth as drawn.
+   */
+  const leadMask = async (rgb: Uint8Array, others: string[] = []) => {
+    const lead = await leadOr(await maskOf(sam, rgb, [`cartoon ${species}`]), () => maskOf(sam, rgb, ["cartoon character"]));
+    if (!others.length) return lead;
+    const o = await maskOf(sam, rgb, others);
+    return lead.map((v, i) => (v && !o[i] ? 1 : 0));
+  };
+  const findMouth = async (rgb: Uint8Array, others: string[] = []) => {
     const url = dataUrl(await pngOf(rgb));
-    return mouthIn((ph) => sam.segment(ph, url, w, h), [`mouth of the cartoon ${species}`, "mouth"], await leadMask(rgb), w, h);
+    return mouthIn((ph) => sam.segment(ph, url, w, h), [`mouth of the cartoon ${species}`, "mouth"], await leadMask(rgb, others), w, h);
   };
   /**
    * The lead's nose, eyes and eye markings in the picture, grown 3 px: never pasted over, and an open mouth must not reach them.
    * `nearNose` is the nose grown by NOSE_GAP: an open mouth touching it leaves a thin seam under the nose.
    */
-  const faceKeep = async (rgb: Uint8Array) => {
-    const url = dataUrl(await pngOf(rgb)), lead = await leadMask(rgb);
+  const faceKeep = async (rgb: Uint8Array, others: string[] = []) => {
+    const url = dataUrl(await pngOf(rgb)), lead = await leadMask(rgb, others);
     const keep = new Uint8Array(w * h), nose = new Uint8Array(w * h);
     for (const ph of [`nose of the cartoon ${species}`, `eyes of the cartoon ${species}`, `eye patches of the cartoon ${species}`]) {
       const m = leadFeatures(await sam.segment(ph, url, w, h), lead, w, h);
       for (let i = 0; i < keep.length; i++) if (m[i]) { keep[i] = 1; if (ph.startsWith("nose")) nose[i] = 1; }
     }
-    return { keep: dilate(keep, w, h, 3), nearNose: dilate(nose, w, h, NOSE_GAP) };
+    return { keep: dilate(keep, w, h, 3), nearNose: dilate(nose, w, h, NOSE_GAP), noseBox: maskBox(nose, w, h) };
   };
+  type Made = { img: Raster; size: number; box: Box; onFace: number; nearNose: number };
+  const pairProblem = async (mouth: { box: Box }, shut: Made | undefined, open: Made | undefined) =>
+    !shut || !open ? "a mouth edit failed"
+      : open.size < shut.size * 1.4 ? `the open mouth is not clearly bigger than the shut one (${open.size} vs ${shut.size} px)`
+      : open.size > shut.size * OPEN_MAX ? `the open mouth is too big (${open.size} vs ${shut.size} px shut)`
+      : open.box.h > shut.box.w * OPEN_TALL ? `the open mouth is too tall (${open.box.h} px for a ${shut.box.w} px wide mouth)`
+      : open.onFace > 0.03 ? `the open mouth runs into the nose or eyes (${Math.round(open.onFace * 100)}% of it)`
+      : open.nearNose > 0 ? `the open mouth comes within ${NOSE_GAP} px of the nose`
+      : faceProblem(ctx, p.name, shut.img, open.img, grow(unionBox([mouth.box, shut.box, open.box])!, 3, w, h, 160));
   await eachShot(plan.shots, async (s) => {
     if (s.src) return;
     for (const pic of [s.id, `${s.id}-b2`]) {
@@ -986,14 +1042,60 @@ export async function drawMouths(sam: Sam, ctx: StudioContext, plan: Plan, dir: 
       if (!existsSync(file) || (!opts.only && existsSync(openFile))) continue;
       const rgb = await rgbOf(file);
       const base: Raster = { data: Buffer.from(rgb), width: w, height: h };
-      const mouth = await findMouth(rgb);
+      const others = othersIn(ctx, plan.slug, s.cast ?? []);
+      const mouth = await findMouth(rgb, others);
       if (!mouth) {
         report.push({ pic, ok: false, problem: `no mouth of ${p.name} found` });
         opts.log?.(`${pic}: no mouth of ${p.name} found; this picture keeps its mouth as drawn`);
         continue;
       }
-      const { keep, nearNose } = await faceKeep(rgb);
-      const made: Record<"shut" | "open", { img: Raster; size: number; box: Box; onFace: number; nearNose: number } | undefined> = { shut: undefined, open: undefined };
+      const { keep, nearNose, noseBox } = await faceKeep(rgb, others);
+      const pick = kit && mouth.box.w >= KIT_MIN_MOUTH ? pickAngle(kit, noseOffset(mouth.box, noseBox)) : undefined;
+      // The kit is only for the lead's own face: its mouth must lie on the lead found by species (not the "cartoon character" fallback,
+      // which takes in everyone), and the skin round it must match the kit portrait's (Tũn's mouth once landed on Bống and on Bino).
+      const own = pick ? await leadMask(rgb, others) : undefined;
+      const onLead = !!own && own[Math.round(mouth.box.y + mouth.box.h / 2) * w + Math.round(mouth.box.x + mouth.box.w / 2)] === 1;
+      const skin = pick && onLead ? await kitSkin(cdir, kit!, pick.angle) : undefined;
+      const gap = skin ? colourGap(stripSkin(base, mouth.box, keep), skin) : Infinity;
+      if (pick && !(onLead && gap <= KIT_SKIN_GAP)) opts.log?.(`${pic}: ${onLead ? `the skin round the mouth is off the kit's (${Math.round(gap)})` : "the mouth is not on the lead"}; not using the kit`);
+      if (kit && pick && onLead && gap <= KIT_SKIN_GAP) {
+        // Nothing is pasted off the lead (a cup or a hand held at the mouth stays as drawn).
+        const keepK = Uint8Array.from(keep);
+        for (let i = 0; i < keepK.length; i++) if (!own![i]) keepK[i] = 1;
+        const made1 = async (img: Raster | undefined): Promise<Made | undefined> => {
+          const found = img && (await findMouth(img.data, others));
+          return img && found ? { img, size: area(found.mask), box: found.box, onFace: overlapShare(found.mask, keep, w, h), nearNose: overlapShare(found.mask, nearNose, w, h) } : undefined;
+        };
+        // The shut frame is the picture as drawn, so its own expression (a sad line, a grin) stays; only the open frame comes from the kit.
+        const shutK = await made1(base);
+        let kp = "the kit has no shut mouth", used = "";
+        // Each open shape, moved down step by step while it sits too close to the nose; the first pair that passes is kept.
+        // A shape too big or too tall is tried again shorter (KIT_SQUASH) before the next shape.
+        shapes: for (const shape of shutK ? openShapes(`${s.act} ${pic.endsWith("-b2") ? s.pose : ""}`) : []) {
+          for (const squash of KIT_SQUASH) {
+            for (const drop of kitDrops(mouth.box.h)) {
+              const openK = await made1(await pasteKit(cdir, kit, base, mouth, shape, pick, keepK, drop, squash));
+              if (!openK) { kp = `no ${shape} mouth in the kit`; continue shapes; }
+              kp = await pairProblem(mouth, shutK, openK);
+              if (!kp) {
+                await sharp(shutK!.img.data, { raw: { width: w, height: h, channels: 3 } }).png().toFile(shutFile);
+                await sharp(openK.img.data, { raw: { width: w, height: h, channels: 3 } }).png().toFile(openFile);
+                used = `${shape}${squash < 1 ? ` at ${Math.round(squash * 100)}% height` : ""}${drop ? `, ${drop} px lower` : ""}`;
+                break shapes;
+              }
+              if (!kp.includes("nose")) break;
+            }
+            if (!/too big|too tall/.test(kp)) break;
+          }
+        }
+        if (used) {
+          report.push({ pic, ok: true, kit: true });
+          opts.log?.(`${pic}: mouth pair from the kit (${pick.angle.angle}${pick.mirror ? ", mirrored" : ""}, ${used}), nothing drawn`);
+          continue;
+        }
+        opts.log?.(`${pic}: kit mouth did not pass (${kp}); drawing the mouth instead`);
+      } else if (kit) opts.log?.(`${pic}: the mouth is too small for the kit (${mouth.box.w} px); drawing it instead`);
+      const made: Record<"shut" | "open", Made | undefined> = { shut: undefined, open: undefined };
       // A failed open mouth is drawn again, smaller and lower, up to `mouthTries` times; the shut one is kept once it is made.
       let problem = "";
       for (let attempt = 0; attempt < (opts.mouthTries ?? (Number(process.env.TALK_MOUTH_TRIES) || 3)); attempt++) {
@@ -1012,19 +1114,14 @@ export async function drawMouths(sam: Sam, ctx: StudioContext, plan: Plan, dir: 
         const patch = await sharp(res.image).resize(crop.w, crop.h, { fit: "fill" }).removeAlpha().raw().toBuffer();
         const editRgb = Uint8Array.from(rgb);
         for (let y = 0; y < crop.h; y++) editRgb.set(patch.subarray(y * crop.w * 3, (y + 1) * crop.w * 3), ((crop.y + y) * w + crop.x) * 3);
-        const found = await findMouth(editRgb);
+        const found = await findMouth(editRgb, others);
         if (!found) { opts.log?.(`${pic}: no mouth found in the ${kind} edit`); continue; }
         const edit: Raster = { data: Buffer.from(editRgb), width: w, height: h };
         const shift = align(base, edit, grow(unionBox([mouth.box, found.box])!, 1.6, w, h, 48));
         made[kind] = { img: pasteMouth(base, edit, mouth.mask, found.mask, shift.dx, shift.dy, 5, keep, 12), size: area(found.mask), box: found.box, onFace: overlapShare(found.mask, keep, w, h, shift.dx, shift.dy), nearNose: overlapShare(found.mask, nearNose, w, h, shift.dx, shift.dy) };
       }
-      const { shut, open } = made;
-      problem = !shut || !open ? "a mouth edit failed"
-        : open.size < shut.size * 1.4 ? `the open mouth is not clearly bigger than the shut one (${open.size} vs ${shut.size} px)`
-        : open.box.h > shut.box.w * 1.6 ? `the open mouth is too tall (${open.box.h} px for a ${shut.box.w} px wide mouth)`
-        : open.onFace > 0.03 ? `the open mouth runs into the nose or eyes (${Math.round(open.onFace * 100)}% of it)`
-        : open.nearNose > 0 ? `the open mouth comes within ${NOSE_GAP} px of the nose`
-        : await faceProblem(ctx, p.name, shut.img, open.img, grow(unionBox([mouth.box, shut.box, open.box])!, 3, w, h, 160));
+      const { shut } = made;
+      problem = await pairProblem(mouth, made.shut, made.open);
       if (!problem || !shut) break;
       }
       report.push({ pic, ok: !problem, problem: problem || undefined });

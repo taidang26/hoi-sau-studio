@@ -20,6 +20,8 @@ import { pickLang, t, withLang, type Lang } from "./i18n.js";
 import { characterNotes, compareSection, inspirationField, researchPage, type IdeaKind, IDEA_KINDS, type Research } from "./research.js";
 import { episodeStudioPage, friendly, Studio, studioPage, stylePage } from "./studio.js";
 import { ideaPage, leadFromText, videoPage, videosPage, type Videos } from "./video.js";
+import { stockPage, type ScrapedPost } from "./kho.js";
+import { readyPage } from "./kits.js";
 import { CHARACTERS_DIR, loadProfile, readStep, SERIES_DIR, type EpisodeStep } from "@hoi-sau/studio";
 import {
   automationPage,
@@ -133,7 +135,7 @@ function send(res: ServerResponse, status: number, body: string, type = "text/ht
 /** Every picture on a page asks for a WebP sized to how it is shown; the full file stays one click away. */
 const sizedImages = (html: string) =>
   html.replace(
-    /<img([^>]*?) src="(\/(?:studio-media|sheet|media|brand-art|style-media|series-media|research-media|video-media)\/[^"?]+\.(?:png|jpe?g|webp))"/g,
+    /<img([^>]*?) src="(\/(?:studio-media|sheet|media|brand-art|style-media|series-media|research-media|video-media|ready-media)\/[^"?]+\.(?:png|jpe?g|webp))"/g,
     (_, pre: string, src: string) => `<img${pre} decoding="async" src="${src}?w=${/^\/(sheet|brand-art)\//.test(src) ? 1400 : /^\/video-media\//.test(src) ? 640 : 960}"`,
   );
 
@@ -615,6 +617,83 @@ export function handler(opts: DashboardOptions) {
         const html = ideaPage(vd, vi[1], Boolean(opts.studio), err);
         return html ? page(res, 200, html) : page(res, 404, notFoundPage());
       }
+    }
+    // Kho ý: scraped posts → a queue of text memes, read by Muse Spark a few days ahead.
+    if (vd && path === "/video/kho" && req.method === "GET") return page(res, 200, stockPage(vd.stock, { all: q.has("all"), err, ok }));
+    if (vd && req.method === "POST" && path === "/video/kho/import") {
+      try {
+        const form = await readUpload(req, 100 * 1024 * 1024);
+        const file = form.get("file");
+        if (!(file instanceof File) || !file.size) throw new Error(t("Chưa chọn file JSON."));
+        let posts: unknown;
+        try {
+          posts = JSON.parse(await file.text());
+        } catch {
+          throw new Error(t("File không phải JSON."));
+        }
+        if (!Array.isArray(posts)) throw new Error(t("File JSON phải là danh sách bài."));
+        const r = vd.stock.add(posts as ScrapedPost[], { perDay: Number(form.get("perday")) || undefined });
+        vd.stock.download();
+        return redirect(res, withNote("/video/kho", "ok", t("Đã thêm {n} ý, đang tải ảnh. Bỏ qua: {left}.", { n: r.added, left: Object.entries(r.left).map(([k, n]) => `${n} ${t(k)}`).join(", ") || "0" })));
+      } catch (e) {
+        return fail("/video/kho", e);
+      }
+    }
+    if (vd && req.method === "POST" && path === "/video/kho/credit") {
+      try {
+        vd.stock.setCredit(Number((await readForm(req)).get("usd")));
+        return redirect(res, withNote("/video/kho", "ok", t("Đã lưu số credit.")));
+      } catch (e) {
+        return fail("/video/kho", e);
+      }
+    }
+    const vk = vd && req.method === "POST" ? path.match(/^\/video\/kho\/(?:(download|read|make)|(k-\d+)\/(skip|keep))$/) : null;
+    if (vk && vd) {
+      try {
+        if (vk[1] === "download") {
+          const n = vd.stock.download();
+          return redirect(res, withNote("/video/kho", "ok", n ? t("Đang tải ảnh cho {n} ý.", { n }) : t("Ảnh đã tải đủ.")));
+        }
+        if (vk[1] === "read") {
+          const form = await readForm(req);
+          const n = vd.stock.readDays(Math.min(60, Math.max(1, Number(form.get("days")) || 7)));
+          return redirect(res, withNote("/video/kho", "ok", n ? t("Máy đang đọc {n} ý.", { n }) : t("Không còn ý nào chờ đọc trong mấy ngày này.")));
+        }
+        if (vk[1] === "make") {
+          const form = await readForm(req);
+          const n = vd.stock.makeDays(Math.min(31, Math.max(1, Number(form.get("days")) || 7)));
+          return redirect(res, withNote("/video/kho", "ok", n ? t("Máy đang làm {n} clip của tuần tới. Xong anh duyệt ở màn Video.", { n }) : t("Tuần tới chưa có đề xuất nào sẵn: cho máy đọc trước.")));
+        }
+        vd.stock.setSkip(vk[2], vk[3] === "skip");
+        return redirect(res, "/video/kho");
+      } catch (e) {
+        return fail("/video/kho", e);
+      }
+    }
+    // Đồ làm sẵn: reactions, mouth kits and office rooms drawn once per character, approved or redrawn with a tap.
+    if (vd && path === "/video/san" && req.method === "GET") return page(res, 200, readyPage(vd.ready, { err, ok }));
+    const vr = vd && req.method === "POST" ? path.match(/^\/video\/san\/([a-z0-9-]+|_bg)\/(approve|unapprove|redraw|mouthkit|backgrounds|seasons)\/([a-z0-9-]+)$/) : null;
+    if (vr && vd) {
+      const back = `/video/san#${vr[1] === "_bg" ? "phong" : vr[1]}`;
+      try {
+        const [, slug, act, what] = vr;
+        if (slug !== "_bg" && !vd.opts.cast().some((c) => c.slug === slug)) throw new Error(t("Không có nhân vật này."));
+        if (act === "approve" || act === "unapprove") {
+          const n = vd.ready.approve(slug, what, act === "approve");
+          return redirect(res, withNote(back, "ok", act === "approve" ? t("Đã duyệt {n} tranh.", { n }) : t("Đã bỏ duyệt {n} tranh.", { n })));
+        }
+        if (act === "redraw") vd.ready.redrawStock(slug, what);
+        else if (act === "mouthkit") vd.ready.redrawKit(slug, what === "all");
+        else if (act === "seasons") vd.ready.redrawSeasons(slug, what === "missing" ? undefined : what);
+        else vd.ready.redrawBackgrounds(what === "missing" ? undefined : what);
+        return redirect(res, withNote(back, "ok", t("Máy đang vẽ. Tranh mới vẽ lại phải duyệt lại.")));
+      } catch (e) {
+        return fail(back, e);
+      }
+    }
+    if (vd && path.startsWith("/ready-media/")) {
+      const file = vd.ready.file(path.slice("/ready-media/".length));
+      return file ? sendFile(req, res, file) : send(res, 404, notFoundPage());
     }
     if (vd && req.method === "POST" && path === "/video/new") {
       try {

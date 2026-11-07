@@ -13,13 +13,13 @@
  *                    the clip's voice and cuts, one picture per shot of <slug> acting it out (Muse Image, checked by Muse Spark), two poses on one background (SAM 3.1)
  *   npm run talk -- cover <slug> --out <illustrate dir> --quote "“line|line *key*.”" [--shot s08] [--episode <id>]
  *                    TikTok cover: the line on a white badge (key words red) + "Hồi Sau" tag over a shot, inside the grid's safe zone and off the faces (SAM 3.1)
- *   npm run talk -- meme <slug> --out <dir with meme.json> [--step plan|draw|fix|ask|retime|poses|stabilize|music|blink|render|all] [--find <thing>] [--at <s>] [--only s01] [--note <what to change>]
+ *   npm run talk -- meme <slug> --out <dir with meme.json> [--step plan|draw|fix|ask|retime|poses|stabilize|music|sound|blink|render|all] [--find <thing>] [--at <s>] [--only s01] [--note <what to change>]
  *                    silent text meme: two beats of big text over one or two pictures (two poses, still background), MusicGen music
  *   npm run talk -- demo                                                   offline: mock pictures, hummed voice
  */
 
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { isAbsolute, join, resolve } from "node:path";
+import { basename, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { probeVideo, reelsProblems } from "@hoi-sau/motion";
 import { episodeDir, openStudio } from "@hoi-sau/studio";
@@ -35,7 +35,13 @@ import { buildTimeline, FPS } from "./timeline.js";
 import { mouthTrack, RATE, ttsArg, voiceFor, type Tts } from "./voice.js";
 import { facesBox, makeCover } from "./cover.js";
 import sharp from "sharp";
-import { makeBlink, makeMusic, planMeme, readMeme, renderMeme, retimeMeme } from "./meme.js";
+import { makeBlink, makeMusic, planMeme, planSound, readMeme, renderMeme, retimeMeme } from "./meme.js";
+import { makeLibrary, moodsOnHand, MOODS, takeTrack } from "./music-lib.js";
+import { makeSeasons, OUTFITS } from "./seasons.js";
+import { availableSfx, makeSfx, SOUNDS, sfxFile, soundLibrary } from "./sfx.js";
+import { backgroundsDir, loadRooms, makeBackgrounds, ROOMS } from "./backgrounds.js";
+import { kitSheet, loadKit, makeMouthKit, type Angle } from "./mouthkit.js";
+import { approveStock, availableStock, loadStock, makeStock, reactionsFor, retryPoses, stockExtras, stockSheet, useStock } from "./stock.js";
 import { askFixes, speechGaps } from "./fixes.js";
 import { ideaImages, readIdea } from "./idea.js";
 import { drawMouths, drawPoses, drawShots, reviewShots, fixShot, gateToWords, groupLines, hearWords, planShots, renderIllustrated, sceneCuts, shotSpans, stabilizePoses, timeWords, type Line, type Plan } from "./illustrate.js";
@@ -299,7 +305,7 @@ async function main() {
       if (run("stabilize")) report("stabilize.json", "id", await stabilizePoses(Sam.fromEnv(), ctx, plan, shots, { only, retries: Number(opt.retries) || undefined, log }));
       // --mouth: the lead talks; without it the clip renders as before.
       const mouth = !!opt.mouth || step === "mouths";
-      if (mouth && run("mouths")) report("mouths.json", "pic", await drawMouths(Sam.fromEnv(), ctx, plan, shots, { only, log }));
+      if (mouth && run("mouths")) report("mouths.json", "pic", await drawMouths(Sam.fromEnv(), ctx, plan, shots, { only, kit: !opt["no-kit"], log }));
       // --step review: Spark looks at every picture the render will show and lists what is broken (review.json).
       if (step === "review" || step === "all") {
         report("review.json", "pic", await reviewShots(ctx, plan, shots, { only, log }));
@@ -345,7 +351,7 @@ async function main() {
     }
     case "meme": {
       const [slug] = pos;
-      if (!slug || !opt.out) throw new Error("Usage: talk meme <slug> --out <dir with meme.json> [--step plan|draw|fix|ask|retime|poses|stabilize|music|blink|render|all] [--find <thing>] [--at <s>] [--only s01] [--note <what to change>]");
+      if (!slug || !opt.out) throw new Error("Usage: talk meme <slug> --out <dir with meme.json> [--step plan|draw|fix|ask|retime|poses|stabilize|music|sound|blink|render|all] [--find <thing>] [--at <s>] [--only s01] [--note <what to change>]");
       const out = fromCwd(opt.out as string);
       const step = String(opt.step ?? "all");
       const only = opt.only ? String(opt.only).split(",") : undefined;
@@ -364,10 +370,17 @@ async function main() {
         return;
       }
       if (run("plan") && (step === "plan" || !existsSync(planFile))) {
-        writeFileSync(planFile, JSON.stringify(await planMeme(ctx, slug, spec), null, 2) + "\n");
+        writeFileSync(planFile, JSON.stringify(await planMeme(ctx, slug, spec, availableStock(ctx.charactersDir ?? CHARACTERS, slug), soundLibrary(ROOT), moodsOnHand(ROOT)), null, 2) + "\n");
         log(`${planFile}: ${spec.scenes.length} scene(s)`);
       }
-      const plan: Plan = JSON.parse(readFileSync(planFile, "utf8"));
+      let plan: Plan = JSON.parse(readFileSync(planFile, "utf8"));
+      if (step === "sound") {
+        // The house sound recipe on a meme already drawn (only the sound is planned again).
+        plan = await planSound(ctx, spec, plan, soundLibrary(ROOT), moodsOnHand(ROOT));
+        writeFileSync(planFile, JSON.stringify(plan, null, 2) + "\n");
+        log(`sound: ${plan.sound ? `${plan.sound.turn}${plan.sound.musicB ? ` → ${plan.sound.musicB}` : ""}; ${plan.sound.sounds.map((x) => `${x.name}@${x.at}`).join(", ")}` : "none"}; now --step render`);
+        return;
+      }
       if (step === "fix") for (const id of only ?? []) await fixShot(ctx, plan, shots, id, String(opt.note ?? ""), { log, find: opt.find ? String(opt.find) : undefined, sam: opt.find ? Sam.fromEnv() : undefined });
       if (step === "ask") {
         const gaps = existsSync(join(out, "gaps.json")) ? JSON.parse(readFileSync(join(out, "gaps.json"), "utf8")) : [];
@@ -376,7 +389,10 @@ async function main() {
         log(`${join(out, "fixes.json")}: written`);
         return;
       }
-      if (run("draw")) await drawShots(ctx, plan, shots, { only, log });
+      if (run("draw")) {
+        useStock(ctx.charactersDir ?? CHARACTERS, plan, shots, basename(out), log);
+        await drawShots(ctx, plan, shots, { only, log });
+      }
       if (run("poses")) await drawPoses(ctx, plan, shots, { only, log });
       // With --only a report keeps the other shots' rows, so separate --only runs never wipe each other's.
       const report = <T extends Record<string, unknown>>(name: string, key: keyof T, rows: T[]) => {
@@ -390,7 +406,8 @@ async function main() {
       const promptFile = join(out, "music.prompt");
       const fresh = existsSync(music) && existsSync(promptFile) && readFileSync(promptFile, "utf8") === spec.music;
       if (spec.music.trim() && (step === "music" || ((step === "all" || step === "render") && !fresh))) {
-        makeMusic(spec.music, plan.end, music, log);
+        // A ready track of the same mood when the library has one (talk music-lib), else MusicGen for this clip.
+        if (!takeTrack(ROOT, spec.music, music, plan.end, log)) makeMusic(spec.music, plan.end, music, log);
         writeFileSync(promptFile, spec.music);
       }
       // Faces once per picture (faces.json, keyed by picture signature): where to lower each picture, and where its eyes are.
@@ -417,10 +434,93 @@ async function main() {
         }
       }
       if (run("render")) {
-        const video = await renderMeme(plan, shots, spec.music.trim() ? music : undefined, join(out, `${slug}.mp4`), log, faceTop);
+        // The house mix: each planned sound by name (meme sound, else Envato, Freesound, AudioGen), and music B for a switch.
+        const lib = new Map(soundLibrary(ROOT).map((x) => [x.name, x.file]));
+        const files = (plan.sound?.sounds ?? []).map((x) => lib.get(x.name) ?? "");
+        const missing = (plan.sound?.sounds ?? []).filter((_, i) => !files[i]).map((x) => x.name);
+        if (missing.length) log(`sound: not on this machine: ${missing.join(", ")} (mixing without the sound plan)`);
+        const musicB = join(out, "music-b.wav");
+        const hasB = plan.sound?.turn === "switch" && plan.sound.musicB ? takeTrack(ROOT, plan.sound.musicB, musicB, plan.end, log) : false;
+        const video = await renderMeme(plan, shots, spec.music.trim() ? music : undefined, join(out, `${slug}.mp4`), log, faceTop, sfxFile(ROOT, plan.sfx), missing.length ? undefined : { files, musicB: hasB ? musicB : undefined });
         const problems = reelsProblems(await probeVideo(video));
         log(problems.length ? `Reels check: ${problems.join("; ")}` : "Reels check: ok for Facebook/Instagram Reels and TikTok");
         console.log(video);
+      }
+      return;
+    }
+    case "music-lib": {
+      // Thư viện nhạc: talk music-lib [--count 4]: the missing tracks, `count` per mood (MusicGen on the GPU).
+      const count = Number(opt.count ?? 4);
+      const made = makeLibrary(ROOT, (out, secs, prompt, seed) => void makeMusic(prompt, secs - 1, out, log, seed), count, log);
+      console.log(`${made} new track(s); ${MOODS.length} moods × ${count}`);
+      return;
+    }
+    case "seasons": {
+      // Seasonal outfits, drawn once per character: talk seasons <slug|all> [--only tet,noel]
+      const [who] = pos;
+      if (!who) throw new Error("Usage: talk seasons <slug|all> [--only tet,noel]");
+      const ctx = openStudio({ log });
+      for (const slug of who === "all" ? [...ctx.profiles.keys()] : [who]) {
+        const n = await makeSeasons(ctx, slug, { only: opt.only ? String(opt.only).split(",") : undefined, log });
+        console.log(`${slug}: ${n} new of ${OUTFITS.length}`);
+      }
+      return;
+    }
+    case "sfx": {
+      // Sound effects made once with AudioGen on the GPU: talk sfx [--only ting,boing]
+      const made = makeSfx(ROOT, { only: opt.only ? String(opt.only).split(",") : undefined, log });
+      console.log(`${made} new; ${availableSfx(ROOT).length}/${SOUNDS.length} sounds ready`);
+      return;
+    }
+    case "backgrounds": {
+      // Office rooms drawn once, used as a reference for scenes in them: talk backgrounds [--only phong-sep,pantry] [--approve names|all]
+      const ctx = openStudio({ log });
+      if (opt.approve) {
+        const want = String(opt.approve).split(",");
+        const rooms = loadRooms();
+        for (const r of rooms) if (want.includes("all") || want.includes(r.name)) r.approved = true;
+        writeFileSync(join(backgroundsDir(), "backgrounds.json"), `${JSON.stringify(rooms, null, 1)}\n`);
+      } else await makeBackgrounds(ctx, { only: opt.only ? String(opt.only).split(",") : undefined, log });
+      const rooms = loadRooms();
+      console.log(`${rooms.length}/${ROOMS.length} rooms drawn, ${rooms.filter((r) => r.approved).length} approved`);
+      return;
+    }
+    case "mouthkit": {
+      // Ready-made mouths: talk mouthkit <slug|all> [--only front,side] [--sheet]
+      const [who] = pos;
+      if (!who) throw new Error("Usage: talk mouthkit <slug|all> [--only front,side] [--sheet]");
+      const ctx = openStudio({ log });
+      const cdir = ctx.charactersDir ?? CHARACTERS;
+      for (const slug of who === "all" ? [...ctx.profiles.keys()] : [who]) {
+        if (!opt.sheet) await makeMouthKit(ctx, Sam.fromEnv(), slug, { only: opt.only ? (String(opt.only).split(",") as Angle[]) : undefined, log });
+        const kit = loadKit(cdir, slug);
+        console.log(`${slug}: ${kit ? kit.angles.map((a) => `${a.angle} ${a.shapes.length}`).join(", ") : "no kit"}; ${(await kitSheet(cdir, slug)) ?? "no sheet"}`);
+      }
+      return;
+    }
+    case "stock": {
+      // Ready-made reactions: talk stock <slug|all> [--only a,b] | --approve a,b|all | --unapprove a,b | --list
+      const [who] = pos;
+      if (!who) throw new Error("Usage: talk stock <slug|all> [--only do-mat,om-dau] [--approve names|all] [--unapprove names] [--list] [--extras] [--poses]");
+      const ctx = openStudio({ log });
+      const slugs = who === "all" ? [...ctx.profiles.keys()] : [who];
+      const names = (v: unknown) => (String(v) === "all" ? "all" : String(v).split(",")) as string[] | "all";
+      for (const slug of slugs) {
+        if (opt.approve || opt.unapprove) {
+          approveStock(ctx.charactersDir ?? CHARACTERS, slug, names(opt.approve ?? opt.unapprove), Boolean(opt.approve));
+          log(`${slug}: ${await stockSheet(ctx.charactersDir ?? CHARACTERS, slug)}`);
+        } else if (opt.poses) {
+          // Second poses again for the reactions without one: talk stock <slug|all> --poses [--only names]
+          await retryPoses(ctx, Sam.fromEnv(), slug, { only: opt.only ? String(opt.only).split(",") : undefined, log });
+        } else if (opt.extras) {
+          // Blinks and mouth pairs for the drawn reactions: talk stock <slug|all> --extras [--only names]
+          const x = await stockExtras(ctx, Sam.fromEnv(), slug, { only: opt.only ? String(opt.only).split(",") : undefined, log });
+          log(`${slug}: ${x.blinks} blinks, ${x.mouths} mouth pairs`);
+        } else if (!opt.list) {
+          await makeStock(ctx, Sam.fromEnv(), slug, { only: opt.only ? String(opt.only).split(",") : undefined, log });
+        }
+        const e = loadStock(ctx.charactersDir ?? CHARACTERS, slug);
+        console.log(`${slug}: ${e.length}/${reactionsFor(ctx, slug).length} drawn, ${e.filter((x) => x.approved).length} approved`);
       }
       return;
     }

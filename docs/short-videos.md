@@ -93,3 +93,67 @@ The **Làm từ chữ hoặc ảnh** box at the top of the Video screen takes wh
 - Typed text with no picture is split without losing a word (`splitBeats`).
 - The proposal page shows the pictures beside the text read from them. The fields are editable. **Làm clip chữ** creates the text clip, and **Làm tranh 1 khung** creates and starts a one-panel episode in Studio.
 - A video step that dies on the network (`fetch failed`, reset, timeout) runs once more before the run stops.
+
+## Kho ý (a stock of ideas from a scrape)
+
+**Video → Kho ý** (`/video/kho`) takes a JSON file of posts scraped from another page (one object per post: `source_id`, `content`, `reactions_count`, `share_count`, `comment_count`, `attachments_detail`).
+
+- Videos are left out (somebody else's footage), and so are politics, the page talking about itself, ads, death, crude words and repeats. Pictures and text posts are kept.
+- Ranked by reactions + 5 × shares + 3 × comments, then spread over the days ahead (4 a day by default), with one topic per day where possible. Dated posts (20/10, 8/3, Noel, Trung thu, Tết) wait until a few days before their date.
+- Each item is a drop-in of the **Làm từ chữ hoặc ảnh** box (`data/video/_ideas/y-k-0001/`). Pictures download right away, because scraped links stop working after a few days. A text post is the joke itself; a picture's caption is only a teaser, so the picture is read alone.
+- **Cho máy đọc** runs `talk idea --kind meme` for the next days: Muse Spark reads the words exactly and proposes a two-beat text clip with our cast in our office. Nothing is made until the owner opens the proposal and presses the button. Captions never name the page.
+- **Bỏ** drops an item; adding the same file again adds only new posts.
+- **Làm clip cả tuần tới** makes the week in one batch: every proposal of the next 7 days becomes a text clip (plan, draw, second poses, render), 3 at a time. The owner reviews and approves the whole week once on the Video screen; nothing is approved or posted by the batch. Each stock item links to its clip.
+
+## Kho phản ứng (ready-made reactions)
+
+`talk stock <slug|all>` draws 12 reactions per character once (đơ mặt, ôm đầu, gục bàn, cười gượng, trốn sau màn hình, há hốc, ngửa ghế, đếm tiền lẻ, gật gù, khóc ròng, ăn mừng, lau mồ hôi): full-frame office pictures in the meme layout, with a second pose on the same background, through the usual draw, poses and stabilize checks. They land in `characters/<slug>/stock/` with `sheet.jpg` for the owner and start unapproved.
+
+- `talk stock <slug> --approve guc-ban,om-dau` (or `all`), `--unapprove`, `--only <names>` to draw again (which takes the approval back), `--list`.
+- When planning a two-scene meme, Muse Spark is offered the approved reactions of the lead and may take one for the punchline scene. That scene is then copied in, not drawn, so the meme costs about half. A reaction rests 5 days after a use.
+
+## Thư viện nhạc (music library)
+
+`talk music-lib [--count 4]` makes 4 tracks per mood once with MusicGen (vui nhộn, chán, hí hửng, deadline, buồn cười ra nước mắt), 22 s each, in `series/music/`. A meme's music step then copies the least used track of its mood instead of running MusicGen for every clip; with no library, or a clip longer than a track, it makes its own as before.
+
+## Bộ mồm (ready-made mouths)
+
+`talk mouthkit <slug|all>` draws each character's mouths once: a big portrait facing front and one turned three-quarters, then six shapes on each (shut, open, wide, o, smile, teeth, laugh, cry, pout, angry, shout; a kit made earlier only draws the new ones), cut out by SAM 3.1 into `characters/<slug>/mouthkit/` with a `sheet.jpg` to look over (about 0.12 USD a character). `--only side` redraws one angle; `--sheet` only rebuilds the sheet.
+
+From then on the `mouths` step of a lip-sync clip keeps the picture as drawn for the shut frame (its own expression) and pastes the kit's open mouth for the open frame, picked by the shot's mood (cry for a sad face, shout or angry for an angry one, laugh for a happy one, else wide, open, teeth) instead of asking Muse Image for two edits. Only on the lead's own face (the mouth on the SAM mask of its species, and the skin round it close to the kit portrait's), never over anything off the lead such as a cup held at the mouth. It erases the drawn mouth with the skin around it, moves the open mouth down while it touches the nose, picks the angle from where the nose sits (mirrored for a face turned the other way), scales to the mouth's width and runs the same checks as before (open clearly bigger, clear of the nose and eyes, the Muse Spark face close-up). A face too small for the kit, or a pair that fails, is drawn the old way. `--no-kit` skips the kit for a run; `mouths.json` marks the pictures that came from it.
+
+## Đồ làm sẵn (dashboard /video/san)
+
+One screen for everything drawn once and reused: each character's reactions (Duyệt / Vẽ lại per picture, Duyệt hết, and "Làm mắt chớp + mồm nói", which runs `talk stock <slug> --extras` so a reaction comes with its blink and talking mouths), the mouth kit sheet, the seasonal outfits, and the office rooms. Redrawn pictures wait for approval again.
+
+Each folder notes the design it was drawn for (`design.json`: a fingerprint of the profile's look and the model sheet). When the character is redesigned the page says so, and `talk stock` / `talk mouthkit` redraw everything on their next run.
+
+- **Phông** (`talk backgrounds [--approve all]`): ten empty rooms in `series/backgrounds`: six in the office (bàn làm việc, phòng sếp, phòng họp, pantry, thang máy, cửa chấm công) and four outside for jokes that need them (phòng trọ, nhà tắm, quán trà đá, đường phố). A scene whose act happens in an approved room gets it as the last Muse Image reference, so the room looks the same in every clip.
+- **Âm thanh hiệu ứng** (`talk sfx`): twelve short sounds made once with AudioGen (Meta AudioCraft, `pip install audiocraft` in the `TALK_PYTHON` environment) in `series/sfx`. Muse Spark may pick one for the punchline of a meme; it is mixed over the music when the punchline appears.
+- **Đồ theo dịp** (`talk seasons <slug|all>`): each character once in the outfit of Tết, Noel, Trung thu, 20/10, 8/3 and 14/2 (`characters/<slug>/seasons`). A meme for an occasion (the idea stock tags them) dresses the lead from that picture and takes no everyday reaction.
+- **Mắt**: every picture without a second pose already gets a shut-eye copy for blinks, on the machine and free. Side glances and wide eyes are part of the expression and come with the drawing.
+
+Reactions are 22: fifteen alone and seven more everyday ones (lướt điện thoại, chạy deadline, ngủ gật, chạy trễ, nộp đơn nghỉ, ví rỗng, ngồi họp), plus three with a second character (sếp giao việc, sếp mắng with the director; hóng chuyện with a colleague), which keep that character in the meme. `talk stock <slug> --poses` tries the second pose again for reactions that have only one picture.
+
+The Kho ý page takes the Meta credit read off Billing; from then on "Làm clip cả tuần tới" estimates about 0.15 USD a meme and stops before the last 18 USD, which stay for lip-sync clips.
+
+## Âm thanh meme (the house mix)
+
+Every meme gets the mix Tài approved on clips meme-25..34 (7/11). The planner (Muse Spark) picks it with the shots, and `talk meme --step render` mixes it:
+
+- **Music:** the meme's mood from `series/music`. Envato tracks (`<mood>-env<n>.wav`) come before MusicGen ones. Envato-only moods: cang-thang, cam-dong, hanh-dong, lang-man.
+- **At the punchline:** one cut sound. Use `dia-xuoc` when the mood flips, `vine-boom` for a reveal, and a whoosh at -0.25 s before a cartoon reaction.
+- **After the punchline:** 1–2 reaction sounds, from +0.1 to +2.8 s: sad-violin, bruh/huh, a laugh, ba-dum-tss or applause.
+- **Music turn:** for a letdown punchline the music switches at the cut to another mood (`turn: switch`, `musicB`, default `buon`). The end is never silent: Tài heard the stop in the clip 28 test as cut off. An old `stop` plays on.
+- **Where a sound name is looked up, in order:**
+  1. `series/sfx/_meme/<name>.*` (internet meme sounds, cut to 3 s)
+  2. `series/sfx/_lib/<name>-env.*` (Envato)
+  3. `_lib/<name>-fs.*` (Freesound)
+  4. `series/sfx/<name>.wav` (AudioGen, the fallback)
+- **Levels:**
+  - Music A runs at -21 LUFS with a 0.2 s fade-in. It is cut at cut-0.05 s, or faded over the last 1.2 s.
+  - Music B starts at cut+0.35 s at -22 LUFS.
+  - Each sound runs at -15 LUFS with its own volume, and starts 0.07 s (2 frames) before its moment. A sound that comes late already feels off at 0.2 s.
+  - Then amix without normalising, a 0.6 limiter, then loudnorm to -14.5 LUFS with true peak -1.5 dBTP (the AAC encode overshot 0 dBTP before).
+
+For a meme already drawn, `talk meme <slug> --out <dir> --step sound` plans only the sound (it writes `plan.sound`), and `--step render` mixes it. The rule is also in `series/house-rules.json` (r-sound-1107), so the idea and fix prompts see it too.

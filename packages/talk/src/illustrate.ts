@@ -847,7 +847,7 @@ export function mouthCrop(b: Box, width: number, height: number): Box {
 }
 
 /** The open mouth may be at most this many times the shut one's area, and this many shut widths tall: a wide-open cartoon mouth reads creepy (Tài, 7/11). */
-export const OPEN_MAX = 2.4, OPEN_TALL = 0.8;
+export const OPEN_MAX = 2.0, OPEN_TALL = 0.7;
 
 export const mouthPrompt = (name: string, open: boolean, attempt = 0) =>
   `Change only ${name}'s mouth: ${open ? (attempt ? "open it just a little as if saying a soft vowel: a small oval about a third as tall as it is wide, set low toward the chin, well below the nose with a wide gap of skin between them, showing a little of the dark inside; never touches the nose, eyes or eye markings" : "open it slightly mid-word as if chatting calmly, a small natural opening about half as tall as it is wide, showing a little of the dark inside; it opens downward from where the mouth is, stays below the nose with a clear gap of skin between them, never touches or covers the nose, eyes or eye markings; not a wide-open or shouting mouth") : "close it, lips together in a calm closed line, no teeth, no smile"}. The mouth stays the same width and in the same place. Do not move the head, nose, eyes, eyebrows, cheeks, arms, anyone else or anything else. Keep the same framing, background, colours and line style. No text.`;

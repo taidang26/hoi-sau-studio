@@ -70,6 +70,8 @@ export interface Plan {
   shots: Shot[];
   /** A sound effect from series/sfx for the punchline of a meme (talk sfx). */
   sfx?: string;
+  /** The house sound mix of a meme (talk sfx: music turn at the punchline + meme sounds). */
+  sound?: { turn: "keep" | "stop" | "switch"; musicB?: string; sounds: Array<{ name: string; at: number; volume?: number; trim?: number }> };
   /** The occasion the lead dresses for (talk seasons). */
   season?: string;
 }

@@ -136,3 +136,24 @@ Each folder notes the design it was drawn for (`design.json`: a fingerprint of t
 Reactions are 22: fifteen alone and seven more everyday ones (lướt điện thoại, chạy deadline, ngủ gật, chạy trễ, nộp đơn nghỉ, ví rỗng, ngồi họp), plus three with a second character (sếp giao việc, sếp mắng with the director; hóng chuyện with a colleague), which keep that character in the meme. `talk stock <slug> --poses` tries the second pose again for reactions that have only one picture.
 
 The Kho ý page takes the Meta credit read off Billing; from then on "Làm clip cả tuần tới" estimates about 0.15 USD a meme and stops before the last 18 USD, which stay for lip-sync clips.
+
+## Âm thanh meme (the house mix)
+
+Every meme gets the mix Tài approved on clips meme-25..34 (7/11). The planner (Muse Spark) picks it with the shots, and `talk meme --step render` mixes it:
+
+- **Music:** the meme's mood from `series/music`. Envato tracks (`<mood>-env<n>.wav`) come before MusicGen ones. Envato-only moods: cang-thang, cam-dong, hanh-dong, lang-man.
+- **At the punchline:** one cut sound. Use `dia-xuoc` when the mood flips, `vine-boom` for a reveal, and a whoosh at -0.25 s before a cartoon reaction.
+- **After the punchline:** 1–2 reaction sounds, from +0.1 to +2.8 s: sad-violin, bruh/huh, a laugh, ba-dum-tss or applause.
+- **Music turn:** for a letdown punchline the music stops at the cut (`turn: stop`) or switches to another mood (`turn: switch`, `musicB`).
+- **Where a sound name is looked up, in order:**
+  1. `series/sfx/_meme/<name>.*` (internet meme sounds, cut to 3 s)
+  2. `series/sfx/_lib/<name>-env.*` (Envato)
+  3. `_lib/<name>-fs.*` (Freesound)
+  4. `series/sfx/<name>.wav` (AudioGen, the fallback)
+- **Levels:**
+  - Music A runs at -21 LUFS with a 0.2 s fade-in. It is cut at cut-0.05 s, or faded over the last 1.2 s.
+  - Music B starts at cut+0.35 s at -22 LUFS.
+  - Each sound runs at -15 LUFS with its own volume.
+  - Then amix without normalising, and a 0.7 limiter.
+
+For a meme already drawn, `talk meme <slug> --out <dir> --step sound` plans only the sound (it writes `plan.sound`), and `--step render` mixes it. The rule is also in `series/house-rules.json` (r-sound-1107), so the idea and fix prompts see it too.

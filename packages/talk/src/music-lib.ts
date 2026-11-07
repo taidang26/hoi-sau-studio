@@ -5,6 +5,7 @@
  * used least, so the feed does not play one tune all week.
  *
  *   series/music/<mood>-<n>.wav   the tracks, a little longer than the longest meme
+ *   series/music/<mood>-env<n>.wav Envato tracks (licensed), taken before the MusicGen ones
  *   series/music/used.json        how often each was used
  */
 
@@ -15,6 +16,8 @@ export interface Mood {
   name: string;
   vi: string;
   prompt: string;
+  /** Only from Envato (series/music/<mood>-env<n>.wav): MusicGen never makes it. */
+  envato?: boolean;
 }
 
 /** The default mood's prompt is the one the dashboard has always sent, so existing memes map onto it. */
@@ -24,6 +27,10 @@ export const MOODS: Mood[] = [
   { name: "hi-hung", vi: "Hí hửng", prompt: "bouncy cheerful ukulele and glockenspiel, upbeat happy little tune, no vocals" },
   { name: "deadline", vi: "Căng thẳng, deadline", prompt: "tense ticking pizzicato strings and light percussion, comedic suspense, rushing, no vocals" },
   { name: "buon", vi: "Buồn cười ra nước mắt", prompt: "melancholic comedic piano with a sad violin, mock-dramatic, no vocals" },
+  { name: "cang-thang", vi: "Căng thẳng, hồi hộp", prompt: "tense suspense music, no vocals", envato: true },
+  { name: "cam-dong", vi: "Cảm động", prompt: "warm emotional piano, no vocals", envato: true },
+  { name: "hanh-dong", vi: "Hành động, rượt đuổi", prompt: "fast comedic chase music, no vocals", envato: true },
+  { name: "lang-man", vi: "Lãng mạn", prompt: "soft romantic music, no vocals", envato: true },
 ];
 
 export const TRACK_SECONDS = 22;
@@ -34,12 +41,15 @@ const tracks = (dir: string, mood: string) => (existsSync(dir) ? readdirSync(dir
 /** The mood a meme's music prompt stands for: an exact prompt or a mood name; the default otherwise. */
 export const moodOf = (prompt: string): Mood => MOODS.find((m) => m.prompt === prompt.trim() || m.name === prompt.trim()) ?? MOODS[0];
 
+/** The moods that have at least one track on this machine (for a meme's music switch). */
+export const moodsOnHand = (root: string): string[] => MOODS.filter((m) => tracks(musicDir(root), m.name).length).map((m) => m.name);
+
 /** Makes the missing tracks: `count` per mood, each with its own seed. `gen(out, seconds, prompt, seed)` runs MusicGen. */
 export function makeLibrary(root: string, gen: (out: string, seconds: number, prompt: string, seed: number) => void, count = 4, log?: (s: string) => void): number {
   const dir = musicDir(root);
   mkdirSync(dir, { recursive: true });
   let made = 0;
-  for (const m of MOODS)
+  for (const m of MOODS.filter((x) => !x.envato))
     for (let n = 1; n <= count; n++) {
       const out = join(dir, `${m.name}-${n}.wav`);
       if (existsSync(out)) continue;
@@ -60,7 +70,9 @@ export function takeTrack(root: string, prompt: string, out: string, seconds: nu
   if (!list.length || seconds > TRACK_SECONDS - 0.5) return false;
   const usedFile = join(dir, "used.json");
   const used: Record<string, number> = existsSync(usedFile) ? JSON.parse(readFileSync(usedFile, "utf8")) : {};
-  const pick = [...list].sort((a, b) => (used[a] ?? 0) - (used[b] ?? 0) || a.localeCompare(b))[0];
+  // Envato tracks (licensed, Tài's pick on 7/11) before MusicGen ones; the least used within each.
+  const env = (f: string) => (/-env\d+\.wav$/.test(f) ? 0 : 1);
+  const pick = [...list].sort((a, b) => env(a) - env(b) || (used[a] ?? 0) - (used[b] ?? 0) || a.localeCompare(b))[0];
   copyFileSync(join(dir, pick), out);
   used[pick] = (used[pick] ?? 0) + 1;
   writeFileSync(usedFile, JSON.stringify(used, null, 1));

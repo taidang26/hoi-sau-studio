@@ -154,6 +154,6 @@ Every meme gets the mix Tài approved on clips meme-25..34 (7/11). The planner (
   - Music A runs at -21 LUFS with a 0.2 s fade-in. It is cut at cut-0.05 s, or faded over the last 1.2 s.
   - Music B starts at cut+0.35 s at -22 LUFS.
   - Each sound runs at -15 LUFS with its own volume.
-  - Then amix without normalising, and a 0.6 limiter (the AAC encode overshot 0 dBTP at 0.7).
+  - Then amix without normalising, a 0.6 limiter, then loudnorm to -14.5 LUFS with true peak -1.5 dBTP (the AAC encode overshot 0 dBTP before).
 
 For a meme already drawn, `talk meme <slug> --out <dir> --step sound` plans only the sound (it writes `plan.sound`), and `--step render` mixes it. The rule is also in `series/house-rules.json` (r-sound-1107), so the idea and fix prompts see it too.

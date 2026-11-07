@@ -24,6 +24,8 @@ test("the kit angle follows the nose, mirrored when the face turns the other way
   const shape = { name: "open", file: "", ox: -30, oy: -4, w: 50, h: 30 };
   assert.deepEqual(placeShape(kit.angles[0], shape, { x: 100, y: 200, w: 20, h: 6 }, false), { s: 0.5, x: 95, y: 198, w: 25, h: 15 });
   assert.equal(placeShape(kit.angles[0], shape, { x: 100, y: 200, w: 20, h: 6 }, true).x, 100);
+  // Squashed, the shape keeps its top and width and loses height from below.
+  assert.deepEqual(placeShape(kit.angles[0], shape, { x: 100, y: 200, w: 20, h: 6 }, false, 0.6), { s: 0.5, x: 95, y: 198, w: 25, h: 9 });
 });
 
 test("erasing a mouth fills it with the skin around it and leaves the nose; a patch never covers the nose", () => {
@@ -85,7 +87,7 @@ test("a sad face talks with a crying mouth, an angry one shouts, a happy one lau
   assert.equal(openShapes("sits at the desk crying comically, two streams of tears")[0], "cry");
   assert.deepEqual(openShapes("the boss shouts angrily").slice(0, 2), ["shout", "angry"]);
   assert.equal(openShapes("jumps up with a big happy grin")[0], "laugh");
-  assert.deepEqual(openShapes("stands by the desk"), ["wide", "open", "teeth"]);
+  assert.deepEqual(openShapes("stands by the desk"), ["open", "o", "teeth", "wide"]);
 });
 
 test("the skin round a mouth is read just round its top strip, so a small white muzzle in a dark face reads white", async () => {

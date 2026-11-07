@@ -30,7 +30,7 @@ import { align, grow, maskBox, unionBox, writePng, type Box, type Raster } from 
 import { python } from "./voice.js";
 import { roomFor, roomPrompt } from "./backgrounds.js";
 import { seasonRef } from "./seasons.js";
-import { colourGap, KIT_MIN_MOUTH, KIT_SKIN_GAP, openShapes, kitDrops, kitSkin, loadKit, noseOffset, pasteKit, pickAngle, stripSkin } from "./mouthkit.js";
+import { colourGap, KIT_MIN_MOUTH, KIT_SKIN_GAP, KIT_SQUASH, openShapes, kitDrops, kitSkin, loadKit, noseOffset, pasteKit, pickAngle, stripSkin } from "./mouthkit.js";
 
 export interface Line {
   text: string;
@@ -846,8 +846,11 @@ export function mouthCrop(b: Box, width: number, height: number): Box {
   return { x, y, w: side, h: side };
 }
 
+/** The open mouth may be at most this many times the shut one's area, and this many shut widths tall: a wide-open cartoon mouth reads creepy (Tài, 7/11). */
+export const OPEN_MAX = 2.4, OPEN_TALL = 0.8;
+
 export const mouthPrompt = (name: string, open: boolean, attempt = 0) =>
-  `Change only ${name}'s mouth: ${open ? (attempt ? "open it a little as if singing a vowel: a small oval about half as tall as it is wide, set low toward the chin, well below the nose with a wide gap of skin between them, clearly showing the dark inside; never touches the nose, eyes or eye markings" : "open it mid-word as if talking loudly, clearly showing the inside of the mouth; it opens downward from where the mouth is, stays below the nose with a clear gap of skin between them, never touches or covers the nose, eyes or eye markings, and is no taller than it is wide") : "close it, lips together in a calm closed line, no teeth, no smile"}. The mouth stays the same width and in the same place. Do not move the head, nose, eyes, eyebrows, cheeks, arms, anyone else or anything else. Keep the same framing, background, colours and line style. No text.`;
+  `Change only ${name}'s mouth: ${open ? (attempt ? "open it just a little as if saying a soft vowel: a small oval about a third as tall as it is wide, set low toward the chin, well below the nose with a wide gap of skin between them, showing a little of the dark inside; never touches the nose, eyes or eye markings" : "open it slightly mid-word as if chatting calmly, a small natural opening about half as tall as it is wide, showing a little of the dark inside; it opens downward from where the mouth is, stays below the nose with a clear gap of skin between them, never touches or covers the nose, eyes or eye markings; not a wide-open or shouting mouth") : "close it, lips together in a calm closed line, no teeth, no smile"}. The mouth stays the same width and in the same place. Do not move the head, nose, eyes, eyebrows, cheeks, arms, anyone else or anything else. Keep the same framing, background, colours and line style. No text.`;
 
 /**
  * The lead's mouth among SAM's finds: the biggest find whose centre lies on the
@@ -1001,7 +1004,8 @@ export async function drawMouths(sam: Sam, ctx: StudioContext, plan: Plan, dir: 
   const pairProblem = async (mouth: { box: Box }, shut: Made | undefined, open: Made | undefined) =>
     !shut || !open ? "a mouth edit failed"
       : open.size < shut.size * 1.4 ? `the open mouth is not clearly bigger than the shut one (${open.size} vs ${shut.size} px)`
-      : open.box.h > shut.box.w * 1.6 ? `the open mouth is too tall (${open.box.h} px for a ${shut.box.w} px wide mouth)`
+      : open.size > shut.size * OPEN_MAX ? `the open mouth is too big (${open.size} vs ${shut.size} px shut)`
+      : open.box.h > shut.box.w * OPEN_TALL ? `the open mouth is too tall (${open.box.h} px for a ${shut.box.w} px wide mouth)`
       : open.onFace > 0.03 ? `the open mouth runs into the nose or eyes (${Math.round(open.onFace * 100)}% of it)`
       : open.nearNose > 0 ? `the open mouth comes within ${NOSE_GAP} px of the nose`
       : faceProblem(ctx, p.name, shut.img, open.img, grow(unionBox([mouth.box, shut.box, open.box])!, 3, w, h, 160));
@@ -1041,20 +1045,23 @@ export async function drawMouths(sam: Sam, ctx: StudioContext, plan: Plan, dir: 
         const shutK = await made1(base);
         let kp = "the kit has no shut mouth", used = "";
         // Each open shape, moved down step by step while it sits too close to the nose; the first pair that passes is kept.
-        for (const shape of shutK ? openShapes(`${s.act} ${pic.endsWith("-b2") ? s.pose : ""}`) : []) {
-          for (const drop of kitDrops(mouth.box.h)) {
-            const openK = await made1(await pasteKit(cdir, kit, base, mouth, shape, pick, keepK, drop));
-            if (!openK) { kp = `no ${shape} mouth in the kit`; break; }
-            kp = await pairProblem(mouth, shutK, openK);
-            if (!kp) {
-              await sharp(shutK!.img.data, { raw: { width: w, height: h, channels: 3 } }).png().toFile(shutFile);
-              await sharp(openK.img.data, { raw: { width: w, height: h, channels: 3 } }).png().toFile(openFile);
-              used = `${shape}${drop ? `, ${drop} px lower` : ""}`;
-              break;
+        // A shape too big or too tall is tried again shorter (KIT_SQUASH) before the next shape.
+        shapes: for (const shape of shutK ? openShapes(`${s.act} ${pic.endsWith("-b2") ? s.pose : ""}`) : []) {
+          for (const squash of KIT_SQUASH) {
+            for (const drop of kitDrops(mouth.box.h)) {
+              const openK = await made1(await pasteKit(cdir, kit, base, mouth, shape, pick, keepK, drop, squash));
+              if (!openK) { kp = `no ${shape} mouth in the kit`; continue shapes; }
+              kp = await pairProblem(mouth, shutK, openK);
+              if (!kp) {
+                await sharp(shutK!.img.data, { raw: { width: w, height: h, channels: 3 } }).png().toFile(shutFile);
+                await sharp(openK.img.data, { raw: { width: w, height: h, channels: 3 } }).png().toFile(openFile);
+                used = `${shape}${squash < 1 ? ` at ${Math.round(squash * 100)}% height` : ""}${drop ? `, ${drop} px lower` : ""}`;
+                break shapes;
+              }
+              if (!kp.includes("nose")) break;
             }
-            if (!kp.includes("nose")) break;
+            if (!/too big|too tall/.test(kp)) break;
           }
-          if (used) break;
         }
         if (used) {
           report.push({ pic, ok: true, kit: true });

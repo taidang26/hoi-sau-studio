@@ -44,7 +44,8 @@ export const SHAPES: Array<{ name: string; say: string }> = [
  * a crying mouth, an angry one shouts, a happy one laughs. Each list ends on the plain talking shapes.
  */
 export function openShapes(text: string): string[] {
-  const t = text.toLowerCase(), plain = ["wide", "open", "teeth"];
+  // Small talking shapes first: a wide-open mouth on a cartoon face reads creepy (Tài, 7/11).
+  const t = text.toLowerCase(), plain = ["open", "o", "teeth", "wide"];
   if (/\b(cr(y|ies|ying)|tears?|sob|wail|sad|despair|defeated|miserable|upset|gloomy)\b/.test(t)) return ["cry", ...plain];
   if (/\b(angry|anger|furious|rage|shout|yell|scold|mad|annoyed|glare)/.test(t)) return ["shout", "angry", ...plain];
   if (/\b(laugh|happy|grin|joy|celebrat|cheer|excited|delighted|smug|smil)/.test(t)) return ["laugh", ...plain];
@@ -159,10 +160,11 @@ export function blendPatch(base: Raster, rgba: Buffer, pw: number, ph: number, x
 }
 
 /** Where a kit shape goes for a picture mouth `box`: the scale and top-left, mirrored about the mouth's centre when asked. */
-export function placeShape(angle: KitAngle, shape: KitShape, box: Box, mirror: boolean): { s: number; x: number; y: number; w: number; h: number } {
+export function placeShape(angle: KitAngle, shape: KitShape, box: Box, mirror: boolean, squash = 1): { s: number; x: number; y: number; w: number; h: number } {
   const s = box.w / angle.base.w;
   const ox = mirror ? -(shape.ox + shape.w) : shape.ox;
-  const w = Math.max(1, Math.round(shape.w * s)), h = Math.max(1, Math.round(shape.h * s));
+  // `squash` shortens the shape from its top down: a half-open talking mouth from a wide one.
+  const w = Math.max(1, Math.round(shape.w * s)), h = Math.max(1, Math.round(shape.h * s * squash));
   return { s, x: Math.round(box.x + box.w / 2 + ox * s), y: Math.round(box.y + shape.oy * s), w, h };
 }
 
@@ -172,11 +174,14 @@ export function placeShape(angle: KitAngle, shape: KitShape, box: Box, mirror: b
  */
 export const kitDrops = (mouthH: number) => [0, Math.max(2, Math.round(mouthH * 0.5)), Math.max(4, Math.round(mouthH))];
 
+/** How much of a kit shape's height to keep, tried in turn until the open mouth is small enough. */
+export const KIT_SQUASH = [1, 0.75, 0.55];
+
 /** The picture with its mouth erased and the kit's `shape` pasted in its place. */
-export async function pasteKit(charactersDir: string, kit: MouthKit, base: Raster, mouth: { mask: Uint8Array; box: Box }, shapeName: string, pick: { angle: KitAngle; mirror: boolean }, keep?: Uint8Array, drop = 0): Promise<Raster | undefined> {
+export async function pasteKit(charactersDir: string, kit: MouthKit, base: Raster, mouth: { mask: Uint8Array; box: Box }, shapeName: string, pick: { angle: KitAngle; mirror: boolean }, keep?: Uint8Array, drop = 0, squash = 1): Promise<Raster | undefined> {
   const shape = pick.angle.shapes.find((x) => x.name === shapeName);
   if (!shape) return undefined;
-  const at = placeShape(pick.angle, shape, mouth.box, pick.mirror);
+  const at = placeShape(pick.angle, shape, mouth.box, pick.mirror, squash);
   let img = sharp(join(kitDir(charactersDir, kit.slug), shape.file)).ensureAlpha().resize(at.w, at.h, { fit: "fill" });
   if (pick.mirror) img = img.flop();
   const rgba = await img.raw().toBuffer();

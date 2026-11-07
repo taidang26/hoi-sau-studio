@@ -1,15 +1,21 @@
 import assert from "node:assert/strict";
-import { cpSync, existsSync, mkdtempSync, readFileSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { test } from "node:test";
+import { after, test } from "node:test";
 import { CHARACTERS_DIR, openStudio } from "@hoi-sau/studio";
 import type { Sam } from "@hoi-sau/dance";
 import { planMeme } from "./meme.js";
-import { approveStock, availableStock, loadStock, makeStock, partnerOf, REACTIONS, stockDir, useStock } from "./stock.js";
+import { approveStock, availableStock, loadStock, makeStock, partnerOf, REACTIONS, reactionsFor, stockDir, useStock } from "./stock.js";
 
 const chars = mkdtempSync(join(tmpdir(), "hoisau-stock-"));
-cpSync(CHARACTERS_DIR, chars, { recursive: true });
+// Profiles and model sheets only: the real stock, mouth kits and outfits are large and would change the answers.
+cpSync(CHARACTERS_DIR, chars, { recursive: true, filter: (src) => !/[\\/](stock|mouthkit|seasons|talk)([\\/]|$)/.test(src.slice(CHARACTERS_DIR.length)) });
+const meme = mkdtempSync(join(tmpdir(), "hoisau-meme-"));
+after(() => {
+  rmSync(chars, { recursive: true, force: true });
+  rmSync(meme, { recursive: true, force: true });
+});
 const noSam = { segment: async () => [] } as unknown as Sam;
 
 test("reactions are drawn once, wait for the owner's approval, then stand in for the punchline scene", async () => {
@@ -37,7 +43,7 @@ test("reactions are drawn once, wait for the owner's approval, then stand in for
   const other = await planMeme({ ...ctx, spark: { json: async () => ({ shots: [{ act: "a", pose: "", cast: [], moving: ["character"], stock: "" }, { act: "b", pose: "", cast: [], moving: ["character"], stock: "om-dau" }] }) } } as never, "cu-li", { top: "a", punch: "b", scenes: ["", ""], music: "", seconds: 0 }, offered);
   assert.equal(other.shots[1].stock, undefined);
 
-  const shots = join(mkdtempSync(join(tmpdir(), "hoisau-meme-")), "shots");
+  const shots = join(meme, "shots");
   useStock(chars, plan, shots, "meme-1");
   assert.deepEqual(readFileSync(join(shots, "s02.png")), readFileSync(join(stockDir(chars, "cu-li"), "guc-ban.png")));
   assert.ok(!existsSync(join(shots, "s01.png")), "the first scene is still drawn as usual");
@@ -48,5 +54,9 @@ test("reactions are drawn once, wait for the owner's approval, then stand in for
   assert.equal(partnerOf(base, "cu-li", "boss"), "cay-muc");
   assert.notEqual(partnerOf(base, "cay-muc", "boss"), "cay-muc");
   assert.equal(partnerOf(base, "cu-li", undefined), undefined);
+  // The director gets no "boss" reactions: nobody is drawn as his boss.
+  assert.ok(reactionsFor(base, "cay-muc").every((r) => r.with !== "boss"));
+  assert.equal(reactionsFor(base, "cu-li").length, REACTIONS.length);
+  assert.ok(!REACTIONS.some((r) => /\bhair\b/.test(r.act)), "no reaction asks for hair: most of the cast has none");
   assert.ok(REACTIONS.every((r) => /^[a-z-]+$/.test(r.name)));
 });

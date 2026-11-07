@@ -54,7 +54,7 @@ export const REACTIONS: Reaction[] = [
   { name: "luot-dien-thoai", vi: "Lướt điện thoại", act: "sits at the desk slouched, scrolling a phone with a bored blank face, the screen facing the character", pose: "the thumb flicks up the screen", moving: ["character", "phone"] },
   { name: "chay-deadline", vi: "Chạy deadline", act: "types frantically at the laptop with both hands, eyes wide, a few sweat drops, papers piled on the desk", pose: "the hands blur over the keys, leaning closer to the screen", moving: ["character"] },
   { name: "ngu-gat", vi: "Ngủ gật", act: "dozes off sitting at the desk, the head drooping forward, eyes shut, a little drool", pose: "the head jerks up half awake", moving: ["character"] },
-  { name: "chay-tre", vi: "Chạy trễ giờ", act: "runs in through the office door in a hurry with a backpack, hair messy, a bread roll in the mouth", pose: "the legs swing forward mid-run", moving: ["character"] },
+  { name: "chay-tre", vi: "Chạy trễ giờ", act: "runs in through the office door in a hurry with a backpack, out of breath, clothes rumpled, a bread roll in the mouth", pose: "the legs swing forward mid-run", moving: ["character"] },
   { name: "nop-don", vi: "Nộp đơn nghỉ", act: "stands holding out a plain white envelope with both hands, a determined serious face", pose: "pushes the envelope a little further forward", moving: ["character", "envelope"] },
   { name: "vi-rong", vi: "Nhìn ví rỗng", act: "sits at the desk holding an open empty wallet upside down, staring into it in despair, one moth flying out", pose: "shakes the wallet once", moving: ["character", "wallet"] },
   { name: "ngoi-hop", vi: "Ngồi họp", act: "sits at the long meeting table in the meeting room with a notebook, eyes glazed, chin propped on one hand", pose: "the chin slips off the hand", moving: ["character"] },
@@ -97,7 +97,17 @@ export function availableStock(charactersDir: string, slug: string, today = day(
   return loadStock(charactersDir, slug).filter((e) => e.approved && existsSync(join(stockDir(charactersDir, slug), `${e.name}.png`)) && !e.used.some((u) => u.on > cut));
 }
 
-/** The second character of a two-person reaction: the director for "boss" (or Tũn when the lead is the director), a colleague for "colleague". */
+/** Whether `slug` is the director: "boss" reactions are never drawn for him (nobody else is cast as his boss). */
+export function isBoss(ctx: Pick<StudioContext, "profiles">, slug: string): boolean {
+  return /giám đốc|director|founder/i.test(ctx.profiles.get(slug)?.role ?? "");
+}
+
+/** The reactions a character gets: all of them, minus the "boss" ones for the director himself. */
+export function reactionsFor(ctx: Pick<StudioContext, "profiles">, slug: string): Reaction[] {
+  return REACTIONS.filter((r) => !(r.with === "boss" && isBoss(ctx, slug)));
+}
+
+/** The second character of a two-person reaction: the director for "boss", a colleague for "colleague". */
 export function partnerOf(ctx: Pick<StudioContext, "profiles">, slug: string, who: string | undefined): string | undefined {
   if (!who) return undefined;
   const all = [...ctx.profiles.values()];
@@ -113,7 +123,7 @@ export function stockPlan(slug: string, reactions: Reaction[], ctx?: Pick<Studio
   const shots: Shot[] = reactions.map((r) => {
     const other = ctx ? partnerOf(ctx, slug, r.with) : undefined;
     const who = other ? `with ${ctx!.profiles.get(other)!.name}` : "alone in the picture";
-    return { id: r.name, t: 0, act: `In the Hồi Sau office, ${who}: ${r.act.replace(/\bthe boss\b|\ba colleague\b/, other ? ctx!.profiles.get(other)!.name : "$&")}. ${MEME_FRAME}`, pose: r.pose, bubble: "", cast: other ? [other] : [], moving: r.moving };
+    return { id: r.name, t: 0, act: `In the Hồi Sau office, ${who}: ${r.act.replace(/\bthe boss\b|\ba colleague\b/, other ? ctx!.profiles.get(other)!.name : "$&")}. Keep every character's exact head from the reference: no hair, no wig, no added hairstyle. ${MEME_FRAME}`, pose: r.pose, bubble: "", cast: other ? [other] : [], moving: r.moving };
   });
   return { slug, clip: "", end: 1, lines: [], shots };
 }
@@ -131,7 +141,7 @@ export async function makeStock(ctx: StudioContext, sam: Sam, slug: string, opts
   // A changed design (profile look or model sheet) redraws every reaction, and they wait for approval again.
   const stale = designChanged(dir, slug, cdir);
   if (stale) opts.log?.(`${slug}: the design changed since the reactions were drawn; drawing them all again`);
-  const todo = REACTIONS.filter((r) => (stale ? true : opts.only ? opts.only.includes(r.name) : !existsSync(join(dir, `${r.name}.png`))));
+  const todo = reactionsFor(ctx, slug).filter((r) => (stale ? true : opts.only ? opts.only.includes(r.name) : !existsSync(join(dir, `${r.name}.png`))));
   if (!todo.length) {
     noteDesign(dir, slug, cdir);
     return have;
@@ -230,7 +240,7 @@ export function useStock(charactersDir: string, plan: Plan, shotsDir: string, cl
 export async function stockExtras(ctx: StudioContext, sam: Sam, slug: string, opts: { only?: string[]; log?: (s: string) => void } = {}): Promise<{ blinks: number; mouths: number }> {
   const cdir = ctx.charactersDir ?? CHARACTERS_DIR, dir = stockDir(cdir, slug);
   const species = (ctx.profiles.get(slug)?.species ?? "character").split("(")[0].trim();
-  const have = REACTIONS.filter((r) => existsSync(join(dir, `${r.name}.png`)) && (!opts.only || opts.only.includes(r.name)));
+  const have = reactionsFor(ctx, slug).filter((r) => existsSync(join(dir, `${r.name}.png`)) && (!opts.only || opts.only.includes(r.name)));
   let blinks = 0;
   for (const r of have) {
     const a = join(dir, `${r.name}.png`), out = join(dir, `${r.name}-blink.png`);
@@ -251,7 +261,7 @@ export async function stockExtras(ctx: StudioContext, sam: Sam, slug: string, op
 export async function retryPoses(ctx: StudioContext, sam: Sam, slug: string, opts: { only?: string[]; log?: (s: string) => void } = {}): Promise<number> {
   const cdir = ctx.charactersDir ?? CHARACTERS_DIR, dir = stockDir(cdir, slug), work = join(dir, "_work");
   mkdirSync(work, { recursive: true });
-  const todo = REACTIONS.filter((r) => existsSync(join(dir, `${r.name}.png`)) && (opts.only ? opts.only.includes(r.name) : !existsSync(join(dir, `${r.name}-b2.png`))));
+  const todo = reactionsFor(ctx, slug).filter((r) => existsSync(join(dir, `${r.name}.png`)) && (opts.only ? opts.only.includes(r.name) : !existsSync(join(dir, `${r.name}-b2.png`))));
   if (!todo.length) return 0;
   const plan = stockPlan(slug, todo, ctx), only = todo.map((r) => r.name);
   for (const r of todo) {

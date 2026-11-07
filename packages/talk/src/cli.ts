@@ -41,7 +41,7 @@ import { makeSeasons, OUTFITS } from "./seasons.js";
 import { availableSfx, makeSfx, SOUNDS, sfxFile } from "./sfx.js";
 import { backgroundsDir, loadRooms, makeBackgrounds, ROOMS } from "./backgrounds.js";
 import { kitSheet, loadKit, makeMouthKit, type Angle } from "./mouthkit.js";
-import { approveStock, availableStock, loadStock, makeStock, REACTIONS, retryPoses, stockExtras, stockSheet, useStock } from "./stock.js";
+import { approveStock, availableStock, loadStock, makeStock, reactionsFor, retryPoses, stockExtras, stockSheet, useStock } from "./stock.js";
 import { askFixes, speechGaps } from "./fixes.js";
 import { ideaImages, readIdea } from "./idea.js";
 import { drawMouths, drawPoses, drawShots, reviewShots, fixShot, gateToWords, groupLines, hearWords, planShots, renderIllustrated, sceneCuts, shotSpans, stabilizePoses, timeWords, type Line, type Plan } from "./illustrate.js";
@@ -506,7 +506,7 @@ async function main() {
           await makeStock(ctx, Sam.fromEnv(), slug, { only: opt.only ? String(opt.only).split(",") : undefined, log });
         }
         const e = loadStock(ctx.charactersDir ?? CHARACTERS, slug);
-        console.log(`${slug}: ${e.length}/${REACTIONS.length} drawn, ${e.filter((x) => x.approved).length} approved`);
+        console.log(`${slug}: ${e.length}/${reactionsFor(ctx, slug).length} drawn, ${e.filter((x) => x.approved).length} approved`);
       }
       return;
     }

@@ -34,6 +34,9 @@ export const ROOMS: Room[] = [
   { name: "duong-pho", vi: "Đường phố", text: "a busy Hanoi street in the morning: a few parked motorbikes on the road, shop fronts with plain coloured awnings and no lettering, overhead tangled power lines, a pavement", words: /\b(street|motorbike|traffic|scooter|on the road|commut)/ },
 ];
 
+/** Rooms outdoors: the office style reference must not bring a desk into them. */
+const OUTDOORS = new Set(["tra-da", "duong-pho"]);
+
 export const backgroundsDir = (seriesDir = SERIES_DIR) => join(seriesDir, "backgrounds");
 
 export interface RoomEntry { name: string; vi: string; approved: boolean }
@@ -67,7 +70,7 @@ export async function makeBackgrounds(ctx: StudioContext, opts: { only?: string[
     if (opts.only ? !opts.only.includes(r.name) : existsSync(file)) continue;
     opts.log?.(`${r.name}: drawing`);
     const res = await generateSoftly(ctx.image, {
-      prompt: `Full-frame vertical background for a cartoon office comedy: ${r.text}. Empty: no people, no animals, no characters. Drawn loosely with clean lines and pale flat colour washes, warm daylight. Everything stands on the floor, screens face their chairs, one of each object. No text, no letters, no logos with words. Fill the whole vertical 9:16 frame.`,
+      prompt: `Full-frame vertical background for a cartoon office comedy: ${r.text}. Empty: no people, no animals, no characters. Drawn loosely with clean lines and pale flat colour washes, warm daylight. ${OUTDOORS.has(r.name) ? "This place is outdoors, not an office: no desk, no computer, no office chair anywhere." : "Everything stands on the floor, screens face their chairs,"} one of each object. No text, no letters, no logos with words. Fill the whole vertical 9:16 frame.`,
       size: `${OUT.w}x${OUT.h}`,
       references: style ? [style] : [],
     }, opts.log);

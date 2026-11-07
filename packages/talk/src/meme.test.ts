@@ -91,7 +91,10 @@ test("the sound plan keeps only offered sounds, inside the clip, memes trimmed, 
   const sounds = [{ name: "dia-xuoc" }, { name: "sad-violin", kind: "meme" }];
   const p = soundPlan({ turn: "switch", music_b: "buon", fx: [{ name: "dia-xuoc", at: 0, volume: 1 }, { name: "nope", at: 1 }, { name: "sad-violin", at: 9, volume: 0.8 }] }, sounds, ["buon"], 4);
   assert.deepEqual(p, { turn: "switch", musicB: "buon", sounds: [{ name: "dia-xuoc", at: 0, volume: 1 }, { name: "sad-violin", at: 3.6, volume: 0.8, trim: 3 }] });
-  assert.equal(soundPlan({ turn: "switch", music_b: "lang-man", fx: [] }, sounds, ["buon"], 4)?.turn, "stop");
+  // A stop never leaves the end silent: it switches to the planner's mood, else "buon", else the music plays on.
+  assert.deepEqual(soundPlan({ turn: "stop", music_b: "", fx: [] }, sounds, ["buon"], 4), { turn: "switch", musicB: "buon", sounds: [] });
+  assert.deepEqual(soundPlan({ turn: "switch", music_b: "lang-man", fx: [] }, sounds, ["buon"], 4), { turn: "switch", musicB: "buon", sounds: [] });
+  assert.equal(soundPlan({ turn: "stop", fx: [{ name: "dia-xuoc", at: 0 }] }, sounds, [], 4)?.turn, "keep");
   assert.equal(soundPlan({ turn: "keep", fx: [] }, sounds, [], 4), undefined);
   assert.equal(soundPlan(undefined, sounds, [], 4), undefined);
 });

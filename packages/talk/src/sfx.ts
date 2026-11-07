@@ -188,7 +188,7 @@ export function houseMix(o: { music: boolean; turn: MusicTurn; musicB: boolean; 
 export const SOUND_RECIPE = [
   "One cut sound right on the punchline (at 0): a record scratch (dia-xuoc) when the mood flips, vine-boom for a reveal, a whoosh just before (-0.25) a cartoon reaction.",
   "Then one or two reaction sounds a beat later (+0.1 to +2.8) that match the feeling: sad-violin for misery, a laugh or ba-dum-tss for a gag, bruh or huh for something absurd, applause for a fake victory.",
-  "When the punchline is a letdown, stop the music at the cut (turn = stop) or switch to another mood (turn = switch); otherwise keep it.",
+  "When the punchline is a letdown, switch the music at the cut to another mood (turn = switch, music_b, e.g. buon); otherwise keep it. Never leave the end without music.",
   "Prefer the internet meme sounds; a spoken Vietnamese meme is cut to 3 s. Volume 0.7-0.9 for the second and third sounds.",
 ].join(" ");
 

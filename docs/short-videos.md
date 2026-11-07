@@ -144,7 +144,7 @@ Every meme gets the mix Tài approved on clips meme-25..34 (7/11). The planner (
 - **Music:** the meme's mood from `series/music`. Envato tracks (`<mood>-env<n>.wav`) come before MusicGen ones. Envato-only moods: cang-thang, cam-dong, hanh-dong, lang-man.
 - **At the punchline:** one cut sound. Use `dia-xuoc` when the mood flips, `vine-boom` for a reveal, and a whoosh at -0.25 s before a cartoon reaction.
 - **After the punchline:** 1–2 reaction sounds, from +0.1 to +2.8 s: sad-violin, bruh/huh, a laugh, ba-dum-tss or applause.
-- **Music turn:** for a letdown punchline the music stops at the cut (`turn: stop`) or switches to another mood (`turn: switch`, `musicB`).
+- **Music turn:** for a letdown punchline the music switches at the cut to another mood (`turn: switch`, `musicB`, default `buon`). The end is never silent: Tài heard the stop in the clip 28 test as cut off. An old `stop` plays on.
 - **Where a sound name is looked up, in order:**
   1. `series/sfx/_meme/<name>.*` (internet meme sounds, cut to 3 s)
   2. `series/sfx/_lib/<name>-env.*` (Envato)

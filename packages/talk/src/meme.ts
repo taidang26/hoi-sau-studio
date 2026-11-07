@@ -79,7 +79,7 @@ export function memeTiming(spec: Pick<MemeSpec, "top" | "punch" | "seconds">): {
 }
 
 const SOUND_PLAN = S.obj({
-    turn: S.enum(["keep", "stop", "switch"], "what the music does as the punchline appears"),
+    turn: S.enum(["keep", "switch"], "keep: the music plays on; switch: it cuts at the punchline and music_b takes over to the end"),
     music_b: S.str("for turn = switch: the mood of the second track from the offered moods; empty otherwise"),
     fx: S.arr(
       S.obj({
@@ -182,9 +182,12 @@ export function soundPlan(
       const volume = Math.min(Math.max(Number(f.volume) || 1, 0.4), 1);
       return { name, at: +at.toFixed(2), volume: +volume.toFixed(2), ...(by.get(name)?.kind === "meme" ? { trim: MEME_MAX } : {}) };
     });
-  let turn = (["keep", "stop", "switch"] as const).find((t) => t === raw.turn) ?? "keep";
-  const musicB = turn === "switch" && moods.includes(raw.music_b?.trim() ?? "") ? raw.music_b!.trim() : undefined;
-  if (turn === "switch" && !musicB) turn = "stop";
+  // The end is never silent (Tài, 7/11: "3 giây cuối sao không có nhạc? Nghe cụt"): a stop at the
+  // punchline becomes a switch to another mood (the planner's, else "buon"), or the music plays on.
+  const want = raw.turn === "stop" || raw.turn === "switch";
+  const b = raw.music_b?.trim() ?? "";
+  const musicB = want ? (moods.includes(b) ? b : moods.includes("buon") ? "buon" : undefined) : undefined;
+  const turn: "keep" | "switch" = musicB ? "switch" : "keep";
   if (!fx.length && turn === "keep") return undefined;
   return { turn, ...(musicB ? { musicB } : {}), sounds: fx };
 }
@@ -395,7 +398,7 @@ export async function renderMeme(plan: Plan, dir: string, music: string | undefi
     sound && files.length === sound.sounds.length && files.every((f) => existsSync(f)) && (sound.sounds.length || sound.turn !== "keep")
       ? (() => {
           const b = sound.turn === "switch" && mix?.musicB && existsSync(mix.musicB) ? mix.musicB : undefined;
-          const filter = houseMix({ music: !!fade.length, turn: sound.turn === "switch" && !b ? "stop" : sound.turn, musicB: !!b, cut: plan.lines[1]?.start ?? 0, end: plan.end, sounds: sound.sounds });
+          const filter = houseMix({ music: !!fade.length, turn: sound.turn === "keep" || !b ? "keep" : "switch", musicB: !!b, cut: plan.lines[1]?.start ?? 0, end: plan.end, sounds: sound.sounds });
           return [...(b ? ["-i", b] : []), ...files.flatMap((f) => ["-i", f]), "-filter_complex", filter, "-map", "0:v", "-map", "[a]"];
         })()
       : undefined;
